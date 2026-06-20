@@ -28,7 +28,6 @@ RUN cargo build --release --target x86_64-unknown-linux-musl && \
 
 # Copy actual source code
 COPY src ./src
-COPY .git/ /dev/null  # Prevent build errors if .git exists
 
 # Build the final binary
 RUN cargo build --release --target x86_64-unknown-linux-musl
