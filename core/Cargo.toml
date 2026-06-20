@@ -1,0 +1,85 @@
+[package]
+name = "veridactus-core"
+version = "0.2.1"
+edition = "2021"
+description = "VERIDACTUS Trusted AI Execution Governance Infrastructure - Core Library"
+license = "Apache-2.0"
+repository = "https://github.com/veridactus/veridactus"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP/SSE server
+axum = { version = "0.7", features = ["macros"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+
+# Cryptography
+sha2 = "0.10"
+sha3 = "0.10"
+ed25519-dalek = "2"
+ed25519 = "2"
+
+# Identifiers & time
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+
+# Schema validation
+jsonschema = "0.18"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# SSE parsing
+eventsource-stream = "0.2"
+bytes = "1"
+http-body-util = "0.1"
+hyper = "1"
+reqwest = { version = "0.12", features = ["stream", "json"] }
+futures = "0.3"
+futures-util = "0.3"
+pin-project = "1"
+
+# Async trait support
+async-trait = "0.1"
+
+# Regex for privacy masking
+regex = "1"
+
+# YAML parsing for Governance DSL
+serde_yaml = "0.9"
+
+# OpenAPI generation
+utoipa = { version = "4", features = ["axum_extras"] }
+utoipa-swagger-ui = "6"
+
+# Random number generation
+rand = "0.8"
+
+# Concurrent hashmap for LongRunningTraceManager
+dashmap = "5"
+
+# Redis async client for M05 Async Dispatcher
+redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
+
+# PostgreSQL client
+sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
+
+[features]
+default = []
+
+[dev-dependencies]
+tempfile = "3"
+criterion = { version = "0.5", features = ["html_reports"] }
+testcontainers = "0.23"
+
+[[bench]]
+name = "journal_bench"
+harness = false

@@ -1,0 +1,20 @@
+# =============================================================================
+# VERIDACTUS Community Health Files
+# =============================================================================
+
+## Documentation
+/docs/              documentation
+*.md                lang=Markdown
+
+## Configuration
+/.github/          github
+*.yml              lang=YAML
+*.yaml             lang=YAML
+Makefile           lang=Makefile
+
+## License
+LICENSE             license=Apache-2.0
+NOTICE              license=Apache-2.0
+
+## Code of Conduct
+CODE_OF_CONDUCT.md  lang=Markdown

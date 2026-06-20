@@ -1,0 +1,107 @@
+# VERIDACTUS Core (Data Plane) Helm Chart Values
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/veridactus/veridactus-core
+  pullPolicy: IfNotPresent
+  tag: "0.2.1"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+# Health probes configuration
+probes:
+  startup:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    failureThreshold: 30
+    successThreshold: 1
+    timeoutSeconds: 1
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    failureThreshold: 3
+    successThreshold: 1
+    timeoutSeconds: 1
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+    timeoutSeconds: 1
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: veridactus.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# VERIDACTUS-specific configuration
+config:
+  upstreamLLM:
+    url: "https://open.bigmodel.cn"
+    model: "glm-5.1"
+    apiKey: ""
+  mode: "passthrough"  # passthrough | governance
+  logLevel: "info"
+  otelExporter: ""
+  adminKey: ""
+
+# External service endpoints
+controlPlane:
+  url: "http://veridactus-control-plane:8081"
+
+store:
+  redis:
+    host: "redis"
+    port: 6379
+  postgres:
+    host: "postgres"
+    port: 5432
+    database: "veridactus"
+    user: "veridactus"
+    password: ""
+  s3:
+    endpoint: "http://minio:9000"
+    bucket: "veridactus-traces"
+    accessKey: ""
+    secretKey: ""

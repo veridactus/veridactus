@@ -1,0 +1,144 @@
+# =============================================================================
+# VERIDACTUS Project .gitignore
+# Comprehensive ignore rules for multi-language monorepo
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Build artifacts
+# -----------------------------------------------------------------------------
+core/target/
+control-plane/bin/
+control-plane/server
+control-plane/veridactus-control-plane
+control-plane/veridactus-control
+control-plane/veridactus-cp
+veridactus-ui/dist/
+veridactus-ui/.vite/
+
+# -----------------------------------------------------------------------------
+# Rust specific
+# -----------------------------------------------------------------------------
+*.rs.bk
+*.rlib
+*.rmeta
+Cargo.lock
+core/build.log
+
+# -----------------------------------------------------------------------------
+# Go specific
+# -----------------------------------------------------------------------------
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.a
+control-plane/go.sum
+
+# -----------------------------------------------------------------------------
+# Node.js / TypeScript specific
+# -----------------------------------------------------------------------------
+veridactus-ui/node_modules/
+veridactus-ui/.vercel/
+veridactus-ui/.next/
+veridactus-ui/tsconfig.tsbuildinfo
+veridactus-ui/.eslintcache
+veridactus-ui/.prettiercache
+veridactus-ui/yarn.lock
+veridactus-ui/pnpm-lock.yaml
+
+# -----------------------------------------------------------------------------
+# Python specific
+# -----------------------------------------------------------------------------
+python-worker/__pycache__/
+python-worker/*.pyc
+python-worker/*.pyo
+python-worker/*.pyd
+python-worker/.venv/
+python-worker/.pytest_cache/
+python-worker/.tox/
+python-worker/coverage.xml
+python-worker/htmlcov/
+python-worker/.coverage
+python-worker/Pipfile.lock
+
+# -----------------------------------------------------------------------------
+# Database files
+# -----------------------------------------------------------------------------
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# -----------------------------------------------------------------------------
+# IDE / Editor
+# -----------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+.vim/
+
+# -----------------------------------------------------------------------------
+# OS specific
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# -----------------------------------------------------------------------------
+# Logs and temporary files
+# -----------------------------------------------------------------------------
+*.log
+logs/
+/tmp/
+test-output/
+*.tmp
+*.temp
+
+# -----------------------------------------------------------------------------
+# Environment variables and secrets
+# -----------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+.secrets/
+*.pem
+*.key
+*.crt
+
+# -----------------------------------------------------------------------------
+# Docker and containers
+# -----------------------------------------------------------------------------
+docker-compose.override.yml
+
+# -----------------------------------------------------------------------------
+# Testing and coverage
+# -----------------------------------------------------------------------------
+.nyc_output/
+coverage/
+.jest/
+.cache/
+
+# -----------------------------------------------------------------------------
+# Helm charts
+# -----------------------------------------------------------------------------
+deploy/helm/**/charts/
+deploy/helm/**/Chart.lock
+deploy/helm/**/.helm/
+
+# -----------------------------------------------------------------------------
+# CI/CD artifacts
+# -----------------------------------------------------------------------------
+.github/workflows/*.log
+.github/workflows/*.tmp

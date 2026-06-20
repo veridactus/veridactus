@@ -1,0 +1,155 @@
+import { createContext, useContext, useCallback, ReactNode, useState } from 'react';
+
+export type Locale = 'zh' | 'en';
+
+const t: Record<string, Record<Locale, string>> = {
+  'app.title': { zh: 'VERIDACTUS', en: 'VERIDACTUS' },
+  'app.subtitle': { zh: 'AI 执行治理', en: 'AI Execution Governance' },
+  'app.protocol': { zh: '协议 v0.2.1', en: 'Protocol v0.2.1' },
+  'app.switch_lang': { zh: 'English', en: '中文' },
+  'app.healthy': { zh: '健康', en: 'Healthy' },
+  'app.degraded': { zh: '降级', en: 'Degraded' },
+  'app.loading': { zh: '加载中...', en: 'Loading...' },
+  'app.unknown': { zh: '未知', en: 'Unknown' },
+  'app.dark_mode': { zh: '深色模式', en: 'Dark Mode' },
+  'app.light_mode': { zh: '浅色模式', en: 'Light Mode' },
+
+  'nav.dashboard': { zh: '仪表盘', en: 'Dashboard' },
+  'nav.pipelines': { zh: '治理流水线', en: 'Pipelines' },
+  'nav.audit': { zh: '审计中心', en: 'Audit Center' },
+  'nav.plugins': { zh: '插件市场', en: 'Plugin Market' },
+  'nav.api-keys': { zh: 'API 密钥', en: 'API Keys' },
+  'nav.settings': { zh: '系统设置', en: 'Settings' },
+
+  'status.data_plane': { zh: '数据平面', en: 'Data' },
+  'status.control_plane': { zh: '控制平面', en: 'Ctrl' },
+  'status.python_worker': { zh: 'Python 节点', en: 'Py' },
+  'status.traces': { zh: '追踪数', en: 'Traces' },
+  'status.system': { zh: '系统', en: 'System' },
+
+  'dashboard.title': { zh: 'VERIDACTUS 治理控制台', en: 'VERIDACTUS Governance Console' },
+  'dashboard.subtitle': { zh: 'AI 执行治理基础设施 — 可信 · 可验证 · 可观测', en: 'AI Execution Governance — Trusted · Verifiable · Observable' },
+  'dashboard.healthy': { zh: '所有服务正常', en: 'All Services Healthy' },
+  'dashboard.degraded': { zh: '服务降级', en: 'Service Degraded' },
+  'dashboard.health_score': { zh: '健康分', en: 'Health Score' },
+  'dashboard.traces': { zh: '执行追踪', en: 'Execution Traces' },
+  'dashboard.pipelines': { zh: '治理流水线', en: 'Pipelines' },
+  'dashboard.plugins': { zh: '插件', en: 'Plugins' },
+  'dashboard.policies': { zh: '策略', en: 'Policies' },
+  'dashboard.trust_state': { zh: '信任状态演进', en: 'Trust State Evolution' },
+  'dashboard.recent_traces': { zh: '最近追踪', en: 'Recent Traces' },
+  'dashboard.no_traces': { zh: '暂无追踪记录，发送聊天请求以生成追踪。', en: 'No traces yet. Send a chat completion to generate traces.' },
+  'dashboard.view_all': { zh: '查看全部', en: 'View All' },
+  'dashboard.data_plane': { zh: '数据平面', en: 'Data Plane' },
+  'dashboard.control_plane': { zh: '控制平面', en: 'Control Plane' },
+  'dashboard.python_worker': { zh: 'Python 节点', en: 'Python Worker' },
+
+  'audit.title': { zh: '审计中心', en: 'Audit Center' },
+  'audit.subtitle': { zh: '浏览、检查和验证执行追踪', en: 'Browse, inspect and verify execution traces' },
+  'audit.search': { zh: '按追踪 ID 或模型搜索...', en: 'Search by trace ID or model...' },
+  'audit.no_traces': { zh: '暂无追踪记录', en: 'No traces found' },
+  'audit.select_hint': { zh: '从列表中选择一条追踪查看详情、日志和证明链。', en: 'Click a trace to view its details and proof chain.' },
+  'audit.input': { zh: '输入', en: 'Input' },
+  'audit.output': { zh: '输出', en: 'Output' },
+  'audit.proof_chain': { zh: '证明链', en: 'Proof Chain' },
+  'audit.raw_json': { zh: '原始 Trace JSON', en: 'Raw Trace JSON' },
+  'audit.no_proofs': { zh: '暂无证明', en: 'No proofs available' },
+
+  'pipeline.title': { zh: '治理流水线', en: 'Governance Pipelines' },
+  'pipeline.subtitle': { zh: '配置和管理 AI 治理流水线', en: 'Configure and manage AI governance pipelines' },
+  'pipeline.new': { zh: '新建流水线', en: 'New Pipeline' },
+  'pipeline.empty_title': { zh: '暂无流水线', en: 'No Pipelines Yet' },
+  'pipeline.empty_desc': { zh: '创建第一条流水线来开始路由 AI 请求。', en: 'Create your first pipeline to start routing AI requests.' },
+  'pipeline.create': { zh: '创建流水线', en: 'Create Pipeline' },
+  'pipeline.edit': { zh: '编辑', en: 'Edit' },
+  'pipeline.stages': { zh: '个阶段', en: 'stages' },
+  'pipeline.tenant': { zh: '租户', en: 'Tenant' },
+  'pipeline.created': { zh: '创建时间', en: 'Created' },
+
+  'designer.title_new': { zh: '新建流水线', en: 'New Pipeline' },
+  'designer.title_edit': { zh: '编辑流水线', en: 'Edit Pipeline' },
+  'designer.subtitle': { zh: '从左侧插件库拖拽插件到画布构建流水线', en: 'Drag plugins from the library onto the canvas' },
+  'designer.save': { zh: '保存草稿', en: 'Save Draft' },
+  'designer.publish': { zh: '发布', en: 'Publish' },
+  'designer.plugin_library': { zh: '插件库', en: 'Plugin Library' },
+  'designer.properties': { zh: '属性', en: 'Properties' },
+  'designer.plugin': { zh: '插件', en: 'Plugin' },
+  'designer.stage': { zh: '阶段', en: 'Stage' },
+  'designer.type': { zh: '类型', en: 'Type' },
+  'designer.description': { zh: '描述', en: 'Description' },
+  'designer.saved': { zh: '草稿已保存 ✓', en: 'Draft saved ✓' },
+  'designer.published': { zh: '流水线已发布 ✓', en: 'Pipeline published ✓' },
+  'designer.canvas_hint': { zh: '从左侧拖拽插件到此处开始构建流水线', en: 'Drag plugins from left panel to start building' },
+
+  'plugin.title': { zh: '插件市场', en: 'Plugin Market' },
+  'plugin.subtitle': { zh: '发现、安装和管理治理插件', en: 'Discover, install and manage governance plugins' },
+  'plugin.installed': { zh: '已安装', en: 'Installed' },
+  'plugin.install': { zh: '安装', en: 'Install' },
+
+  'apikey.title': { zh: 'API 密钥', en: 'API Keys' },
+  'apikey.subtitle': { zh: '管理 VERIDACTUS 访问密钥和委托令牌', en: 'Manage API keys and delegation tokens' },
+  'apikey.generate': { zh: '生成密钥', en: 'Generate Key' },
+  'apikey.security_title': { zh: '安全提示', en: 'Security Notice' },
+  'apikey.security_desc': { zh: 'API 密钥提供完全访问权限。请定期轮换，切勿公开分享。', en: 'API keys provide full access. Rotate regularly, never share.' },
+  'apikey.show': { zh: '显示', en: 'Show' },
+  'apikey.hide': { zh: '隐藏', en: 'Hide' },
+  'apikey.copy': { zh: '复制', en: 'Copy' },
+  'apikey.rotate': { zh: '轮换', en: 'Rotate' },
+  'apikey.tenant': { zh: '租户', en: 'Tenant' },
+  'apikey.created': { zh: '创建时间', en: 'Created' },
+  'apikey.copied': { zh: '已复制 ✓', en: 'Copied ✓' },
+
+  'settings.title': { zh: '系统设置', en: 'Settings' },
+  'settings.subtitle': { zh: '配置 VERIDACTUS 治理实例', en: 'Configure your VERIDACTUS instance' },
+  'settings.general': { zh: '通用设置', en: 'General' },
+  'settings.notifications': { zh: '通知设置', en: 'Notifications' },
+  'settings.storage': { zh: '存储设置', en: 'Storage' },
+  'settings.security': { zh: '安全设置', en: 'Security' },
+  'settings.save': { zh: '保存更改', en: 'Save Changes' },
+  'settings.reset': { zh: '重置', en: 'Reset' },
+  'settings.saved': { zh: '设置已保存 ✓', en: 'Settings saved ✓' },
+  'settings.tenant_name': { zh: '租户名称', en: 'Tenant Name' },
+  'settings.default_model': { zh: '默认模型', en: 'Default Model' },
+  'settings.protocol_version': { zh: '协议版本', en: 'Protocol Version' },
+  'settings.webhook_url': { zh: 'Webhook URL', en: 'Webhook URL' },
+  'settings.alert_email': { zh: '告警邮箱', en: 'Alert Email' },
+  'settings.trace_retention': { zh: '追踪保留（天）', en: 'Trace Retention' },
+  'settings.cold_storage': { zh: '冷存储', en: 'Cold Storage' },
+  'settings.key_rotation': { zh: '密钥轮换（天）', en: 'Key Rotation' },
+  'settings.audit_log': { zh: '审计日志保存', en: 'Audit Log Retention' },
+  'settings.llm_models': { zh: 'LLM 模型管理', en: 'LLM Model Management' },
+  'settings.llm_models_desc': { zh: '注册和管理上游 LLM 模型配置', en: 'Register and manage upstream LLM model configurations' },
+
+  'models.title': { zh: 'LLM 模型管理', en: 'LLM Models' },
+  'models.subtitle': { zh: '注册、配置和管理上游 LLM 模型', en: 'Register, configure and manage upstream LLM models' },
+  'models.add': { zh: '添加模型', en: 'Add Model' },
+  'models.name': { zh: '模型名称', en: 'Model Name' },
+  'models.upstream_url': { zh: '上游 URL', en: 'Upstream URL' },
+  'models.upstream_model': { zh: '上游模型', en: 'Upstream Model' },
+  'models.is_default': { zh: '默认模型', en: 'Default' },
+  'models.supported_versions': { zh: '支持的版本', en: 'Supported Versions' },
+  'models.status': { zh: '状态', en: 'Status' },
+  'models.active': { zh: '活跃', en: 'Active' },
+  'models.inactive': { zh: '未激活', en: 'Inactive' },
+  'models.edit': { zh: '编辑', en: 'Edit' },
+  'models.delete': { zh: '删除', en: 'Delete' },
+  'models.cancel': { zh: '取消', en: 'Cancel' },
+  'models.save': { zh: '保存', en: 'Save' },
+  'models.confirm_delete': { zh: '确认删除此模型？', en: 'Confirm delete this model?' },
+  'models.no_models': { zh: '暂无模型配置', en: 'No models configured' },
+  'models.add_first': { zh: '添加第一个模型开始', en: 'Add your first model to get started' },
+};
+
+interface ICtx { locale: Locale; setLocale: (l: Locale) => void; t: (key: string) => string; }
+const Ctx = createContext<ICtx>({ locale: 'zh', setLocale: () => {}, t: (k) => k });
+
+export function I18nProvider({ children }: { children: ReactNode }) {
+  const [locale, setLoc] = useState<Locale>(() => {
+    try { return (localStorage.getItem('veridactus-locale') as Locale) || 'zh'; } catch { return 'zh'; }
+  });
+  const setLocale = useCallback((l: Locale) => { setLoc(l); try { localStorage.setItem('veridactus-locale', l); } catch {} }, []);
+  const tf = useCallback((key: string) => t[key]?.[locale] || key, [locale]);
+  return <Ctx.Provider value={{ locale, setLocale, t: tf }}>{children}</Ctx.Provider>;
+}
+
+export function useI18n() { return useContext(Ctx); }

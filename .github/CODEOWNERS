@@ -1,0 +1,32 @@
+# Code owners — automatically requested for PR review
+# Last matching pattern takes precedence
+
+# Core protocol & spec
+veridactus/docs/        @veridactus/tsc
+veridactus/rfcs/        @veridactus/tsc
+veridactus/schemas/     @veridactus/tsc
+
+# Rust data plane
+core/                   @veridactus/data-plane
+
+# Go control plane
+control-plane/          @veridactus/control-plane
+
+# React frontend
+veridactus-ui/          @veridactus/ui
+
+# Python worker
+python-worker/          @veridactus/worker
+
+# CI/CD & DevOps
+.github/                @veridactus/devops
+deploy/                 @veridactus/devops
+scripts/                @veridactus/devops
+Makefile                @veridactus/devops
+
+# Community health files
+CODE_OF_CONDUCT.md      @veridactus/tsc
+CONTRIBUTING.md         @veridactus/tsc
+GOVERNANCE.md           @veridactus/tsc
+SECURITY.md             @veridactus/tsc
+LICENSE                 @veridactus/tsc

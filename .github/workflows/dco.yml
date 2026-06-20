@@ -1,0 +1,26 @@
+# DCO (Developer Certificate of Origin) Check
+# Ensures all commits have Signed-off-by lines.
+# Required for CNCF compliance.
+
+name: DCO Check
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    name: DCO
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check DCO
+        uses: kineticengines/gh-action-dco@v1
+        with:
+          require-signoff: true
+          skip-merge-commits: true

@@ -1,0 +1,86 @@
+# VERIDACTUS Control Plane Helm Chart Values
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/veridactus/veridactus-control-plane
+  pullPolicy: IfNotPresent
+  tag: "0.2.1"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8081
+  targetPort: 8081
+
+# Health probes configuration
+probes:
+  startup:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    failureThreshold: 30
+    successThreshold: 1
+    timeoutSeconds: 1
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    failureThreshold: 3
+    successThreshold: 1
+    timeoutSeconds: 1
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+    timeoutSeconds: 1
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: veridactus-cp.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# VERIDACTUS-specific configuration
+config:
+  database:
+    path: "/app/veridactus.db"
+  adminKey: ""
+  corsOrigins:
+    - "http://localhost:3000"
+    - "http://localhost:8080"
+  dataPlaneURL: "http://veridactus-core:8080"
+
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+  accessMode: ReadWriteOnce

@@ -1,0 +1,247 @@
+# VERIDACTUS Release Workflow
+# Builds signed binaries, generates provenance, and publishes GitHub Release.
+# Triggered when a signed tag (v*) is pushed.
+
+name: Release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  # ==================== Rust Data Plane Binary ====================
+  build-rust:
+    name: Build Rust (Linux x86_64)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install musl tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
+
+      - name: Build release (static)
+        run: cargo build --release --target x86_64-unknown-linux-musl
+
+      - name: Generate SHA256 checksum
+        run: |
+          cd target/x86_64-unknown-linux-musl/release
+          sha256sum veridactus-core > veridactus-core.sha256
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: veridactus-core-linux-amd64
+          path: |
+            core/target/x86_64-unknown-linux-musl/release/veridactus-core
+            core/target/x86_64-unknown-linux-musl/release/veridactus-core.sha256
+
+  # ==================== Go Control Plane Binary ====================
+  build-go:
+    name: Build Go (Linux x86_64)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: control-plane
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build release (static)
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+          go build -o veridactus-cp -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" \
+          ./cmd/server/
+
+      - name: Generate SHA256 checksum
+        run: sha256sum veridactus-cp > veridactus-cp.sha256
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: veridactus-cp-linux-amd64
+          path: |
+            control-plane/veridactus-cp
+            control-plane/veridactus-cp.sha256
+
+  # ==================== Docker Images ====================
+  docker-core:
+    name: Docker Image (Core)
+    runs-on: ubuntu-latest
+    needs: [build-rust]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata (Core)
+        id: meta-core
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/veridactus-core
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - name: Set current date
+        id: date
+        run: echo "date=$(date -u +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Core image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./core
+          push: true
+          tags: ${{ steps.meta-core.outputs.tags }}
+          labels: ${{ steps.meta-core.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.date.outputs.date }}
+          platforms: linux/amd64,linux/arm64
+          provenance: mode=max
+          sbom: true
+
+  docker-control-plane:
+    name: Docker Image (Control Plane)
+    runs-on: ubuntu-latest
+    needs: [build-go]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata (Control Plane)
+        id: meta-cp
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/veridactus-cp
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - name: Set current date
+        id: date
+        run: echo "date=$(date -u +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Control Plane image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./control-plane
+          push: true
+          tags: ${{ steps.meta-cp.outputs.tags }}
+          labels: ${{ steps.meta-cp.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.date.outputs.date }}
+          platforms: linux/amd64,linux/arm64
+          provenance: mode=max
+          sbom: true
+
+  docker-ui:
+    name: Docker Image (UI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata (UI)
+        id: meta-ui
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/veridactus-ui
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - name: Build and push UI image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./veridactus-ui
+          push: true
+          tags: ${{ steps.meta-ui.outputs.tags }}
+          labels: ${{ steps.meta-ui.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          platforms: linux/amd64,linux/arm64
+          provenance: mode=max
+          sbom: true
+
+  # ==================== GitHub Release ====================
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-rust, build-go, docker-core, docker-control-plane, docker-ui]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: veridactus-*-linux-amd64
+          merge-multiple: true
+          path: release-artifacts/
+
+      - name: Extract release notes from CHANGELOG
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Version: $VERSION"
+          # Extract the changelog section for this version
+          awk "/^## \[${VERSION}\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md > /tmp/release_notes.md
+          cat /tmp/release_notes.md
+          echo "notes_file=/tmp/release_notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "VERIDACTUS ${{ github.ref_name }}"
+          body_path: ${{ steps.changelog.outputs.notes_file }}
+          files: release-artifacts/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

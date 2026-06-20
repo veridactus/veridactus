@@ -1,0 +1,25 @@
+# NOTICE
+
+VERIDACTUS — Trusted AI Execution Governance Infrastructure
+Copyright 2026 The VERIDACTUS Authors
+
+This product is licensed under the Apache License, Version 2.0 (the "License").
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This product includes software developed by:
+
+- The Rust Project Developers (https://www.rust-lang.org/)
+- The Go Authors (https://go.dev/)
+- The React Team (https://react.dev/)
+- The Tokio Project Contributors (https://tokio.rs/)
+- The Axum Project Contributors (https://github.com/tokio-rs/axum)
+- The Serde Project Contributors (https://serde.rs/)
+- The OpenTelemetry Authors (https://opentelemetry.io/)
+
+Protocol References:
+- RFC 8785 (JSON Canonicalization Scheme)
+- RFC 2119 (Key words for use in RFCs to Indicate Requirement Levels)
+- RFC 4122 (UUID)
+- Semantic Versioning 2.0.0 (https://semver.org/)

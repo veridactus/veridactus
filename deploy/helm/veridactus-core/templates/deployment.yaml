@@ -1,0 +1,103 @@
+{{- /*
+Veridactus Core Deployment Template
+*/ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "veridactus-core.fullname" . }}
+  labels:
+    {{- include "veridactus-core.labels" . | nindent 4 }}
+    app.kubernetes.io/component: core
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "veridactus-core.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: core
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "veridactus-core.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: core
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "veridactus-core.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
+          startupProbe:
+            {{- toYaml .Values.probes.startup | nindent 12 }}
+          env:
+            - name: RUST_LOG
+              value: {{ .Values.config.logLevel | quote }}
+            - name: VERIDACTUS_ADMIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "veridactus-core.fullname" . }}
+                  key: admin-key
+            - name: VERIDACTUS_MODE
+              value: {{ .Values.config.mode | quote }}
+            - name: VERIDACTUS_UPSTREAM_URL
+              value: {{ .Values.config.upstreamLLM.url | quote }}
+            - name: VERIDACTUS_UPSTREAM_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "veridactus-core.fullname" . }}
+                  key: upstream-api-key
+                  optional: true
+            - name: VERIDACTUS_CONTROL_PLANE_URL
+              value: {{ .Values.config.controlPlane.url | quote }}
+            - name: VERIDACTUS_STORE_REDIS_HOST
+              value: {{ .Values.config.store.redis.host | quote }}
+            - name: VERIDACTUS_STORE_REDIS_PORT
+              value: {{ .Values.config.store.redis.port | quote }}
+            - name: VERIDACTUS_STORE_POSTGRES_HOST
+              value: {{ .Values.config.store.postgres.host | quote }}
+            - name: VERIDACTUS_STORE_POSTGRES_PORT
+              value: {{ .Values.config.store.postgres.port | quote }}
+            - name: VERIDACTUS_STORE_POSTGRES_DB
+              value: {{ .Values.config.store.postgres.database | quote }}
+            - name: VERIDACTUS_STORE_POSTGRES_USER
+              value: {{ .Values.config.store.postgres.user | quote }}
+            - name: VERIDACTUS_STORE_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "veridactus-core.fullname" . }}
+                  key: postgres-password
+            - name: VERIDACTUS_OTEL_EXPORTER
+              value: {{ .Values.config.otelExporter | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,129 @@
+# VERIDACTUS Dependabot Configuration
+# Auto-updates dependencies across all component ecosystems.
+
+version: 2
+updates:
+  # Rust (core/)
+  - package-ecosystem: "cargo"
+    directory: "/core"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "rust"
+    assignees:
+      - "veridactus/data-plane"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(deps)"
+      include: "scope"
+
+  # Go (control-plane/)
+  - package-ecosystem: "gomod"
+    directory: "/control-plane"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "go"
+    assignees:
+      - "veridactus/control-plane"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(deps)"
+      include: "scope"
+
+  # npm (veridactus-ui/)
+  - package-ecosystem: "npm"
+    directory: "/veridactus-ui"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "javascript"
+    assignees:
+      - "veridactus/ui"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "build(deps)"
+      include: "scope"
+    # Group minor+patch updates to reduce noise
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      vite:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+      testing:
+        patterns:
+          - "vitest"
+          - "@testing-library/*"
+          - "happy-dom"
+
+  # npm (veridactus/ docs site)
+  - package-ecosystem: "npm"
+    directory: "/veridactus"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "documentation"
+    assignees:
+      - "veridactus/tsc"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(deps)"
+      include: "scope"
+
+  # pip (python-worker/)
+  - package-ecosystem: "pip"
+    directory: "/python-worker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "python"
+    assignees:
+      - "veridactus/worker"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(deps)"
+      include: "scope"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "ci"
+    assignees:
+      - "veridactus/devops"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "ci(deps)"
+      include: "scope"

@@ -1,0 +1,53 @@
+# Git export/import configuration
+# Ensures consistent line endings across platforms
+
+* text=auto
+
+# Source files
+*.cs text
+*.go text
+*.java text
+*.js text
+*.jsx text
+*.json text
+*.py text
+*.rs text
+*.sh text eol=lf
+*.ts text
+*.tsx text
+*.yaml text
+*.yml text
+
+# Documentation
+*.md text
+*.txt text
+LICENSE text
+
+# Build outputs
+*.class binary
+*.so binary
+*.dll binary
+*.exe binary
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+
+# Database files
+*.db binary
+*.db-shm binary
+*.db-wal binary
+
+# Lock files
+package-lock.json binary
+yarn.lock binary
+Cargo.lock binary
+go.sum binary

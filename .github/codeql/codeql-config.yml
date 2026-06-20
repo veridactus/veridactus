@@ -1,0 +1,37 @@
+# =============================================================================
+# CodeQL Configuration for VERIDACTUS
+# =============================================================================
+
+name: "VERIDACTUS CodeQL"
+
+paths:
+  - core
+  - control-plane
+  - veridactus-ui
+
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/target/**'
+  - '**/dist/**'
+  - '**/*.test.ts'
+  - '**/*_test.go'
+  - '**/benches/**'
+  - '**/tests/**'
+
+queries:
+  - uses: security-and-quality
+  - uses: security-extended
+
+configuration:
+  security蝎:
+    - G115  # Integer overflow or wraparound
+    - G304  # File access
+    - G307  # Improper resource shutdown
+    - G401  # Cryptographic operation
+    - G402  # SQL injection
+    - G404  # Insecure randomness
+    - G601  # Memory management
+
+tags:
+  - security
+  - vulnerability-scanning

@@ -1,0 +1,224 @@
+# =============================================================================
+# VERIDACTUS Docker Compose - Application Stack
+# Production-ready deployment with all components
+#
+# Usage:
+#   docker-compose -f deploy/docker-compose.yml up -d
+#   docker-compose -f deploy/docker-compose.yml down
+#
+# Environment variables (set in .env or shell):
+#   VERIDACTUS_ADMIN_KEY     - Admin API key (required)
+#   VERIDACTUS_UPSTREAM_URL - LLM upstream URL
+#   VERIDACTUS_UPSTREAM_KEY - LLM API key
+#   POSTGRES_PASSWORD        - PostgreSQL password
+# =============================================================================
+
+services:
+  # ==================== VERIDACTUS Core (Rust Data Plane) ====================
+  veridactus-core:
+    image: ghcr.io/veridactus/veridactus-core:latest
+    container_name: veridactus-core
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      - VERIDACTUS_ADMIN_KEY=${VERIDACTUS_ADMIN_KEY}
+      - VERIDACTUS_MODE=${VERIDACTUS_MODE:-passthrough}
+      - VERIDACTUS_UPSTREAM_URL=${VERIDACTUS_UPSTREAM_URL:-https://open.bigmodel.cn}
+      - VERIDACTUS_UPSTREAM_KEY=${VERIDACTUS_UPSTREAM_KEY}
+      - VERIDACTUS_CONTROL_PLANE_URL=http://veridactus-cp:8081
+      - VERIDACTUS_STORE_REDIS_HOST=redis
+      - VERIDACTUS_STORE_REDIS_PORT=6379
+      - VERIDACTUS_STORE_POSTGRES_HOST=postgres
+      - VERIDACTUS_STORE_POSTGRES_PORT=5432
+      - VERIDACTUS_STORE_POSTGRES_DB=veridactus
+      - VERIDACTUS_STORE_POSTGRES_USER=veridactus
+      - VERIDACTUS_STORE_POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-veridactus}
+      - VERIDACTUS_STORE_S3_ENDPOINT=http://minio:9000
+      - VERIDACTUS_STORE_S3_BUCKET=veridactus
+      - VERIDACTUS_STORE_S3_ACCESS_KEY=${MINIO_ROOT_USER:-veridactus}
+      - VERIDACTUS_STORE_S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-veridactus123}
+      - VERIDACTUS_STORE_S3_REGION=${MINIO_REGION:-us-east-1}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      veridactus-cp:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - veridactus-network
+    volumes:
+      - veridactus-core-logs:/app/logs
+
+  # ==================== VERIDACTUS Control Plane (Go) ====================
+  veridactus-cp:
+    image: ghcr.io/veridactus/veridactus-cp:latest
+    container_name: veridactus-cp
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - VERIDACTUS_CP_PORT=8081
+      - VERIDACTUS_CP_DB_PATH=/app/veridactus.db
+      - VERIDACTUS_CP_ADMIN_KEY=${VERIDACTUS_ADMIN_KEY}
+      - VERIDACTUS_CP_CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - veridactus-network
+    volumes:
+      - veridactus-cp-data:/app
+
+  # ==================== VERIDACTUS Frontend (React/Nginx) ====================
+  veridactus-ui:
+    image: ghcr.io/veridactus/veridactus-ui:latest
+    container_name: veridactus-ui
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8081
+      - VITE_WS_URL=ws://localhost:8080
+    depends_on:
+      - veridactus-cp
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - veridactus-network
+
+  # ==================== Infrastructure Services ====================
+
+  redis:
+    image: redis:7-alpine
+    container_name: veridactus-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - veridactus-network
+    volumes:
+      - redis-data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: veridactus-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=veridactus
+      - POSTGRES_USER=veridactus
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-veridactus}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U veridactus -d veridactus"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - veridactus-network
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio:latest
+    container_name: veridactus-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-veridactus}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-veridactus123}
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - veridactus-network
+    volumes:
+      - minio-data:/data
+
+  # ==================== Optional: Ollama (Local LLM) ====================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: veridactus-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - veridactus-network
+    profiles:
+      - ollama
+
+  # ==================== Optional: Python Worker (PI Detection) ====================
+  python-worker:
+    image: ghcr.io/veridactus/python-worker:latest
+    container_name: veridactus-python-worker
+    restart: unless-stopped
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - WORKER_LOG_LEVEL=info
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - veridactus-network
+    profiles:
+      - worker
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  veridactus-network:
+    driver: bridge
+    name: veridactus-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  redis-data:
+    name: veridactus-redis-data
+  postgres-data:
+    name: veridactus-postgres-data
+  minio-data:
+    name: veridactus-minio-data
+  ollama-data:
+    name: veridactus-ollama-data
+  veridactus-cp-data:
+    name: veridactus-cp-data
+  veridactus-core-logs:
+    name: veridactus-core-logs

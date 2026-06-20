@@ -1,0 +1,13 @@
+{{- /*
+ConfigMap Template for Veridactus Core
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "veridactus-core.fullname" . }}
+  labels:
+    {{- include "veridactus-core.labels" . | nindent 4 }}
+data:
+  log-level: {{ .Values.config.logLevel | quote }}
+  mode: {{ .Values.config.mode | quote }}
+  upstream-url: {{ .Values.config.upstreamLLM.url | quote }}

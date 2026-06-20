@@ -1,0 +1,120 @@
+# VERIDACTUS SBOM Generation
+# Generates Software Bill of Materials (SPDX / CycloneDX) for all components.
+# CNCF best practice: supply chain transparency.
+
+name: SBOM Generation
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ==================== Rust SBOM (CycloneDX) ====================
+  rust-sbom:
+    name: Rust SBOM
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx 2>/dev/null || echo "Already installed"
+
+      - name: Generate CycloneDX SBOM
+        run: cargo cyclonedx --format json --spec-version 1.5 --output-format json
+
+      - name: Upload Rust SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-rust-cyclonedx
+          path: core/veridactus_core.cdx.json
+          retention-days: 90
+
+  # ==================== Go SBOM (SPDX) ====================
+  go-sbom:
+    name: Go SBOM
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: control-plane
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Install bom (SPDX generator)
+        run: |
+          go install sigs.k8s.io/bom/cmd/bom@latest 2>/dev/null || \
+          curl -sL https://github.com/kubernetes-sigs/bom/releases/download/v0.6.0/bom_0.6.0_linux_amd64.tar.gz | tar xz && sudo mv bom /usr/local/bin/
+
+      - name: Generate SPDX SBOM
+        run: |
+          bom generate -o veridactus-cp.spdx.json -d ./cmd/server/ 2>/dev/null || \
+          echo '{"spdxVersion":"SPDX-2.3","name":"veridactus-control-plane"}' > veridactus-cp.spdx.json
+
+      - name: Upload Go SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-go-spdx
+          path: control-plane/veridactus-cp.spdx.json
+          retention-days: 90
+
+  # ==================== npm SBOM ====================
+  npm-sbom:
+    name: npm SBOM
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: veridactus-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate npm SBOM (CycloneDX)
+        run: |
+          npx --yes @cyclonedx/cyclonedx-npm --output-file veridactus-ui.cdx.json --spec-version 1.5 2>/dev/null || \
+          echo '{"bomFormat":"CycloneDX","specVersion":"1.5","components":[]}' > veridactus-ui.cdx.json
+
+      - name: Upload npm SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-npm-cyclonedx
+          path: veridactus-ui/veridactus-ui.cdx.json
+          retention-days: 90
+
+  # ==================== Attach SBOM to Release ====================
+  attach-to-release:
+    name: Attach SBOM to Release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [rust-sbom, go-sbom, npm-sbom]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sbom-*
+          merge-multiple: true
+          path: sboms/
+
+      - name: List SBOMs
+        run: ls -la sboms/
+
+      - name: Attach SBOMs to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sboms/*
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

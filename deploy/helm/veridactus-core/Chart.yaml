@@ -1,0 +1,23 @@
+apiVersion: v2
+name: veridactus-core
+description: VERIDACTUS Data Plane — Trusted AI Execution Gateway
+type: application
+version: 0.2.1
+appVersion: "0.2.1"
+icon: https://raw.githubusercontent.com/veridactus/veridactus/main/veridactus/images/logo/light.svg
+keywords:
+  - ai
+  - governance
+  - llm
+  - attestation
+  - verifiable
+  - trusted-execution
+home: https://github.com/veridactus/veridactus
+sources:
+  - https://github.com/veridactus/veridactus/tree/main/core
+maintainers:
+  - name: VERIDACTUS Data Plane Team
+    email: tsc@veridactus.ai
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/category: "ai-machine-learning"

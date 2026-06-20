@@ -1,0 +1,39 @@
+# VERIDACTUS 基础设施 Docker Compose
+# 对应 AI.md §2.1 架构图的 存储层: PostgreSQL + Redis + S3(MinIO)
+version: '3.8'
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    command: redis-server --appendonly yes
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-veridactus}
+      POSTGRES_USER: ${POSTGRES_USER:-veridactus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-veridactus}
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio:latest
+    ports: ["9000:9000", "9001:9001"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-veridactus}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-veridactus123}
+    volumes:
+      - miniodata:/data
+
+  ollama:
+    image: ollama/ollama:latest
+    ports: ["11434:11434"]
+    volumes:
+      - ollamadata:/root/.ollama
+
+volumes:
+  pgdata:
+  miniodata:
+  ollamadata:
