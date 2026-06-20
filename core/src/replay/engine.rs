@@ -148,13 +148,16 @@ impl ReplayEngine {
     pub fn new(cache: UpstreamResponseCache) -> Self {
         let default_branch_id = Uuid::new_v4();
         let mut branches = HashMap::new();
-        branches.insert(default_branch_id, ReplayBranch {
-            branch_id: default_branch_id,
-            parent_branch_id: None,
-            name: "main".to_string(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-            snapshot_count: 0,
-        });
+        branches.insert(
+            default_branch_id,
+            ReplayBranch {
+                branch_id: default_branch_id,
+                parent_branch_id: None,
+                name: "main".to_string(),
+                created_at: chrono::Utc::now().to_rfc3339(),
+                snapshot_count: 0,
+            },
+        );
 
         Self {
             cache,
@@ -199,7 +202,11 @@ impl ReplayEngine {
     }
 
     /// 创建新分支
-    pub fn create_branch(&mut self, name: &str, parent_id: Option<Uuid>) -> Result<ReplayBranch, String> {
+    pub fn create_branch(
+        &mut self,
+        name: &str,
+        parent_id: Option<Uuid>,
+    ) -> Result<ReplayBranch, String> {
         let parent = parent_id.and_then(|id| self.branches.get(&id)).cloned();
         let branch_id = Uuid::new_v4();
 
@@ -265,8 +272,7 @@ impl ReplayEngine {
     pub fn record(&mut self, trace: &Trace) -> Result<(), String> {
         if let Some(ref output) = trace.output {
             let cache_key = self.build_cache_key(trace);
-            let response_json = output.response.as_ref()
-                .ok_or("No response to record")?;
+            let response_json = output.response.as_ref().ok_or("No response to record")?;
 
             self.cache.insert(cache_key, response_json.clone());
         }
@@ -299,8 +305,7 @@ impl ReplayEngine {
             None => {
                 // 缓存未命中，记录新响应
                 if let Some(ref output) = trace.output {
-                    let response_json = output.response.as_ref()
-                        .ok_or("No response to record")?;
+                    let response_json = output.response.as_ref().ok_or("No response to record")?;
                     self.cache.insert(cache_key, response_json.clone());
                 }
 
@@ -320,10 +325,14 @@ impl ReplayEngine {
     fn build_cache_key(&self, trace: &Trace) -> CacheKey {
         CacheKey::new(
             &trace.model,
-            trace.input.as_ref()
+            trace
+                .input
+                .as_ref()
                 .and_then(|i| i.prompt.as_ref())
                 .unwrap_or(&serde_json::Value::Null),
-            trace.input.as_ref()
+            trace
+                .input
+                .as_ref()
                 .and_then(|i| i.params.as_ref())
                 .unwrap_or(&serde_json::Value::Null),
             "",
@@ -353,7 +362,7 @@ impl ReplayEngine {
                         params["max_tokens"] = serde_json::json!(mt);
                     }
                 }
-                JournalEventType::RequestReceived {  .. } => {
+                JournalEventType::RequestReceived { .. } => {
                     // TODO: 从持久化存储加载原始请求体
                 }
                 _ => {}
@@ -368,10 +377,7 @@ impl ReplayEngine {
     }
 
     /// 记录交互到快照
-    pub fn record_to_snapshot(
-        trace: &Trace,
-        mode: &str,
-    ) -> ReplaySnapshot {
+    pub fn record_to_snapshot(trace: &Trace, mode: &str) -> ReplaySnapshot {
         let interactions = trace
             .output
             .as_ref()
@@ -379,14 +385,18 @@ impl ReplayEngine {
                 vec![crate::types::trace::ReplayInteraction {
                     sequence: 1,
                     model: trace.model.clone(),
-                    prompt_hash: trace.input.as_ref()
+                    prompt_hash: trace
+                        .input
+                        .as_ref()
                         .and_then(|i| i.prompt.as_ref())
                         .map(|p| {
                             let json = serde_json::to_string(p).unwrap_or_default();
                             format!("sha256:{}", hex::encode(Sha256::digest(json.as_bytes())))
                         })
                         .unwrap_or_default(),
-                    response_hash: o.response.as_ref()
+                    response_hash: o
+                        .response
+                        .as_ref()
                         .map(|r| {
                             let json = serde_json::to_string(r).unwrap_or_default();
                             format!("sha256:{}", hex::encode(Sha256::digest(json.as_bytes())))
@@ -404,7 +414,10 @@ impl ReplayEngine {
             environment_snapshot: Some(crate::types::trace::EnvironmentSnapshot {
                 model_version: trace.model.clone(),
                 sdk_version: "veridactus-0.2.1".to_string(),
-                engine_determinism_strategy: trace.engine_determinism.as_ref().map(|d| d.strategy.clone()),
+                engine_determinism_strategy: trace
+                    .engine_determinism
+                    .as_ref()
+                    .map(|d| d.strategy.clone()),
                 recorded_at: chrono::Utc::now().to_rfc3339(),
             }),
         }
@@ -421,30 +434,37 @@ impl ReplayEngine {
         branch_name: &str,
     ) -> Result<ReplayResult, String> {
         let start = std::time::Instant::now();
-        
+
         // 创建新分支
         let parent_branch_id = Some(self.default_branch_id);
         let new_branch = self.create_branch(branch_name, parent_branch_id)?;
-        
+
         // 获取父trace的快照
-        let parent_snapshot = parent_trace.observations.as_ref()
+        let parent_snapshot = parent_trace
+            .observations
+            .as_ref()
             .and_then(|obs| obs.replay_snapshot.as_ref())
             .ok_or("Parent trace has no replay snapshot")?;
-        
-        let interactions = parent_snapshot.interactions.as_ref()
+
+        let interactions = parent_snapshot
+            .interactions
+            .as_ref()
             .ok_or("No interactions in parent snapshot")?;
-        
+
         // 检查分支点是否有效
         if branch_point as usize > interactions.len() {
-            return Err(format!("Branch point {} exceeds available interactions ({})", 
-                branch_point, interactions.len()));
+            return Err(format!(
+                "Branch point {} exceeds available interactions ({})",
+                branch_point,
+                interactions.len()
+            ));
         }
-        
+
         // 重放直到分支点
         let mut replayed_trace = parent_trace.clone();
         replayed_trace.trace_id = Uuid::new_v4();
         replayed_trace.parent_id = Some(parent_trace.trace_id);
-        
+
         // 添加分支元数据到 extensions
         let mut extensions = replayed_trace.extensions.clone().unwrap_or_default();
         extensions["veridactus.ai/v1/deterministic_replay"] = serde_json::json!({
@@ -452,7 +472,7 @@ impl ReplayEngine {
             "branch_id": new_branch.branch_id.to_string()
         });
         replayed_trace.extensions = Some(extensions);
-        
+
         Ok(ReplayResult {
             trace: replayed_trace,
             cache_hit: false,
@@ -467,7 +487,9 @@ impl ReplayEngine {
         trace: &Trace,
         branch_point: u32,
     ) -> Option<crate::types::trace::ReplayInteraction> {
-        trace.observations.as_ref()
+        trace
+            .observations
+            .as_ref()
             .and_then(|obs| obs.replay_snapshot.as_ref())
             .and_then(|s| s.interactions.as_ref())
             .and_then(|interactions| interactions.get(branch_point as usize))
@@ -475,14 +497,20 @@ impl ReplayEngine {
     }
 
     /// 合并分支到主分支
-    pub fn merge_branch(&mut self, source_branch_id: &Uuid, target_branch_id: &Uuid) -> Result<(), String> {
+    pub fn merge_branch(
+        &mut self,
+        source_branch_id: &Uuid,
+        target_branch_id: &Uuid,
+    ) -> Result<(), String> {
         if !self.branches.contains_key(source_branch_id) {
             return Err("Source branch not found".to_string());
         }
 
         let source_count = self.branches[source_branch_id].snapshot_count;
 
-        let target = self.branches.get_mut(target_branch_id)
+        let target = self
+            .branches
+            .get_mut(target_branch_id)
             .ok_or("Target branch not found")?;
 
         target.snapshot_count += source_count;
@@ -491,17 +519,27 @@ impl ReplayEngine {
     }
 
     pub fn compare_responses(&self, trace_a: &Trace, trace_b: &Trace) -> ReplayComparisonResult {
-        let response_a = trace_a.output.as_ref()
+        let response_a = trace_a
+            .output
+            .as_ref()
             .and_then(|o| o.response.as_ref())
             .map(|r| r.to_string())
             .unwrap_or_default();
-        let response_b = trace_b.output.as_ref()
+        let response_b = trace_b
+            .output
+            .as_ref()
             .and_then(|o| o.response.as_ref())
             .map(|r| r.to_string())
             .unwrap_or_default();
 
-        let hash_a = format!("sha256:{}", hex::encode(Sha256::digest(response_a.as_bytes())));
-        let hash_b = format!("sha256:{}", hex::encode(Sha256::digest(response_b.as_bytes())));
+        let hash_a = format!(
+            "sha256:{}",
+            hex::encode(Sha256::digest(response_a.as_bytes()))
+        );
+        let hash_b = format!(
+            "sha256:{}",
+            hex::encode(Sha256::digest(response_b.as_bytes()))
+        );
         let hash_match = hash_a == hash_b;
 
         let mut differences = Vec::new();
@@ -564,7 +602,11 @@ impl ReplayEngine {
         }
     }
 
-    pub fn verify_deterministic(&self, original: &Trace, replayed: &Trace) -> DeterminismVerificationResult {
+    pub fn verify_deterministic(
+        &self,
+        original: &Trace,
+        replayed: &Trace,
+    ) -> DeterminismVerificationResult {
         let comparison = self.compare_responses(original, replayed);
 
         let mut issues = Vec::new();
@@ -572,8 +614,10 @@ impl ReplayEngine {
         if !comparison.hash_match {
             issues.push(DeterminismIssue {
                 issue_type: DeterminismIssueType::ResponseMismatch,
-                description: format!("响应哈希不匹配: 原始={}, 重放={}",
-                    comparison.trace_a_id, comparison.trace_b_id),
+                description: format!(
+                    "响应哈希不匹配: 原始={}, 重放={}",
+                    comparison.trace_a_id, comparison.trace_b_id
+                ),
                 severity: IssueSeverity::Critical,
             });
         }

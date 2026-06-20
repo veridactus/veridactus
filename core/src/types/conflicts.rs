@@ -45,24 +45,42 @@ impl ConflictDetector {
 
         match (privacy, reproducibility) {
             (PrivacyLevel::HashOnly, ReproducibilityMode::Strict) => {
-                conflicts.push("hash_only + strict: hash_only 丢弃明文, strict 需要完整载荷比较".into());
+                conflicts
+                    .push("hash_only + strict: hash_only 丢弃明文, strict 需要完整载荷比较".into());
                 suggestions.push("将 reproducibility 降级为 bounded，或设置 focus_fields".into());
-                return ConflictResult { has_conflict: true, conflicts, suggestions };
+                return ConflictResult {
+                    has_conflict: true,
+                    conflicts,
+                    suggestions,
+                };
             }
             (PrivacyLevel::HashOnly, ReproducibilityMode::Bounded) => {
-                conflicts.push("hash_only + bounded: pipelines件允许 — 需要提供 focus_fields".into());
+                conflicts
+                    .push("hash_only + bounded: pipelines件允许 — 需要提供 focus_fields".into());
                 suggestions.push("提供 VERIDACTUS-Focus-Fields 头部以启用哈希比较".into());
-                return ConflictResult { has_conflict: true, conflicts, suggestions };
+                return ConflictResult {
+                    has_conflict: true,
+                    conflicts,
+                    suggestions,
+                };
             }
             (PrivacyLevel::TeePrivate, ReproducibilityMode::Strict) => {
                 conflicts.push("tee_private + strict: TEE 外部仅存哈希，无法严格比较".into());
                 suggestions.push("将 reproducibility 降级为 bounded".into());
-                return ConflictResult { has_conflict: true, conflicts, suggestions };
+                return ConflictResult {
+                    has_conflict: true,
+                    conflicts,
+                    suggestions,
+                };
             }
             _ => {}
         }
 
-        ConflictResult { has_conflict: false, conflicts, suggestions }
+        ConflictResult {
+            has_conflict: false,
+            conflicts,
+            suggestions,
+        }
     }
 
     /// 检测预算策略与隐私级别的冲突
@@ -73,11 +91,17 @@ impl ConflictDetector {
         if *budget_strategy == BudgetStrategy::Awareness && *privacy == PrivacyLevel::HashOnly {
             return ConflictResult {
                 has_conflict: true,
-                conflicts: vec!["awareness + hash_only: 预算信息必须出现在提示词中，与 hash_only 冲突".into()],
+                conflicts: vec![
+                    "awareness + hash_only: 预算信息必须出现在提示词中，与 hash_only 冲突".into(),
+                ],
                 suggestions: vec!["将预算策略改为 hard_stop，或将隐私级别改为 masked".into()],
             };
         }
-        ConflictResult { has_conflict: false, conflicts: vec![], suggestions: vec![] }
+        ConflictResult {
+            has_conflict: false,
+            conflicts: vec![],
+            suggestions: vec![],
+        }
     }
 
     /// 检测预算策略与重放动作的冲突
@@ -92,7 +116,11 @@ impl ConflictDetector {
                 suggestions: vec!["将预算策略改为 hard_stop，或记录模型变更".into()],
             };
         }
-        ConflictResult { has_conflict: false, conflicts: vec![], suggestions: vec![] }
+        ConflictResult {
+            has_conflict: false,
+            conflicts: vec![],
+            suggestions: vec![],
+        }
     }
 
     /// 全面检测所有约束组合
@@ -168,10 +196,7 @@ mod tests {
 
     #[test]
     fn test_degrade_replay_conflict() {
-        let r = ConflictDetector::check_budget_replay(
-            &BudgetStrategy::DegradeModel,
-            true,
-        );
+        let r = ConflictDetector::check_budget_replay(&BudgetStrategy::DegradeModel, true);
         assert!(r.has_conflict);
     }
 

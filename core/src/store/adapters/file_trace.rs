@@ -3,14 +3,14 @@
 //! 将 Trace 持久化为 JSON 文件，适用于单机部署、边缘设备和开发环境。
 //! 支持按租户/TraceID 的分层目录结构。
 
-use std::path::PathBuf;
-use std::collections::HashMap;
-use std::sync::RwLock;
-use async_trait::async_trait;
-use uuid::Uuid;
-use tracing::{info, warn};
-use crate::types::trace::Trace;
 use crate::store::traits::TraceStore;
+use crate::types::trace::Trace;
+use async_trait::async_trait;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::RwLock;
+use tracing::{info, warn};
+use uuid::Uuid;
 
 /// 本地文件 Trace 存储
 ///
@@ -81,7 +81,8 @@ impl FileTraceStore {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    let tenant = path.file_name()
+                    let tenant = path
+                        .file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or("unknown")
                         .to_string();
@@ -130,7 +131,8 @@ impl TraceStore for FileTraceStore {
 
         // 更新内存索引
         let mut index = self.index.write().unwrap();
-        let file_name = path.file_name()
+        let file_name = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
@@ -153,7 +155,8 @@ impl TraceStore for FileTraceStore {
 
     async fn list(&self, tenant_id: Option<&str>, limit: usize, offset: usize) -> Vec<Trace> {
         let index = self.index.read().unwrap();
-        let mut entries: Vec<_> = index.iter()
+        let mut entries: Vec<_> = index
+            .iter()
             .filter(|(_, (t, _))| tenant_id.map_or(true, |tid| t == tid))
             .collect();
 
@@ -167,7 +170,8 @@ impl TraceStore for FileTraceStore {
             .filter_map(|(id, (tenant, _))| {
                 let path = self.trace_path(tenant, id);
                 // 注意：这里使用同步读取以避免 async 闭包问题
-                std::fs::read_to_string(&path).ok()
+                std::fs::read_to_string(&path)
+                    .ok()
                     .and_then(|data| serde_json::from_str(&data).ok())
             })
             .collect();
@@ -187,7 +191,10 @@ impl TraceStore for FileTraceStore {
     async fn delete(&self, trace_id: &Uuid) -> Result<Option<Trace>, String> {
         let (tenant, _) = {
             let index = self.index.read().unwrap();
-            index.get(trace_id).cloned().ok_or("Trace not found".to_string())?
+            index
+                .get(trace_id)
+                .cloned()
+                .ok_or("Trace not found".to_string())?
         };
 
         let path = self.trace_path(&tenant, trace_id);

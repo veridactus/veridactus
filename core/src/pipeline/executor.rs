@@ -3,14 +3,14 @@
 //! 严格遵循 AI.md §6.4 插件并行执行优化。
 //! 按阶段执行插件，支持并行和串行混合调度。
 
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tracing::info;
 
 use crate::pipeline::config::{ExecutionPlan, Placement};
 use crate::plugin::{
-    PluginRegistry, RequestContext,
-    GovernancePlugin, AsyncContext, ResponseContext, StreamChunkContext,
+    AsyncContext, GovernancePlugin, PluginRegistry, RequestContext, ResponseContext,
+    StreamChunkContext,
 };
 use crate::types::journal::ExecutionJournal;
 use crate::types::Action;
@@ -65,21 +65,37 @@ impl PipelineExecutor {
 
         if stage.parallel {
             // AI.md §6.4: 并行执行无依赖插件
-            let blocked = self.execute_parallel(&stage.plugins, ctx, journal, &mut checks_passed, &mut checks_failed).await;
+            let blocked = self
+                .execute_parallel(
+                    &stage.plugins,
+                    ctx,
+                    journal,
+                    &mut checks_passed,
+                    &mut checks_failed,
+                )
+                .await;
             if blocked {
                 return PipelineResult::block(
-                    format!("Parallel plugin blocked: {:?}", checks_failed), checks_passed, checks_failed
+                    format!("Parallel plugin blocked: {:?}", checks_failed),
+                    checks_passed,
+                    checks_failed,
                 );
             }
         } else {
             // 串行执行
             for plugin_cfg in &stage.plugins {
-                let result = self.execute_single(&plugin_cfg.name, ctx, journal, Some(plugin_cfg)).await;
+                let result = self
+                    .execute_single(&plugin_cfg.name, ctx, journal, Some(plugin_cfg))
+                    .await;
                 match result {
                     Ok(Action::Continue) => checks_passed.push(plugin_cfg.name.clone()),
                     Ok(Action::Block) => {
                         checks_failed.push(plugin_cfg.name.clone());
-                        return PipelineResult::block(format!("Plugin {} blocked", plugin_cfg.name), checks_passed, checks_failed);
+                        return PipelineResult::block(
+                            format!("Plugin {} blocked", plugin_cfg.name),
+                            checks_passed,
+                            checks_failed,
+                        );
                     }
                     Ok(Action::Degrade) => {
                         checks_passed.push(format!("{} (degrade)", plugin_cfg.name));
@@ -89,7 +105,11 @@ impl PipelineExecutor {
                     }
                     Err(e) => {
                         checks_failed.push(format!("{}: {}", plugin_cfg.name, e));
-                        return PipelineResult::block(format!("Plugin {} error: {}", plugin_cfg.name, e), checks_passed, checks_failed);
+                        return PipelineResult::block(
+                            format!("Plugin {} error: {}", plugin_cfg.name, e),
+                            checks_passed,
+                            checks_failed,
+                        );
                     }
                 }
             }
@@ -121,7 +141,8 @@ impl PipelineExecutor {
             if !cfg.config.is_null() {
                 // 如果 config 是 JSON 字符串，先解析为对象
                 let parsed = if let Some(s) = cfg.config.as_str() {
-                    serde_json::from_str::<serde_json::Value>(s).unwrap_or_else(|_| cfg.config.clone())
+                    serde_json::from_str::<serde_json::Value>(s)
+                        .unwrap_or_else(|_| cfg.config.clone())
                 } else {
                     cfg.config.clone()
                 };
@@ -143,33 +164,56 @@ impl PipelineExecutor {
         checks_failed: &mut Vec<String>,
     ) -> bool {
         // 分离有依赖和无依赖的插件
-        let (no_deps, with_deps): (Vec<&crate::pipeline::config::PluginConfig>, Vec<&crate::pipeline::config::PluginConfig>) = plugin_configs
-            .iter()
-            .partition(|p| p.depends_on.is_empty());
+        let (no_deps, with_deps): (
+            Vec<&crate::pipeline::config::PluginConfig>,
+            Vec<&crate::pipeline::config::PluginConfig>,
+        ) = plugin_configs.iter().partition(|p| p.depends_on.is_empty());
 
         let mut blocked = false;
 
         // 并行执行无依赖的插件 — 任一 Block 即返回
         for plugin_cfg in &no_deps {
             let name = plugin_cfg.name.clone();
-            match self.execute_single(&name, ctx, journal, Some(plugin_cfg)).await {
+            match self
+                .execute_single(&name, ctx, journal, Some(plugin_cfg))
+                .await
+            {
                 Ok(Action::Continue) => checks_passed.push(name),
-                Ok(Action::Block) => { checks_failed.push(name); blocked = true; }
-                Ok(Action::Degrade) | Ok(Action::Flag) => checks_passed.push(format!("{} (flagged)", name)),
-                Err(e) => { checks_failed.push(format!("{}: {}", name, e)); blocked = true; }
+                Ok(Action::Block) => {
+                    checks_failed.push(name);
+                    blocked = true;
+                }
+                Ok(Action::Degrade) | Ok(Action::Flag) => {
+                    checks_passed.push(format!("{} (flagged)", name))
+                }
+                Err(e) => {
+                    checks_failed.push(format!("{}: {}", name, e));
+                    blocked = true;
+                }
             }
         }
 
-        if blocked { return true; }
+        if blocked {
+            return true;
+        }
 
         // 串行执行有依赖的插件
         for plugin_cfg in with_deps {
             let name = plugin_cfg.name.clone();
-            match self.execute_single(&name, ctx, journal, Some(plugin_cfg)).await {
+            match self
+                .execute_single(&name, ctx, journal, Some(plugin_cfg))
+                .await
+            {
                 Ok(Action::Continue) => checks_passed.push(name),
-                Ok(Action::Block) => { checks_failed.push(name); return true; }
+                Ok(Action::Block) => {
+                    checks_failed.push(name);
+                    return true;
+                }
                 Ok(Action::Degrade) | Ok(Action::Flag) => (),
-                Err(e) => { checks_failed.push(format!("{}: {}", name, e)); return true; }
+                Err(e) => {
+                    checks_failed.push(format!("{}: {}", name, e));
+                    return true;
+                }
             }
         }
         false
@@ -221,13 +265,39 @@ mod tests {
                 version: "1.0".into(),
                 description: "always allows".into(),
                 author: None,
-                supported_protocol_versions: VersionRange { min: "0.2.0".into(), max: "0.2.1".into() },
+                supported_protocol_versions: VersionRange {
+                    min: "0.2.0".into(),
+                    max: "0.2.1".into(),
+                },
             }
         }
-        async fn on_request(&self, _ctx: &mut RequestContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-        async fn on_stream_chunk(&self, _ctx: &mut StreamChunkContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-        async fn on_response(&self, _ctx: &mut ResponseContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-        async fn on_async_finalize(&self, _ctx: &mut AsyncContext) -> Result<serde_json::Value, String> { Ok(serde_json::json!({})) }
+        async fn on_request(
+            &self,
+            _ctx: &mut RequestContext,
+            _journal: &mut ExecutionJournal,
+        ) -> Result<Action, String> {
+            Ok(Action::Continue)
+        }
+        async fn on_stream_chunk(
+            &self,
+            _ctx: &mut StreamChunkContext,
+            _journal: &mut ExecutionJournal,
+        ) -> Result<Action, String> {
+            Ok(Action::Continue)
+        }
+        async fn on_response(
+            &self,
+            _ctx: &mut ResponseContext,
+            _journal: &mut ExecutionJournal,
+        ) -> Result<Action, String> {
+            Ok(Action::Continue)
+        }
+        async fn on_async_finalize(
+            &self,
+            _ctx: &mut AsyncContext,
+        ) -> Result<serde_json::Value, String> {
+            Ok(serde_json::json!({}))
+        }
     }
 
     struct BlockPlugin;
@@ -240,13 +310,39 @@ mod tests {
                 version: "1.0".into(),
                 description: "always blocks".into(),
                 author: None,
-                supported_protocol_versions: VersionRange { min: "0.2.0".into(), max: "0.2.1".into() },
+                supported_protocol_versions: VersionRange {
+                    min: "0.2.0".into(),
+                    max: "0.2.1".into(),
+                },
             }
         }
-        async fn on_request(&self, _ctx: &mut RequestContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Block) }
-        async fn on_stream_chunk(&self, _ctx: &mut StreamChunkContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-        async fn on_response(&self, _ctx: &mut ResponseContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-        async fn on_async_finalize(&self, _ctx: &mut AsyncContext) -> Result<serde_json::Value, String> { Ok(serde_json::json!({})) }
+        async fn on_request(
+            &self,
+            _ctx: &mut RequestContext,
+            _journal: &mut ExecutionJournal,
+        ) -> Result<Action, String> {
+            Ok(Action::Block)
+        }
+        async fn on_stream_chunk(
+            &self,
+            _ctx: &mut StreamChunkContext,
+            _journal: &mut ExecutionJournal,
+        ) -> Result<Action, String> {
+            Ok(Action::Continue)
+        }
+        async fn on_response(
+            &self,
+            _ctx: &mut ResponseContext,
+            _journal: &mut ExecutionJournal,
+        ) -> Result<Action, String> {
+            Ok(Action::Continue)
+        }
+        async fn on_async_finalize(
+            &self,
+            _ctx: &mut AsyncContext,
+        ) -> Result<serde_json::Value, String> {
+            Ok(serde_json::json!({}))
+        }
     }
 
     #[tokio::test]
@@ -278,9 +374,9 @@ mod tests {
             body: None,
             trace_id: Uuid::new_v4(),
             tenant_id: "test".into(),
-        
-                plugin_config: None,
-            };
+
+            plugin_config: None,
+        };
         let mut journal = ExecutionJournal::new(Uuid::new_v4(), "test");
 
         let result = executor.execute_pre_request(&mut ctx, &mut journal).await;
@@ -317,9 +413,9 @@ mod tests {
             body: None,
             trace_id: Uuid::new_v4(),
             tenant_id: "test".into(),
-        
-                plugin_config: None,
-            };
+
+            plugin_config: None,
+        };
         let mut journal = ExecutionJournal::new(Uuid::new_v4(), "test");
 
         let result = executor.execute_pre_request(&mut ctx, &mut journal).await;

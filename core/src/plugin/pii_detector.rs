@@ -7,9 +7,12 @@ use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::plugin::governance::{AsyncContext, GovernancePlugin, PluginMetadata, PluginType, RequestContext, ResponseContext, StreamChunkContext};
+use crate::plugin::governance::{
+    AsyncContext, GovernancePlugin, PluginMetadata, PluginType, RequestContext, ResponseContext,
+    StreamChunkContext,
+};
 use crate::types::journal::{ExecutionJournal, JournalEventType};
-use crate::types::{Action, SafetyAction, SafetyEvent, SafetyTrigger, Severity, OwaspAsiRisk};
+use crate::types::{Action, OwaspAsiRisk, SafetyAction, SafetyEvent, SafetyTrigger, Severity};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PIIDetectorConfig {
@@ -113,7 +116,12 @@ impl PIIDetectorPlugin {
                 let mask_len = pii_char_len.min(8).max(4);
                 let prefix: String = pii_chars[..2.min(pii_char_len)].iter().collect();
                 let suffix: String = pii_chars[pii_char_len.saturating_sub(2)..].iter().collect();
-                let mask: String = format!("{}{}{}", prefix, self.config.mask_character.repeat(mask_len), suffix);
+                let mask: String = format!(
+                    "{}{}{}",
+                    prefix,
+                    self.config.mask_character.repeat(mask_len),
+                    suffix
+                );
 
                 for (i, m) in mask.chars().enumerate() {
                     let pos = (char_start + i) as usize;
@@ -134,7 +142,10 @@ impl PIIDetectorPlugin {
     }
 
     fn byte_offset_to_char_offset(&self, content: &str, byte_offset: usize) -> usize {
-        content.char_indices().position(|(idx, _)| idx == byte_offset).unwrap_or(0)
+        content
+            .char_indices()
+            .position(|(idx, _)| idx == byte_offset)
+            .unwrap_or(0)
     }
 
     fn create_safety_event(&self, pii_type: &PIIType, content_hash: String) -> SafetyEvent {
@@ -169,7 +180,11 @@ impl GovernancePlugin for PIIDetectorPlugin {
         }
     }
 
-    async fn on_request(&self, ctx: &mut RequestContext, journal: &mut ExecutionJournal) -> Result<Action, String> {
+    async fn on_request(
+        &self,
+        ctx: &mut RequestContext,
+        journal: &mut ExecutionJournal,
+    ) -> Result<Action, String> {
         if !self.config.enabled {
             return Ok(Action::Continue);
         }
@@ -179,20 +194,29 @@ impl GovernancePlugin for PIIDetectorPlugin {
 
         if !findings.is_empty() {
             let content_hash = crate::crypto::signature::compute_sha256_hex(body.as_bytes());
-            let pii_types: Vec<String> = findings.iter().map(|(t, _, _)| format!("{:?}", t)).collect();
+            let pii_types: Vec<String> = findings
+                .iter()
+                .map(|(t, _, _)| format!("{:?}", t))
+                .collect();
             let pii_strs: Vec<String> = findings.iter().map(|(_, s, _)| s.clone()).collect();
 
-            journal.append_event(JournalEventType::SafetyEvent(self.create_safety_event(
-                &findings[0].0,
-                content_hash.clone(),
-            )));
+            journal.append_event(JournalEventType::SafetyEvent(
+                self.create_safety_event(&findings[0].0, content_hash.clone()),
+            ));
 
             if self.config.log_only {
-                tracing::warn!("PII detected (request): found {:?} - {:?}", pii_types, pii_strs);
+                tracing::warn!(
+                    "PII detected (request): found {:?} - {:?}",
+                    pii_types,
+                    pii_strs
+                );
             } else {
                 match self.config.action_on_detect {
                     PIIDetectAction::Block => {
-                        return Err(format!("PII block: sensitive info in request ({:?})", pii_types));
+                        return Err(format!(
+                            "PII block: sensitive info in request ({:?})",
+                            pii_types
+                        ));
                     }
                     PIIDetectAction::Mask | PIIDetectAction::Flag => {
                         let masked = self.mask_content(body, &findings);
@@ -206,11 +230,19 @@ impl GovernancePlugin for PIIDetectorPlugin {
         Ok(Action::Continue)
     }
 
-    async fn on_stream_chunk(&self, _ctx: &mut StreamChunkContext, _journal: &mut ExecutionJournal) -> Result<Action, String> {
+    async fn on_stream_chunk(
+        &self,
+        _ctx: &mut StreamChunkContext,
+        _journal: &mut ExecutionJournal,
+    ) -> Result<Action, String> {
         Ok(Action::Continue)
     }
 
-    async fn on_response(&self, ctx: &mut ResponseContext, journal: &mut ExecutionJournal) -> Result<Action, String> {
+    async fn on_response(
+        &self,
+        ctx: &mut ResponseContext,
+        journal: &mut ExecutionJournal,
+    ) -> Result<Action, String> {
         if !self.config.enabled {
             return Ok(Action::Continue);
         }
@@ -218,20 +250,26 @@ impl GovernancePlugin for PIIDetectorPlugin {
         let findings = self.detect_pii(&ctx.response);
 
         if !findings.is_empty() {
-            let content_hash = crate::crypto::signature::compute_sha256_hex(ctx.response.as_bytes());
-            let pii_types: Vec<String> = findings.iter().map(|(t, _, _)| format!("{:?}", t)).collect();
+            let content_hash =
+                crate::crypto::signature::compute_sha256_hex(ctx.response.as_bytes());
+            let pii_types: Vec<String> = findings
+                .iter()
+                .map(|(t, _, _)| format!("{:?}", t))
+                .collect();
 
-            journal.append_event(JournalEventType::SafetyEvent(self.create_safety_event(
-                &findings[0].0,
-                content_hash,
-            )));
+            journal.append_event(JournalEventType::SafetyEvent(
+                self.create_safety_event(&findings[0].0, content_hash),
+            ));
 
             if self.config.log_only {
                 tracing::warn!("PII detected (response): found {:?}", pii_types);
             } else {
                 match self.config.action_on_detect {
                     PIIDetectAction::Block => {
-                        return Err(format!("PII block: sensitive info in response ({:?})", pii_types));
+                        return Err(format!(
+                            "PII block: sensitive info in response ({:?})",
+                            pii_types
+                        ));
                     }
                     PIIDetectAction::Mask => {
                         let masked = self.mask_content(&ctx.response, &findings);
@@ -248,7 +286,10 @@ impl GovernancePlugin for PIIDetectorPlugin {
         Ok(Action::Continue)
     }
 
-    async fn on_async_finalize(&self, _ctx: &mut AsyncContext) -> Result<serde_json::Value, String> {
+    async fn on_async_finalize(
+        &self,
+        _ctx: &mut AsyncContext,
+    ) -> Result<serde_json::Value, String> {
         Ok(serde_json::json!({
             "plugin": "pii-detector",
             "status": "ok"
@@ -268,9 +309,9 @@ mod tests {
             body: Some("用户ID card number: 110101199003074532".to_string()),
             trace_id: uuid::Uuid::new_v4(),
             tenant_id: "test".to_string(),
-        
-                plugin_config: None,
-            };
+
+            plugin_config: None,
+        };
         let mut journal = ExecutionJournal::new(uuid::Uuid::new_v4(), "test");
         let result = plugin.on_request(&mut ctx, &mut journal).await;
         assert!(result.is_ok());
@@ -287,9 +328,9 @@ mod tests {
             body: Some("Credit card number: 4532015112830366".to_string()),
             trace_id: uuid::Uuid::new_v4(),
             tenant_id: "test".to_string(),
-        
-                plugin_config: None,
-            };
+
+            plugin_config: None,
+        };
         let mut journal = ExecutionJournal::new(uuid::Uuid::new_v4(), "test");
         let result = plugin.on_request(&mut ctx, &mut journal).await;
         assert!(result.is_ok());
@@ -305,9 +346,9 @@ mod tests {
             body: Some("联系电话: 13812345678".to_string()),
             trace_id: uuid::Uuid::new_v4(),
             tenant_id: "test".to_string(),
-        
-                plugin_config: None,
-            };
+
+            plugin_config: None,
+        };
         let mut journal = ExecutionJournal::new(uuid::Uuid::new_v4(), "test");
         let result = plugin.on_request(&mut ctx, &mut journal).await;
         assert!(result.is_ok());
@@ -324,9 +365,9 @@ mod tests {
             body: Some("邮箱: zhangsan@example.com".to_string()),
             trace_id: uuid::Uuid::new_v4(),
             tenant_id: "test".to_string(),
-        
-                plugin_config: None,
-            };
+
+            plugin_config: None,
+        };
         let mut journal = ExecutionJournal::new(uuid::Uuid::new_v4(), "test");
         let result = plugin.on_request(&mut ctx, &mut journal).await;
         assert!(result.is_ok());
@@ -342,9 +383,9 @@ mod tests {
             body: Some("今天天气很好".to_string()),
             trace_id: uuid::Uuid::new_v4(),
             tenant_id: "test".to_string(),
-        
-                plugin_config: None,
-            };
+
+            plugin_config: None,
+        };
         let mut journal = ExecutionJournal::new(uuid::Uuid::new_v4(), "test");
         let result = plugin.on_request(&mut ctx, &mut journal).await;
         assert!(result.is_ok());

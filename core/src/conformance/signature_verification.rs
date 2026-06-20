@@ -152,9 +152,11 @@ pub fn run_signature_verification_tests() -> Vec<SignatureTestResult> {
             name: "signature_determinism",
             passed: proof1.signature == proof2.signature,
             error: if proof1.signature != proof2.signature {
-                format!("Signatures do not match: {} != {}", 
+                format!(
+                    "Signatures do not match: {} != {}",
                     proof1.signature.unwrap_or_default(),
-                    proof2.signature.unwrap_or_default())
+                    proof2.signature.unwrap_or_default()
+                )
             } else {
                 String::new()
             },

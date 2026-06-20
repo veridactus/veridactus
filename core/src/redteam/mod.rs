@@ -8,8 +8,8 @@
 //! - 对抗性后缀攻击
 //! - 角色扮演攻击
 
-use serde::{Deserialize, Serialize};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RedTeamGuardReport {
@@ -103,9 +103,18 @@ impl RedTeamGuardG4 {
         jailbreak_patterns: Vec<String>,
         roleplay_patterns: Vec<String>,
     ) -> Result<Self, regex::Error> {
-        self.injection_patterns = injection_patterns.into_iter().map(|p| Regex::new(&p)).collect::<Result<_, _>>()?;
-        self.jailbreak_patterns = jailbreak_patterns.into_iter().map(|p| Regex::new(&p)).collect::<Result<_, _>>()?;
-        self.roleplay_patterns = roleplay_patterns.into_iter().map(|p| Regex::new(&p)).collect::<Result<_, _>>()?;
+        self.injection_patterns = injection_patterns
+            .into_iter()
+            .map(|p| Regex::new(&p))
+            .collect::<Result<_, _>>()?;
+        self.jailbreak_patterns = jailbreak_patterns
+            .into_iter()
+            .map(|p| Regex::new(&p))
+            .collect::<Result<_, _>>()?;
+        self.roleplay_patterns = roleplay_patterns
+            .into_iter()
+            .map(|p| Regex::new(&p))
+            .collect::<Result<_, _>>()?;
         Ok(self)
     }
 
@@ -140,7 +149,11 @@ impl RedTeamGuardG4 {
 
         let attack_detected = !attack_types.is_empty();
         let blocked = risk_score >= self.risk_threshold;
-        let sanitized = if blocked { Some(self.sanitize(input)) } else { None };
+        let sanitized = if blocked {
+            Some(self.sanitize(input))
+        } else {
+            None
+        };
 
         RedTeamGuardReport {
             guard_level: "G4".to_string(),
@@ -177,15 +190,21 @@ impl RedTeamGuardG4 {
         let mut sanitized = input.to_string();
 
         for pattern in &self.injection_patterns {
-            sanitized = pattern.replace_all(&sanitized, "[REDACTED-INJECTION]").to_string();
+            sanitized = pattern
+                .replace_all(&sanitized, "[REDACTED-INJECTION]")
+                .to_string();
         }
 
         for pattern in &self.jailbreak_patterns {
-            sanitized = pattern.replace_all(&sanitized, "[REDACTED-JAILBREAK]").to_string();
+            sanitized = pattern
+                .replace_all(&sanitized, "[REDACTED-JAILBREAK]")
+                .to_string();
         }
 
         for pattern in &self.roleplay_patterns {
-            sanitized = pattern.replace_all(&sanitized, "[REDACTED-ROLEPLAY]").to_string();
+            sanitized = pattern
+                .replace_all(&sanitized, "[REDACTED-ROLEPLAY]")
+                .to_string();
         }
 
         sanitized
@@ -221,7 +240,11 @@ mod tests {
 
         for input in malicious_inputs {
             let report = guard.evaluate(input);
-            assert!(report.attack_detected, "Failed to detect injection in: {}", input);
+            assert!(
+                report.attack_detected,
+                "Failed to detect injection in: {}",
+                input
+            );
         }
     }
 

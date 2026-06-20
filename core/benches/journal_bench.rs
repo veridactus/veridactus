@@ -4,9 +4,9 @@
 //! 遵循 AI.md §9.2 性能基线要求。
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use std::collections::BTreeMap;
 use veridactus_core::types::journal::{ExecutionJournal, JournalEventType};
 use veridactus_core::types::Action;
-use std::collections::BTreeMap;
 
 /// 基准测试：Journal 创建
 fn bench_journal_creation(c: &mut Criterion) {
@@ -43,7 +43,7 @@ fn bench_chain_verification(c: &mut Criterion) {
     // 追加 10 个事件
     let mut headers = BTreeMap::new();
     headers.insert("content-type".to_string(), "application/json".to_string());
-    
+
     for i in 0..10 {
         let event = if i % 2 == 0 {
             JournalEventType::RequestReceived {
@@ -71,10 +71,10 @@ fn bench_chain_verification(c: &mut Criterion) {
 
 /// 基准测试：L0 签名生成
 fn bench_l0_signature_generation(c: &mut Criterion) {
-    use veridactus_core::crypto::signature::generate_l0_proof;
-    use veridactus_core::types::trace::{Input, Output, Trace};
-    use veridactus_core::types::proof::Proofs;
     use uuid::Uuid;
+    use veridactus_core::crypto::signature::generate_l0_proof;
+    use veridactus_core::types::proof::Proofs;
+    use veridactus_core::types::trace::{Input, Output, Trace};
 
     let mut trace = Trace {
         trace_id: Uuid::new_v4(),

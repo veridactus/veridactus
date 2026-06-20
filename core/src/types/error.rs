@@ -179,10 +179,7 @@ impl ErrorResponse {
     }
 
     /// 创建最小错误响应（无审计令牌时使用）
-    pub fn new_minimal(
-        message: impl Into<String>,
-        code: VeridactusErrorCode,
-    ) -> Self {
+    pub fn new_minimal(message: impl Into<String>, code: VeridactusErrorCode) -> Self {
         Self {
             error: ErrorResponseDetail {
                 message: message.into(),

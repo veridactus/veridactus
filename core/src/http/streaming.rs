@@ -3,12 +3,12 @@
 //! 实现 VERIDACTUS 协议 §4.3 SSE 截断规范、§4.6 预算感知 SSE 事件、
 //! §8.4 主动预防（constrained decoding）。
 
+use bytes::Bytes;
+use futures::Stream;
 use std::convert::Infallible;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use bytes::Bytes;
-use futures::Stream;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
@@ -90,12 +90,24 @@ impl VeridactusStreamHandler {
         self
     }
 
-    pub fn total_chunks(&self) -> u64 { self.chunks_delivered }
-    pub fn total_content(&self) -> &str { &self.total_content }
-    pub fn is_blocked(&self) -> bool { self.blocked }
-    pub fn blocked_reason(&self) -> Option<&str> { self.blocked_reason.as_deref() }
-    pub fn accumulated_cost(&self) -> f64 { self.accumulated_cost }
-    pub fn prevention_events(&self) -> &[PreventionEvent] { &self.prevention_events }
+    pub fn total_chunks(&self) -> u64 {
+        self.chunks_delivered
+    }
+    pub fn total_content(&self) -> &str {
+        &self.total_content
+    }
+    pub fn is_blocked(&self) -> bool {
+        self.blocked
+    }
+    pub fn blocked_reason(&self) -> Option<&str> {
+        self.blocked_reason.as_deref()
+    }
+    pub fn accumulated_cost(&self) -> f64 {
+        self.accumulated_cost
+    }
+    pub fn prevention_events(&self) -> &[PreventionEvent] {
+        &self.prevention_events
+    }
 
     /// 计算当前预算百分比
     fn budget_pct(&self) -> f64 {
@@ -158,7 +170,8 @@ impl Stream for VeridactusStreamHandler {
                         me.prevention_events.push(event.clone());
                         warn!(
                             "主动预防阻断: category={}, tokens={}",
-                            event.blocked_pattern_category, event.blocked_tokens.len()
+                            event.blocked_pattern_category,
+                            event.blocked_tokens.len()
                         );
                         me.blocked = true;
                         me.blocked_reason = Some(format!(
@@ -204,9 +217,7 @@ impl Stream for VeridactusStreamHandler {
 
                 Poll::Ready(Some(Ok(Bytes::from(output))))
             }
-            Poll::Ready(Some(Err(_))) => {
-                Poll::Ready(None)
-            }
+            Poll::Ready(Some(Err(_))) => Poll::Ready(None),
             Poll::Ready(None) => {
                 let tokens = self.chunks_delivered as u32;
                 let is_blocked = self.blocked;

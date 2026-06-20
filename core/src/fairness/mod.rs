@@ -170,7 +170,11 @@ impl FairnessAuditor {
         }
     }
 
-    pub fn audit(&self, predictions: &[Prediction], protected_attributes: &[ProtectedAttribute]) -> FairnessAuditReport {
+    pub fn audit(
+        &self,
+        predictions: &[Prediction],
+        protected_attributes: &[ProtectedAttribute],
+    ) -> FairnessAuditReport {
         let metrics = self.calculate_metrics(predictions, protected_attributes);
         let bias_detections = self.detect_bias(&metrics);
         let overall_score = self.calculate_overall_fairness_score(&metrics, &bias_detections);
@@ -195,10 +199,12 @@ impl FairnessAuditor {
         let mut metrics = self.calculate_metrics(predictions, protected_attributes);
 
         if features.len() == predictions.len() {
-            metrics.proxy_variable_analysis = Some(self.analyze_proxy_variables(predictions, protected_attributes, features));
+            metrics.proxy_variable_analysis =
+                Some(self.analyze_proxy_variables(predictions, protected_attributes, features));
         }
 
-        metrics.intersectional_fairness = Some(self.calculate_intersectional_fairness(predictions, protected_attributes));
+        metrics.intersectional_fairness =
+            Some(self.calculate_intersectional_fairness(predictions, protected_attributes));
 
         let bias_detections = self.detect_bias(&metrics);
         let overall_score = self.calculate_overall_fairness_score(&metrics, &bias_detections);
@@ -214,9 +220,15 @@ impl FairnessAuditor {
         }
     }
 
-    fn calculate_metrics(&self, predictions: &[Prediction], protected_attributes: &[ProtectedAttribute]) -> FairnessMetrics {
+    fn calculate_metrics(
+        &self,
+        predictions: &[Prediction],
+        protected_attributes: &[ProtectedAttribute],
+    ) -> FairnessMetrics {
         FairnessMetrics {
-            demographic_parity: Some(self.calculate_demographic_parity(predictions, protected_attributes)),
+            demographic_parity: Some(
+                self.calculate_demographic_parity(predictions, protected_attributes),
+            ),
             equalized_odds: Some(self.calculate_equalized_odds(predictions, protected_attributes)),
             calibration: Some(self.calculate_calibration(predictions)),
             individual_fairness: Some(self.calculate_individual_fairness(predictions)),
@@ -225,7 +237,11 @@ impl FairnessAuditor {
         }
     }
 
-    fn calculate_demographic_parity(&self, predictions: &[Prediction], protected_attributes: &[ProtectedAttribute]) -> DemographicParity {
+    fn calculate_demographic_parity(
+        &self,
+        predictions: &[Prediction],
+        protected_attributes: &[ProtectedAttribute],
+    ) -> DemographicParity {
         let mut group_positive_rates: HashMap<String, f64> = HashMap::new();
         let mut group_counts: HashMap<String, usize> = HashMap::new();
 
@@ -249,7 +265,11 @@ impl FairnessAuditor {
         let privileged_rate = rates.last().copied().unwrap_or(0.0);
 
         let diff = (privileged_rate - unprivileged_rate).abs();
-        let ratio = if privileged_rate > 0.0 { unprivileged_rate / privileged_rate } else { 1.0 };
+        let ratio = if privileged_rate > 0.0 {
+            unprivileged_rate / privileged_rate
+        } else {
+            1.0
+        };
 
         DemographicParity {
             difference: diff,
@@ -261,14 +281,24 @@ impl FairnessAuditor {
         }
     }
 
-    fn calculate_equalized_odds(&self, predictions: &[Prediction], protected_attributes: &[ProtectedAttribute]) -> EqualizedOdds {
+    fn calculate_equalized_odds(
+        &self,
+        predictions: &[Prediction],
+        protected_attributes: &[ProtectedAttribute],
+    ) -> EqualizedOdds {
         let mut tpr_by_group: HashMap<String, Vec<(f64, bool)>> = HashMap::new();
         let mut fpr_by_group: HashMap<String, Vec<(f64, bool)>> = HashMap::new();
 
         for (pred, attr) in predictions.iter().zip(protected_attributes.iter()) {
             let group = &attr.group;
-            tpr_by_group.entry(group.clone()).or_insert_with(Vec::new).push((pred.score, pred.actual_outcome));
-            fpr_by_group.entry(group.clone()).or_insert_with(Vec::new).push((pred.score, !pred.actual_outcome && pred.score >= 0.5));
+            tpr_by_group
+                .entry(group.clone())
+                .or_insert_with(Vec::new)
+                .push((pred.score, pred.actual_outcome));
+            fpr_by_group
+                .entry(group.clone())
+                .or_insert_with(Vec::new)
+                .push((pred.score, !pred.actual_outcome && pred.score >= 0.5));
         }
 
         let mut tpr_gaps: Vec<f64> = Vec::new();
@@ -289,28 +319,47 @@ impl FairnessAuditor {
             }
         }
 
-        let avg_tpr_gap = if tpr_gaps.is_empty() { 0.0 } else { tpr_gaps.iter().sum::<f64>() / tpr_gaps.len() as f64 };
-        let avg_fpr_gap = if fpr_gaps.is_empty() { 0.0 } else { fpr_gaps.iter().sum::<f64>() / fpr_gaps.len() as f64 };
+        let avg_tpr_gap = if tpr_gaps.is_empty() {
+            0.0
+        } else {
+            tpr_gaps.iter().sum::<f64>() / tpr_gaps.len() as f64
+        };
+        let avg_fpr_gap = if fpr_gaps.is_empty() {
+            0.0
+        } else {
+            fpr_gaps.iter().sum::<f64>() / fpr_gaps.len() as f64
+        };
 
         EqualizedOdds {
             true_positive_rate_gap: avg_tpr_gap,
             false_positive_rate_gap: avg_fpr_gap,
             threshold: self.equalized_odds_threshold,
-            passed: avg_tpr_gap < self.equalized_odds_threshold && avg_fpr_gap < self.equalized_odds_threshold,
+            passed: avg_tpr_gap < self.equalized_odds_threshold
+                && avg_fpr_gap < self.equalized_odds_threshold,
         }
     }
 
     fn compute_tpr(items: &[(f64, bool)]) -> f64 {
         let positives: usize = items.iter().filter(|(_, outcome)| *outcome).count();
-        let predicted_positives: usize = items.iter().filter(|(score, _)| *score >= 0.5 && *score >= 0.5).count();
-        if positives == 0 { return 1.0; }
+        let predicted_positives: usize = items
+            .iter()
+            .filter(|(score, _)| *score >= 0.5 && *score >= 0.5)
+            .count();
+        if positives == 0 {
+            return 1.0;
+        }
         predicted_positives as f64 / positives as f64
     }
 
     fn compute_fpr(items: &[(f64, bool)]) -> f64 {
         let negatives: usize = items.iter().filter(|(_, outcome)| !*outcome).count();
-        let predicted_positives: usize = items.iter().filter(|(score, outcome)| *score >= 0.5 && !*outcome).count();
-        if negatives == 0 { return 0.0; }
+        let predicted_positives: usize = items
+            .iter()
+            .filter(|(score, outcome)| *score >= 0.5 && !*outcome)
+            .count();
+        if negatives == 0 {
+            return 0.0;
+        }
         predicted_positives as f64 / negatives as f64
     }
 
@@ -341,7 +390,11 @@ impl FairnessAuditor {
             }
         }
 
-        let ece = if valid_bins > 0 { sum_cal_error / valid_bins as f64 } else { 0.0 };
+        let ece = if valid_bins > 0 {
+            sum_cal_error / valid_bins as f64
+        } else {
+            0.0
+        };
 
         CalibrationMetrics {
             max_calibration_error: max_cal_error,
@@ -374,7 +427,11 @@ impl FairnessAuditor {
             }
         }
 
-        let consistency_score = if comparisons > 0 { total_consistency / comparisons as f64 } else { 1.0 };
+        let consistency_score = if comparisons > 0 {
+            total_consistency / comparisons as f64
+        } else {
+            1.0
+        };
 
         IndividualFairness {
             consistency_score,
@@ -388,7 +445,11 @@ impl FairnessAuditor {
             let dot = af.iter().zip(bf.iter()).map(|(x, y)| x * y).sum::<f64>();
             let norm_a = af.iter().map(|x| x * x).sum::<f64>().sqrt();
             let norm_b = bf.iter().map(|x| x * x).sum::<f64>().sqrt();
-            if norm_a > 0.0 && norm_b > 0.0 { dot / (norm_a * norm_b) } else { 0.0 }
+            if norm_a > 0.0 && norm_b > 0.0 {
+                dot / (norm_a * norm_b)
+            } else {
+                0.0
+            }
         } else {
             0.0
         };
@@ -402,9 +463,19 @@ impl FairnessAuditor {
             if !dp.passed {
                 detections.push(BiasDetection {
                     bias_type: BiasType::DemographicParity,
-                    severity: if dp.difference > 0.3 { BiasSeverity::High } else { BiasSeverity::Medium },
-                    affected_groups: vec!["protected_group_1".to_string(), "protected_group_2".to_string()],
-                    description: format!("人口统计 parity 差异 {} 超过阈值 {}", dp.difference, dp.threshold),
+                    severity: if dp.difference > 0.3 {
+                        BiasSeverity::High
+                    } else {
+                        BiasSeverity::Medium
+                    },
+                    affected_groups: vec![
+                        "protected_group_1".to_string(),
+                        "protected_group_2".to_string(),
+                    ],
+                    description: format!(
+                        "人口统计 parity 差异 {} 超过阈值 {}",
+                        dp.difference, dp.threshold
+                    ),
                     mitigation_suggestion: "考虑对受保护群体使用校准后的决策阈值".to_string(),
                 });
             }
@@ -414,9 +485,16 @@ impl FairnessAuditor {
             if !eo.passed {
                 detections.push(BiasDetection {
                     bias_type: BiasType::EqualizedOdds,
-                    severity: if eo.true_positive_rate_gap > 0.2 { BiasSeverity::High } else { BiasSeverity::Medium },
+                    severity: if eo.true_positive_rate_gap > 0.2 {
+                        BiasSeverity::High
+                    } else {
+                        BiasSeverity::Medium
+                    },
                     affected_groups: vec!["group_a".to_string(), "group_b".to_string()],
-                    description: format!("均等化机会差距 TPR={}, FPR={}", eo.true_positive_rate_gap, eo.false_positive_rate_gap),
+                    description: format!(
+                        "均等化机会差距 TPR={}, FPR={}",
+                        eo.true_positive_rate_gap, eo.false_positive_rate_gap
+                    ),
                     mitigation_suggestion: "实施对抗性去偏或再平衡技术".to_string(),
                 });
             }
@@ -425,7 +503,11 @@ impl FairnessAuditor {
         detections
     }
 
-    fn calculate_overall_fairness_score(&self, metrics: &FairnessMetrics, detections: &[BiasDetection]) -> f64 {
+    fn calculate_overall_fairness_score(
+        &self,
+        metrics: &FairnessMetrics,
+        detections: &[BiasDetection],
+    ) -> f64 {
         let mut score = 1.0;
 
         if let Some(ref dp) = metrics.demographic_parity {
@@ -438,7 +520,8 @@ impl FairnessAuditor {
 
         if let Some(ref eo) = metrics.equalized_odds {
             if !eo.passed {
-                score *= 1.0 - (eo.true_positive_rate_gap + eo.false_positive_rate_gap).min(0.5) / 2.0;
+                score *=
+                    1.0 - (eo.true_positive_rate_gap + eo.false_positive_rate_gap).min(0.5) / 2.0;
             }
         }
 
@@ -454,12 +537,18 @@ impl FairnessAuditor {
         score.max(0.0).min(1.0)
     }
 
-    fn generate_recommendations(&self, metrics: &FairnessMetrics, detections: &[BiasDetection]) -> Vec<String> {
+    fn generate_recommendations(
+        &self,
+        metrics: &FairnessMetrics,
+        detections: &[BiasDetection],
+    ) -> Vec<String> {
         let mut recs = Vec::new();
 
         if let Some(ref dp) = metrics.demographic_parity {
             if !dp.passed {
-                recs.push("建议使用机会均等化(Equality of Opportunity)替代人口统计 parity".to_string());
+                recs.push(
+                    "建议使用机会均等化(Equality of Opportunity)替代人口统计 parity".to_string(),
+                );
             }
         }
 
@@ -469,7 +558,10 @@ impl FairnessAuditor {
             }
         }
 
-        if detections.iter().any(|d| matches!(d.bias_type, BiasType::Intersectionality)) {
+        if detections
+            .iter()
+            .any(|d| matches!(d.bias_type, BiasType::Intersectionality))
+        {
             recs.push("检测到交叉性偏差，建议分别评估每个交叉群体".to_string());
         }
 
@@ -480,7 +572,11 @@ impl FairnessAuditor {
         recs
     }
 
-    fn calculate_intersectional_fairness(&self, predictions: &[Prediction], protected_attributes: &[ProtectedAttribute]) -> IntersectFairness {
+    fn calculate_intersectional_fairness(
+        &self,
+        predictions: &[Prediction],
+        protected_attributes: &[ProtectedAttribute],
+    ) -> IntersectFairness {
         let mut subgroup_data: HashMap<String, (usize, usize)> = HashMap::new();
 
         for (pred, attr) in predictions.iter().zip(protected_attributes.iter()) {
@@ -489,7 +585,8 @@ impl FairnessAuditor {
                 None => attr.group.clone(),
             };
 
-            let (positive_count, total_count) = subgroup_data.entry(subgroup_id.clone()).or_insert((0, 0));
+            let (positive_count, total_count) =
+                subgroup_data.entry(subgroup_id.clone()).or_insert((0, 0));
             *total_count += 1;
             if pred.score >= 0.5 {
                 *positive_count += 1;
@@ -516,9 +613,16 @@ impl FairnessAuditor {
             })
             .collect();
 
-        subgroups.sort_by(|a, b| b.disparity_vs_overall.partial_cmp(&a.disparity_vs_overall).unwrap());
+        subgroups.sort_by(|a, b| {
+            b.disparity_vs_overall
+                .partial_cmp(&a.disparity_vs_overall)
+                .unwrap()
+        });
 
-        let max_disparity = subgroups.first().map(|s| s.disparity_vs_overall).unwrap_or(0.0);
+        let max_disparity = subgroups
+            .first()
+            .map(|s| s.disparity_vs_overall)
+            .unwrap_or(0.0);
 
         IntersectFairness {
             subgroups,
@@ -586,7 +690,7 @@ impl FairnessAuditor {
         } else {
             ProxyRiskLevel::Low
         };
-        
+
         let passed = !matches!(risk_level, ProxyRiskLevel::High);
 
         ProxyAnalysis {
@@ -645,7 +749,10 @@ pub struct ProtectedAttribute {
 
 fn uuid_v4() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
     format!("fairness_audit_{:x}", timestamp)
 }
 
@@ -658,15 +765,42 @@ mod tests {
         let auditor = FairnessAuditor::new();
 
         let predictions = vec![
-            Prediction { id: "1".to_string(), score: 0.9, actual_outcome: true, features: None },
-            Prediction { id: "2".to_string(), score: 0.8, actual_outcome: true, features: None },
-            Prediction { id: "3".to_string(), score: 0.3, actual_outcome: false, features: None },
+            Prediction {
+                id: "1".to_string(),
+                score: 0.9,
+                actual_outcome: true,
+                features: None,
+            },
+            Prediction {
+                id: "2".to_string(),
+                score: 0.8,
+                actual_outcome: true,
+                features: None,
+            },
+            Prediction {
+                id: "3".to_string(),
+                score: 0.3,
+                actual_outcome: false,
+                features: None,
+            },
         ];
 
         let protected_attributes = vec![
-            ProtectedAttribute { group: "group_a".to_string(), subgroup: None, sensitive: true },
-            ProtectedAttribute { group: "group_a".to_string(), subgroup: None, sensitive: true },
-            ProtectedAttribute { group: "group_b".to_string(), subgroup: None, sensitive: true },
+            ProtectedAttribute {
+                group: "group_a".to_string(),
+                subgroup: None,
+                sensitive: true,
+            },
+            ProtectedAttribute {
+                group: "group_a".to_string(),
+                subgroup: None,
+                sensitive: true,
+            },
+            ProtectedAttribute {
+                group: "group_b".to_string(),
+                subgroup: None,
+                sensitive: true,
+            },
         ];
 
         let report = auditor.audit(&predictions, &protected_attributes);

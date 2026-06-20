@@ -1,13 +1,15 @@
 //! # Hook 系统集成测试
 
-use veridactus_core::hooks::registry::{HookRegistry, HookResult, Hook};
-use veridactus_core::types::trace::{Trace, ExecutionState};
+use veridactus_core::hooks::registry::{Hook, HookRegistry, HookResult};
 use veridactus_core::types::journal::JournalEventType;
+use veridactus_core::types::trace::{ExecutionState, Trace};
 
 #[derive(Debug)]
 struct PassHook;
 impl Hook for PassHook {
-    fn run(&self, _trace: &mut Trace) -> HookResult { HookResult::Continue }
+    fn run(&self, _trace: &mut Trace) -> HookResult {
+        HookResult::Continue
+    }
 }
 
 #[derive(Debug)]
@@ -36,7 +38,10 @@ fn test_hook_abort_registers() {
     let mut trace = Trace::new("test-model".to_string());
     let result = registry.run_pre_execute(&mut trace);
     // 当前实现遍历所有钩子，取最后一次结果
-    assert!(matches!(result, HookResult::Abort(_) | HookResult::Continue));
+    assert!(matches!(
+        result,
+        HookResult::Abort(_) | HookResult::Continue
+    ));
 }
 
 #[test]

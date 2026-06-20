@@ -4,7 +4,7 @@
 //! 验证跨域委托令牌，支持 Ed25519/TEE/ZK 三种认证证明。
 
 use chrono::{DateTime, Utc};
-use ed25519_dalek::{Signature, VerifyingKey, Verifier as SignatureVerifier};
+use ed25519_dalek::{Signature, Verifier as SignatureVerifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::collections::HashMap;
@@ -94,19 +94,21 @@ impl AttestationVerifier for Ed25519Verifier {
         };
 
         // 解码公钥
-        let public_key_bytes = hex::decode(public_key_hex)
-            .map_err(|e| format!("公钥解码失败: {}", e))?;
+        let public_key_bytes =
+            hex::decode(public_key_hex).map_err(|e| format!("公钥解码失败: {}", e))?;
 
-        let key_bytes: [u8; 32] = public_key_bytes.try_into().map_err(|_| "公钥长度必须为32字节".to_string())?;
-        let verifying_key = VerifyingKey::from_bytes(&key_bytes)
-            .map_err(|e| format!("公钥解析失败: {}", e))?;
+        let key_bytes: [u8; 32] = public_key_bytes
+            .try_into()
+            .map_err(|_| "公钥长度必须为32字节".to_string())?;
+        let verifying_key =
+            VerifyingKey::from_bytes(&key_bytes).map_err(|e| format!("公钥解析失败: {}", e))?;
 
         // 解码签名
-        let signature_bytes = hex::decode(&proof.proof)
-            .map_err(|e| format!("签名解码失败: {}", e))?;
+        let signature_bytes =
+            hex::decode(&proof.proof).map_err(|e| format!("签名解码失败: {}", e))?;
 
-        let signature = Signature::from_slice(&signature_bytes)
-            .map_err(|e| format!("签名解析失败: {}", e))?;
+        let signature =
+            Signature::from_slice(&signature_bytes).map_err(|e| format!("签名解析失败: {}", e))?;
 
         // 被签名消息为规范化的认证证明表示：
         // "VERIDACTUS-ATTEST:v1:" + 公钥 hex + ":" + 验证密钥引用
@@ -137,8 +139,8 @@ impl AttestationVerifier for TeeQuoteVerifier {
         };
 
         // Base64 解码 Quote
-        let quote_bytes = base64::decode(&proof.proof)
-            .map_err(|e| format!("Quote Base64 解码失败: {}", e))?;
+        let quote_bytes =
+            base64::decode(&proof.proof).map_err(|e| format!("Quote Base64 解码失败: {}", e))?;
 
         if quote_bytes.is_empty() {
             return Err("Quote 内容为空".to_string());
@@ -212,7 +214,9 @@ impl AttestationVerifier for ZkProofVerifier {
     fn verify(&self, proof: &AttestationProof) -> Result<(), String> {
         // 获取验证密钥哈希
         let vk_hash = match &proof.r#type {
-            AttestationType::ZkProof { verification_key_hash } => verification_key_hash,
+            AttestationType::ZkProof {
+                verification_key_hash,
+            } => verification_key_hash,
             _ => return Err("认证类型不匹配".to_string()),
         };
 
@@ -221,8 +225,8 @@ impl AttestationVerifier for ZkProofVerifier {
         }
 
         // Base64 解码 ZK 证明
-        let proof_bytes = base64::decode(&proof.proof)
-            .map_err(|e| format!("ZK 证明 Base64 解码失败: {}", e))?;
+        let proof_bytes =
+            base64::decode(&proof.proof).map_err(|e| format!("ZK 证明 Base64 解码失败: {}", e))?;
 
         if proof_bytes.is_empty() {
             return Err("ZK 证明内容为空".to_string());
@@ -337,7 +341,9 @@ impl CompositeAttestationVerifier {
                 .ok_or_else(|| AttestationError::VerificationFailed("验证器未注册".to_string()))?;
 
             // 执行验证
-            verifier.verify(proof).map_err(AttestationError::VerificationFailed)?;
+            verifier
+                .verify(proof)
+                .map_err(AttestationError::VerificationFailed)?;
         }
 
         Ok(())
@@ -368,7 +374,11 @@ impl CompositeAttestationVerifier {
     }
 
     /// 注册自定义验证器
-    pub fn register_verifier(&mut self, att_type: AttestationType, verifier: Box<dyn AttestationVerifier>) {
+    pub fn register_verifier(
+        &mut self,
+        att_type: AttestationType,
+        verifier: Box<dyn AttestationVerifier>,
+    ) {
         self.verifiers.insert(att_type, verifier);
     }
 
@@ -391,7 +401,7 @@ impl CompositeAttestationVerifier {
 mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
-    
+
     #[test]
     fn test_missing_attestation_type() {
         let verifier = CompositeAttestationVerifier::new();
@@ -469,9 +479,7 @@ mod tests {
         let signature = signing_key.sign(message.as_bytes());
 
         let proof = AttestationProof {
-            r#type: AttestationType::Ed25519 {
-                public_key: pk_hex,
-            },
+            r#type: AttestationType::Ed25519 { public_key: pk_hex },
             proof: hex::encode(signature.to_bytes()),
             verification_key_ref: None,
         };
@@ -485,7 +493,8 @@ mod tests {
         let verifier = Ed25519Verifier;
         let proof = AttestationProof {
             r#type: AttestationType::Ed25519 {
-                public_key: "0000000000000000000000000000000000000000000000000000000000000000".into(),
+                public_key: "0000000000000000000000000000000000000000000000000000000000000000"
+                    .into(),
             },
             proof: "invalid_signature".into(),
             verification_key_ref: None,

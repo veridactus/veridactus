@@ -212,10 +212,7 @@ impl MerkleTree {
     }
 
     /// 随机采样验证：采样指定比例
-    pub fn sample_verify(
-        &self,
-        sample_rate: f64,
-    ) -> (bool, Vec<SamplingPath>) {
+    pub fn sample_verify(&self, sample_rate: f64) -> (bool, Vec<SamplingPath>) {
         let total = self.leaves.len();
         let sample_count = ((total as f64) * sample_rate).ceil() as usize;
         let sample_count = sample_count.max(1).min(total);
@@ -263,7 +260,10 @@ pub struct L2ASamplingResult {
 }
 
 /// 生成 L2A 证明条目
-pub fn generate_l2a_proof(trace_json: &str, sample_rate: f64) -> crate::types::proof::ProofChainEntry {
+pub fn generate_l2a_proof(
+    trace_json: &str,
+    sample_rate: f64,
+) -> crate::types::proof::ProofChainEntry {
     let tree = MerkleTree::from_trace_json(trace_json);
     let (verified, paths) = tree.sample_verify(sample_rate);
 
@@ -287,9 +287,13 @@ pub fn generate_l2a_proof(trace_json: &str, sample_rate: f64) -> crate::types::p
         platform: None,
         mrenclave: None,
         merkle_root: Some(result.merkle_root.clone()),
-        sampling_paths: Some(result.sampling_paths.iter().map(|p| {
-            serde_json::to_string(p).unwrap_or_default()
-        }).collect()),
+        sampling_paths: Some(
+            result
+                .sampling_paths
+                .iter()
+                .map(|p| serde_json::to_string(p).unwrap_or_default())
+                .collect(),
+        ),
         zk_proof: None,
         verification_key_hash: None,
         proof_aggregation_root: None,
@@ -319,7 +323,11 @@ mod tests {
 
         for i in 0..tree.leaf_count() {
             let path = tree.generate_path(i).unwrap();
-            assert!(MerkleTree::verify_path(&path), "Path {} verification failed", i);
+            assert!(
+                MerkleTree::verify_path(&path),
+                "Path {} verification failed",
+                i
+            );
         }
     }
 
@@ -344,8 +352,12 @@ mod tests {
         let tree = MerkleTree::from_chunks(&chunks);
         let mut path = tree.generate_path(0).unwrap();
         // Tamper with the leaf hash
-        path.leaf_hash = "0000000000000000000000000000000000000000000000000000000000000000".to_string();
-        assert!(!MerkleTree::verify_path(&path), "Tampered path should be rejected");
+        path.leaf_hash =
+            "0000000000000000000000000000000000000000000000000000000000000000".to_string();
+        assert!(
+            !MerkleTree::verify_path(&path),
+            "Tampered path should be rejected"
+        );
     }
 
     #[test]

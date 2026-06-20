@@ -145,7 +145,12 @@ mod tests {
     #[test]
     fn test_cache_hit() {
         let mut cache = UpstreamResponseCache::new(60, 100);
-        let key = CacheKey::new("model-x", &serde_json::json!([{"role":"user","content":"hi"}]), &serde_json::json!({"temp":0.0}), "v1");
+        let key = CacheKey::new(
+            "model-x",
+            &serde_json::json!([{"role":"user","content":"hi"}]),
+            &serde_json::json!({"temp":0.0}),
+            "v1",
+        );
         let response = serde_json::json!({"response": "hello"});
         cache.insert(key.clone(), response.clone());
 
@@ -156,16 +161,36 @@ mod tests {
     #[test]
     fn test_cache_miss() {
         let cache = UpstreamResponseCache::new(60, 100);
-        let key = CacheKey::new("model-x", &serde_json::json!([{"role":"user","content":"hi"}]), &serde_json::json!({"temp":0.0}), "v1");
+        let key = CacheKey::new(
+            "model-x",
+            &serde_json::json!([{"role":"user","content":"hi"}]),
+            &serde_json::json!({"temp":0.0}),
+            "v1",
+        );
         assert!(cache.get(&key).is_none());
     }
 
     #[test]
     fn test_cache_eviction() {
         let mut cache = UpstreamResponseCache::new(60, 2); // 最多2条
-        let k1 = CacheKey::new("m1", &serde_json::json!([{"role":"user","content":"a"}]), &serde_json::json!({}), "v1");
-        let k2 = CacheKey::new("m2", &serde_json::json!([{"role":"user","content":"b"}]), &serde_json::json!({}), "v1");
-        let k3 = CacheKey::new("m3", &serde_json::json!([{"role":"user","content":"c"}]), &serde_json::json!({}), "v1");
+        let k1 = CacheKey::new(
+            "m1",
+            &serde_json::json!([{"role":"user","content":"a"}]),
+            &serde_json::json!({}),
+            "v1",
+        );
+        let k2 = CacheKey::new(
+            "m2",
+            &serde_json::json!([{"role":"user","content":"b"}]),
+            &serde_json::json!({}),
+            "v1",
+        );
+        let k3 = CacheKey::new(
+            "m3",
+            &serde_json::json!([{"role":"user","content":"c"}]),
+            &serde_json::json!({}),
+            "v1",
+        );
 
         cache.insert(k1.clone(), serde_json::json!("r1"));
         cache.insert(k2.clone(), serde_json::json!("r2"));
@@ -180,7 +205,12 @@ mod tests {
     #[test]
     fn test_cache_expiry() {
         let mut cache = UpstreamResponseCache::new(0, 100); // 0秒TTL
-        let key = CacheKey::new("m", &serde_json::json!([{"role":"user","content":"hi"}]), &serde_json::json!({}), "v1");
+        let key = CacheKey::new(
+            "m",
+            &serde_json::json!([{"role":"user","content":"hi"}]),
+            &serde_json::json!({}),
+            "v1",
+        );
         cache.insert(key.clone(), serde_json::json!("r"));
         thread::sleep(Duration::from_millis(10));
         assert!(cache.get(&key).is_none());

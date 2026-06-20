@@ -125,10 +125,15 @@ impl GdprErasureManager {
         self
     }
 
-    pub fn process_deletion(&self, request: DeletionRequest) -> Result<DeletionResult, DeletionError> {
+    pub fn process_deletion(
+        &self,
+        request: DeletionRequest,
+    ) -> Result<DeletionResult, DeletionError> {
         let result = match request.deletion_type {
             DeletionType::TraceId => self.storage_backend.delete_by_trace_id(&request.target_id),
-            DeletionType::SessionId => self.storage_backend.delete_by_session_id(&request.target_id),
+            DeletionType::SessionId => self
+                .storage_backend
+                .delete_by_session_id(&request.target_id),
             DeletionType::UserId => self.storage_backend.delete_by_user_id(&request.target_id),
             DeletionType::All => return Err(DeletionError::Forbidden),
         };
@@ -238,7 +243,11 @@ mod tests {
             })
         }
 
-        fn retain_signature(&self, _trace_id: &str, _audit_signature: &str) -> Result<(), DeletionError> {
+        fn retain_signature(
+            &self,
+            _trace_id: &str,
+            _audit_signature: &str,
+        ) -> Result<(), DeletionError> {
             Ok(())
         }
 
@@ -266,7 +275,10 @@ mod tests {
         let result = manager.process_deletion(request).unwrap();
         assert!(result.success);
         assert_eq!(result.deleted_count, 1);
-        assert_eq!(result.audit_log_entry.compliance_evidence.regulation, "GDPR");
+        assert_eq!(
+            result.audit_log_entry.compliance_evidence.regulation,
+            "GDPR"
+        );
     }
 
     #[test]

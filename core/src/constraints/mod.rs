@@ -5,9 +5,7 @@
 //! - 动态约束评估（流式预算预占）
 //! - 约束违反处理
 
-use crate::types::constraints::{
-    BudgetStrategy, ConstraintsApplied, PrivacyLevel,
-};
+use crate::types::constraints::{BudgetStrategy, ConstraintsApplied, PrivacyLevel};
 use crate::types::trace::Trace;
 use tracing::{info, warn};
 
@@ -90,36 +88,60 @@ impl ConstraintEvaluator {
             if let Some(actual) = self.budget_actual {
                 let usage_ratio = actual / limit;
 
-                match self.budget_strategy.as_ref().unwrap_or(&BudgetStrategy::HardStop) {
+                match self
+                    .budget_strategy
+                    .as_ref()
+                    .unwrap_or(&BudgetStrategy::HardStop)
+                {
                     BudgetStrategy::HardStop => {
                         if usage_ratio >= 1.0 {
                             result.allowed = false;
-                            result.checks_failed.push("budget_exceeded_hard_stop".to_string());
+                            result
+                                .checks_failed
+                                .push("budget_exceeded_hard_stop".to_string());
                             result.degrade_action = Some("hard_stop".to_string());
                             warn!("Budget exceeded hard stop: {}/{}$", actual, limit);
                         }
                     }
                     BudgetStrategy::DegradeModel => {
                         if usage_ratio >= 0.8 {
-                            result.warnings.push(format!("Budget usage reached {}%", usage_ratio * 100.0));
+                            result
+                                .warnings
+                                .push(format!("Budget usage reached {}%", usage_ratio * 100.0));
                             result.degrade_action = Some("degrade_to_gpt4o_mini".to_string());
-                            info!("Budget usage triggers degrade: {}/{}$ ({}%)", actual, limit, usage_ratio * 100.0);
+                            info!(
+                                "Budget usage triggers degrade: {}/{}$ ({}%)",
+                                actual,
+                                limit,
+                                usage_ratio * 100.0
+                            );
                         }
                     }
                     BudgetStrategy::SoftAlert => {
                         if usage_ratio >= 0.9 {
-                            result.warnings.push(format!("Budget usage near limit: {}%", usage_ratio * 100.0));
-                            info!("Budget usage soft alert: {}/{}$ ({}%)", actual, limit, usage_ratio * 100.0);
+                            result
+                                .warnings
+                                .push(format!("Budget usage near limit: {}%", usage_ratio * 100.0));
+                            info!(
+                                "Budget usage soft alert: {}/{}$ ({}%)",
+                                actual,
+                                limit,
+                                usage_ratio * 100.0
+                            );
                         }
                     }
                     BudgetStrategy::Adaptive => {
                         if usage_ratio >= 0.7 {
-                            result.warnings.push(format!("Budget usage high: {}%", usage_ratio * 100.0));
+                            result
+                                .warnings
+                                .push(format!("Budget usage high: {}%", usage_ratio * 100.0));
                             result.degrade_action = Some("adaptive_model_selection".to_string());
                         }
                     }
                     BudgetStrategy::Awareness => {
-                        result.warnings.push(format!("Current budget usage: {}%", usage_ratio * 100.0));
+                        result
+                            .warnings
+                            .push(format!("Current budget usage: {}%", usage_ratio * 100.0));
                     }
                 }
             }
@@ -153,21 +175,33 @@ impl ConstraintEvaluator {
                 let mode_str = serde_json::to_string(mode).unwrap_or_default();
                 match mode_str.as_str() {
                     "\"strict\"" => {
-                        result.checks_passed.push("instruction_hierarchy_strict".to_string());
+                        result
+                            .checks_passed
+                            .push("instruction_hierarchy_strict".to_string());
                     }
                     "\"warn\"" => {
-                        result.checks_passed.push("instruction_hierarchy_warn".to_string());
-                        result.warnings.push("Instruction hierarchy set to warn".to_string());
+                        result
+                            .checks_passed
+                            .push("instruction_hierarchy_warn".to_string());
+                        result
+                            .warnings
+                            .push("Instruction hierarchy set to warn".to_string());
                     }
                     "\"verified\"" => {
-                        result.checks_passed.push("instruction_hierarchy_verified".to_string());
+                        result
+                            .checks_passed
+                            .push("instruction_hierarchy_verified".to_string());
                     }
                     _ => {
-                        result.checks_passed.push("instruction_hierarchy_off".to_string());
+                        result
+                            .checks_passed
+                            .push("instruction_hierarchy_off".to_string());
                     }
                 }
             } else {
-                result.checks_passed.push("instruction_hierarchy_default".to_string());
+                result
+                    .checks_passed
+                    .push("instruction_hierarchy_default".to_string());
             }
         }
     }
@@ -178,12 +212,16 @@ impl ConstraintEvaluator {
             if let Some(active) = &constraints.guardrails_active {
                 if !active.is_empty() {
                     for guardrail in active {
-                        result.checks_passed.push(format!("guardrail_{}", guardrail));
+                        result
+                            .checks_passed
+                            .push(format!("guardrail_{}", guardrail));
                     }
                 }
             }
         }
-        result.checks_passed.push("guardrails_evaluated".to_string());
+        result
+            .checks_passed
+            .push("guardrails_evaluated".to_string());
     }
 
     /// 主动预防检查（§5.3.2）
@@ -191,7 +229,9 @@ impl ConstraintEvaluator {
         if let Some(constraints) = self.get_constraints() {
             if let Some(prevention) = &constraints.active_prevention {
                 if prevention.constrained_decoding == Some(true) {
-                    result.checks_passed.push("active_prevention_enabled".to_string());
+                    result
+                        .checks_passed
+                        .push("active_prevention_enabled".to_string());
                 }
             }
         }
@@ -223,11 +263,17 @@ impl BudgetPreAllocator {
         if self.reserved + amount > self.limit {
             match self.strategy {
                 BudgetStrategy::HardStop => {
-                    warn!("Budget reservation failed: {} + {} > {}", self.reserved, amount, self.limit);
+                    warn!(
+                        "Budget reservation failed: {} + {} > {}",
+                        self.reserved, amount, self.limit
+                    );
                     return false;
                 }
                 BudgetStrategy::SoftAlert => {
-                    warn!("Budget reservation exceeds soft limit: {} + {} > {}", self.reserved, amount, self.limit);
+                    warn!(
+                        "Budget reservation exceeds soft limit: {} + {} > {}",
+                        self.reserved, amount, self.limit
+                    );
                     self.reserved += amount;
                     return true;
                 }

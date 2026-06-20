@@ -91,16 +91,14 @@ impl ExecutionPlan {
                 StageConfig {
                     placement: Placement::PreRequest,
                     parallel: false,
-                    plugins: vec![
-                        PluginConfig {
-                            name: "budget-guard".to_string(),
-                            r#type: PluginType::Native,
-                            config: serde_json::json!({"limit_usd": 100.0, "strategy": "hard_stop"}),
-                            depends_on: vec![],
-                            endpoint: None,
-                            required_capabilities: vec![],
-                        },
-                    ],
+                    plugins: vec![PluginConfig {
+                        name: "budget-guard".to_string(),
+                        r#type: PluginType::Native,
+                        config: serde_json::json!({"limit_usd": 100.0, "strategy": "hard_stop"}),
+                        depends_on: vec![],
+                        endpoint: None,
+                        required_capabilities: vec![],
+                    }],
                     on_version_mismatch: VersionMismatchPolicy::Skip,
                 },
                 StageConfig {
@@ -198,10 +196,7 @@ pub mod capabilities {
 
     /// 获取客户端必须支持的能力列表（核心能力）
     pub fn required_client_capabilities() -> Vec<String> {
-        vec![
-            CORE_STREAMING.to_string(),
-            CORE_TRACE.to_string(),
-        ]
+        vec![CORE_STREAMING.to_string(), CORE_TRACE.to_string()]
     }
 
     /// 解析能力字符串为类别

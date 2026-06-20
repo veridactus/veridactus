@@ -4,8 +4,8 @@
 //! - otel: OpenTelemetry 分布式追踪
 //! - metrics: 标签化 Prometheus 指标
 
-pub mod otel;
 pub mod metrics;
+pub mod otel;
 
-pub use otel::OtelTracer;
 pub use metrics::LabeledMetrics;
+pub use otel::OtelTracer;

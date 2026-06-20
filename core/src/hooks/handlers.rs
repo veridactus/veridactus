@@ -3,13 +3,15 @@
 //! 实现 9 个语义钩子的具体处理器。
 
 use crate::hooks::registry::{Hook, HookResult};
-use crate::types::trace::{Trace, CertifiedGuarantee, FairnessCheck, FairnessMetric, BiasDetection};
-use crate::types::{SafetyEvent, SafetyTrigger, SafetyAction, Severity};
+use crate::types::trace::{
+    BiasDetection, CertifiedGuarantee, FairnessCheck, FairnessMetric, Trace,
+};
+use crate::types::{SafetyAction, SafetyEvent, SafetyTrigger, Severity};
 use chrono;
+use hex;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
-use serde::{Serialize, Deserialize};
-use hex;
 
 // ==================== pre_execute 钩子 ====================
 
@@ -90,7 +92,14 @@ impl OnTokenHook {
         let token_lower = token.to_lowercase();
 
         // 1. 敏感词检测（权重：0.3）
-        let sensitive_patterns = ["password", "secret", "token", "api_key", "credit_card", "ssn"];
+        let sensitive_patterns = [
+            "password",
+            "secret",
+            "token",
+            "api_key",
+            "credit_card",
+            "ssn",
+        ];
         for pattern in sensitive_patterns.iter() {
             if token_lower.contains(pattern) {
                 risk_score += 0.3;
@@ -109,13 +118,16 @@ impl OnTokenHook {
 
         // 3. PII检测（权重：0.25）
         let pii_patterns = [
-            r"\d{3}[-.]?\d{3}[-.]?\d{4}", // 电话号码
-            r"\d{4}[-.]?\d{4}[-.]?\d{4}[-.]?\d{4}", // Credit card number
+            r"\d{3}[-.]?\d{3}[-.]?\d{4}",                      // 电话号码
+            r"\d{4}[-.]?\d{4}[-.]?\d{4}[-.]?\d{4}",            // Credit card number
             r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", // 邮箱
-            r"\b\d{9}\b", // SSN
+            r"\b\d{9}\b",                                      // SSN
         ];
         for pattern in pii_patterns.iter() {
-            if regex::Regex::new(pattern).map(|re| re.is_match(token)).unwrap_or(false) {
+            if regex::Regex::new(pattern)
+                .map(|re| re.is_match(token))
+                .unwrap_or(false)
+            {
                 risk_score += 0.25;
                 break;
             }
@@ -123,11 +135,13 @@ impl OnTokenHook {
 
         // 4. 上下文风险累积（权重：0.2）
         // 根据输出长度调整风险 - 过长的输出可能表示注入攻击
-        let output_length = trace.output.as_ref()
+        let output_length = trace
+            .output
+            .as_ref()
             .and_then(|o| o.response.as_ref())
             .map(|r| r.to_string().len())
             .unwrap_or(0);
-        
+
         if output_length > 10000 && position > 500 {
             risk_score += 0.2 * ((output_length - 10000) as f64 / 10000.0).min(1.0);
         }
@@ -155,7 +169,7 @@ impl OnTokenHook {
     /// 执行策略升级
     fn upgrade_policy(&mut self, trace: &mut Trace) {
         self.last_policy_upgrade = Some(std::time::Instant::now());
-        
+
         // 升级约束：增加guardrails级别
         if let Some(ref mut constraints) = trace.constraints_applied {
             // 如果还没有启用G4，启用它
@@ -164,7 +178,7 @@ impl OnTokenHook {
                     guardrails.push("G4".to_string());
                 }
             }
-            
+
             // 降低隐私级别
             if let Some(ref mut privacy_level) = constraints.privacy_level {
                 if *privacy_level != crate::types::constraints::PrivacyLevel::TeePrivate {
@@ -191,11 +205,11 @@ impl Hook for OnTokenHook {
             if let Some(ref response) = output.response {
                 let content = response.to_string();
                 let tokens: Vec<&str> = content.split_whitespace().collect();
-                
+
                 if let Some(last_token) = tokens.last() {
                     let position = tokens.len();
                     let risk_score = self.calculate_token_risk(last_token, position, trace);
-                    
+
                     // 高风险时中止
                     if risk_score >= self.risk_threshold_high {
                         return HookResult::Abort(format!(
@@ -203,7 +217,7 @@ impl Hook for OnTokenHook {
                             risk_score
                         ));
                     }
-                    
+
                     // 中风险时记录警告
                     if risk_score >= self.risk_threshold_medium {
                         // 添加安全事件
@@ -217,7 +231,9 @@ impl Hook for OnTokenHook {
                                 asi_risk_id: None,
                                 timestamp: chrono::Utc::now().to_rfc3339(),
                             };
-                            obs.safety_events.get_or_insert_with(Vec::new).push(safety_event);
+                            obs.safety_events
+                                .get_or_insert_with(Vec::new)
+                                .push(safety_event);
                         }
                     }
                 }
@@ -229,14 +245,19 @@ impl Hook for OnTokenHook {
 
 // 添加带token参数的run方法
 impl OnTokenHook {
-    pub fn run_with_token(&mut self, trace: &mut Trace, token: &str, position: usize) -> HookResult {
+    pub fn run_with_token(
+        &mut self,
+        trace: &mut Trace,
+        token: &str,
+        position: usize,
+    ) -> HookResult {
         let risk_score = self.calculate_token_risk(token, position, trace);
-        
+
         // 自适应策略升级
         if self.should_upgrade_policy(risk_score) {
             self.upgrade_policy(trace);
         }
-        
+
         // 高风险时中止
         if risk_score >= self.risk_threshold_high {
             return HookResult::Abort(format!(
@@ -244,7 +265,7 @@ impl OnTokenHook {
                 token, risk_score
             ));
         }
-        
+
         // 中风险时记录警告
         if risk_score >= self.risk_threshold_medium {
             if let Some(ref mut obs) = trace.observations {
@@ -257,10 +278,12 @@ impl OnTokenHook {
                     asi_risk_id: None,
                     timestamp: chrono::Utc::now().to_rfc3339(),
                 };
-                obs.safety_events.get_or_insert_with(Vec::new).push(safety_event);
+                obs.safety_events
+                    .get_or_insert_with(Vec::new)
+                    .push(safety_event);
             }
         }
-        
+
         HookResult::Continue
     }
 }
@@ -354,7 +377,10 @@ impl OnCertifiedGuaranteeHook {
         // 置信水平调整：基于验证集大小和非一致性分数
         let adjusted_confidence = confidence - (nonconformity_score * 0.05);
 
-        (risk_bound.min(1.0).max(0.0), adjusted_confidence.clamp(0.8, 0.99))
+        (
+            risk_bound.min(1.0).max(0.0),
+            adjusted_confidence.clamp(0.8, 0.99),
+        )
     }
 
     /// 验证安全声明
@@ -398,8 +424,11 @@ impl Hook for OnCertifiedGuaranteeHook {
 
             // 如果风险边界过高，添加安全事件
             if risk_bound > 0.5 {
-                let event_message = format!("高风险输出检测：风险边界 {:.2}, 置信水平 {:.1}%", 
-                    risk_bound, confidence_level * 100.0);
+                let event_message = format!(
+                    "高风险输出检测：风险边界 {:.2}, 置信水平 {:.1}%",
+                    risk_bound,
+                    confidence_level * 100.0
+                );
                 let content_hash = format!("{:x}", Sha256::digest(event_message.as_bytes()));
                 let safety_event = SafetyEvent {
                     trigger_type: SafetyTrigger::G3SemanticGuard,
@@ -409,7 +438,9 @@ impl Hook for OnCertifiedGuaranteeHook {
                     asi_risk_id: None,
                     timestamp: chrono::Utc::now().to_rfc3339(),
                 };
-                obs.safety_events.get_or_insert_with(Vec::new).push(safety_event);
+                obs.safety_events
+                    .get_or_insert_with(Vec::new)
+                    .push(safety_event);
             }
         }
 
@@ -485,10 +516,11 @@ impl Hook for OnSafetyEventHook {
         // 检查是否有严重的安全事件
         if let Some(ref obs) = trace.observations {
             if let Some(ref events) = obs.safety_events {
-                let critical_events: Vec<_> = events.iter()
+                let critical_events: Vec<_> = events
+                    .iter()
                     .filter(|e| e.severity == Severity::Critical)
                     .collect();
-                
+
                 if !critical_events.is_empty() {
                     return HookResult::Abort(format!(
                         "检测到 {} 个严重安全事件",
@@ -552,21 +584,24 @@ impl OnFairnessCheckHook {
     /// 提取文本中的人口统计信息
     fn extract_demographic_info(&self, text: &str) -> Vec<(String, String)> {
         let mut info = Vec::new();
-        
+
         // 性别检测
         if text.to_lowercase().contains("male") || text.to_lowercase().contains("man") {
             info.push(("gender".to_string(), "male".to_string()));
         } else if text.to_lowercase().contains("female") || text.to_lowercase().contains("woman") {
             info.push(("gender".to_string(), "female".to_string()));
         }
-        
+
         // 年龄检测
         if text.to_lowercase().contains("young") || text.contains("20s") || text.contains("30s") {
             info.push(("age".to_string(), "young".to_string()));
-        } else if text.to_lowercase().contains("old") || text.contains("60s") || text.contains("70s") {
+        } else if text.to_lowercase().contains("old")
+            || text.contains("60s")
+            || text.contains("70s")
+        {
             info.push(("age".to_string(), "old".to_string()));
         }
-        
+
         info
     }
 
@@ -574,7 +609,9 @@ impl OnFairnessCheckHook {
     /// P(Y=1|A=a) ≈ P(Y=1|A=a') 对于所有 a, a'
     fn calculate_demographic_parity(&self, trace: &Trace) -> f64 {
         // 简化实现：基于输出内容检测潜在的偏见
-        let content = trace.output.as_ref()
+        let content = trace
+            .output
+            .as_ref()
             .and_then(|o| o.response.as_ref())
             .map(|r| r.to_string())
             .unwrap_or_default();
@@ -582,11 +619,13 @@ impl OnFairnessCheckHook {
         // 检测性别偏见词汇
         let male_biased = ["he", "him", "his", "man", "men"];
         let female_biased = ["she", "her", "hers", "woman", "women"];
-        
-        let male_count = male_biased.iter()
+
+        let male_count = male_biased
+            .iter()
             .map(|w| content.to_lowercase().matches(w).count())
             .sum::<usize>();
-        let female_count = female_biased.iter()
+        let female_count = female_biased
+            .iter()
             .map(|w| content.to_lowercase().matches(w).count())
             .sum::<usize>();
 
@@ -602,7 +641,9 @@ impl OnFairnessCheckHook {
     /// 受保护群体通过率 / 非受保护群体通过率
     fn calculate_disparate_impact(&self, trace: &Trace) -> f64 {
         // 简化实现：基于输出内容的情感分析
-        let content = trace.output.as_ref()
+        let content = trace
+            .output
+            .as_ref()
             .and_then(|o| o.response.as_ref())
             .map(|r| r.to_string())
             .unwrap_or_default();
@@ -611,10 +652,12 @@ impl OnFairnessCheckHook {
         let positive_words = ["good", "excellent", "great", "wonderful", "perfect"];
         let negative_words = ["bad", "poor", "terrible", "awful", "horrible"];
 
-        let positive_count = positive_words.iter()
+        let positive_count = positive_words
+            .iter()
             .map(|w| content.to_lowercase().matches(w).count())
             .sum::<usize>();
-        let negative_count = negative_words.iter()
+        let negative_count = negative_words
+            .iter()
             .map(|w| content.to_lowercase().matches(w).count())
             .sum::<usize>();
 
@@ -650,8 +693,14 @@ impl OnFairnessCheckHook {
 impl fmt::Debug for OnFairnessCheckHook {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OnFairnessCheckHook")
-            .field("demographic_parity_threshold", &self.demographic_parity_threshold)
-            .field("disparate_impact_threshold", &self.disparate_impact_threshold)
+            .field(
+                "demographic_parity_threshold",
+                &self.demographic_parity_threshold,
+            )
+            .field(
+                "disparate_impact_threshold",
+                &self.disparate_impact_threshold,
+            )
             .finish()
     }
 }
@@ -661,14 +710,14 @@ impl Hook for OnFairnessCheckHook {
         // 计算公平性指标
         let demographic_parity = self.calculate_demographic_parity(trace);
         let disparate_impact = self.calculate_disparate_impact(trace);
-        
+
         // 计算总体公平性得分（越高越公平）
         let fairness_score = 1.0 - (demographic_parity + (1.0 - disparate_impact)) / 2.0;
-        
+
         // 检测偏差
         let bias_type = self.detect_bias_type(demographic_parity, disparate_impact);
         let bias_detected = bias_type.is_some();
-        
+
         // 生成指标列表
         let metrics = vec![
             FairnessMetric {
@@ -686,10 +735,12 @@ impl Hook for OnFairnessCheckHook {
                 threshold: self.disparate_impact_threshold,
             },
         ];
-        
+
         // 生成偏差检测结果
         let bias_detection = if bias_detected {
-            let mitigation_suggestion = bias_type.as_ref().map(|t| self.generate_mitigation_suggestion(t));
+            let mitigation_suggestion = bias_type
+                .as_ref()
+                .map(|t| self.generate_mitigation_suggestion(t));
             Some(BiasDetection {
                 detected: true,
                 bias_type,
@@ -699,7 +750,7 @@ impl Hook for OnFairnessCheckHook {
         } else {
             None
         };
-        
+
         // 更新trace中的公平性检查结果
         if let Some(ref mut obs) = trace.observations {
             obs.fairness_check = Some(FairnessCheck {
@@ -943,7 +994,9 @@ impl Hook for PreStreamHook {
     fn run(&self, trace: &mut Trace) -> HookResult {
         if self.enable_dynamic_policy {
             if let Some(ref constraints) = trace.constraints_applied {
-                if let (Some(limit), Some(actual)) = (constraints.budget_limit_usd, constraints.budget_actual_usd) {
+                if let (Some(limit), Some(actual)) =
+                    (constraints.budget_limit_usd, constraints.budget_actual_usd)
+                {
                     if limit > 0.0 {
                         let usage_ratio = actual / limit;
                         if usage_ratio >= self.degradation_threshold {
@@ -1011,7 +1064,10 @@ impl Hook for OnDegradationHook {
             degraded_model: None,
             reason: "Budget threshold exceeded".to_string(),
             triggered_at: chrono::Utc::now().to_rfc3339(),
-            constraint_snapshot: trace.constraints_applied.as_ref().map(|c| serde_json::to_value(c).unwrap_or_default()),
+            constraint_snapshot: trace
+                .constraints_applied
+                .as_ref()
+                .map(|c| serde_json::to_value(c).unwrap_or_default()),
         };
 
         if let Some(ref mut observations) = trace.observations {
@@ -1115,7 +1171,10 @@ impl Hook for OnActivePreventionHookEnhanced {
                 trigger_type: SafetyTrigger::ActivePrevention,
                 severity: Severity::Medium,
                 action_taken: SafetyAction::Blocked,
-                content_hash: format!("sha256:{}", hex::encode(Sha256::digest(prevention_event.blocked_token.as_bytes()))),
+                content_hash: format!(
+                    "sha256:{}",
+                    hex::encode(Sha256::digest(prevention_event.blocked_token.as_bytes()))
+                ),
                 asi_risk_id: Some(crate::types::OwaspAsiRisk::AgentGoalHijack),
                 timestamp: chrono::Utc::now().to_rfc3339(),
             };
@@ -1135,7 +1194,10 @@ impl Hook for OnActivePreventionHookEnhanced {
         trace.extensions = Some(extensions);
 
         if self.prevention_history.len() >= self.block_threshold {
-            return HookResult::Abort(format!("Active prevention threshold exceeded: {} blocks", self.block_threshold));
+            return HookResult::Abort(format!(
+                "Active prevention threshold exceeded: {} blocks",
+                self.block_threshold
+            ));
         }
 
         HookResult::Continue
@@ -1169,7 +1231,10 @@ impl fmt::Debug for PostStreamHookEnhanced {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PostStreamHookEnhanced")
             .field("enable_risk_scoring", &self.enable_risk_scoring)
-            .field("enable_cost_reconciliation", &self.enable_cost_reconciliation)
+            .field(
+                "enable_cost_reconciliation",
+                &self.enable_cost_reconciliation,
+            )
             .finish()
     }
 }
@@ -1179,7 +1244,9 @@ impl Hook for PostStreamHookEnhanced {
         if self.enable_cost_reconciliation {
             if let Some(ref mut obs) = trace.observations {
                 if let Some(ref constraints) = trace.constraints_applied {
-                    if let (Some(limit), Some(actual)) = (constraints.budget_limit_usd, obs.cost_estimated_usd) {
+                    if let (Some(limit), Some(actual)) =
+                        (constraints.budget_limit_usd, obs.cost_estimated_usd)
+                    {
                         if actual > limit {
                             obs.budget_awareness = Some(crate::types::trace::BudgetAwareness {
                                 sse_events: Some(vec![crate::types::trace::BudgetAwarenessEvent {

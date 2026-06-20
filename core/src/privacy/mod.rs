@@ -9,5 +9,5 @@ pub mod masking;
 /// 差分隐私预算管理
 pub mod dp_budget;
 
-pub use masking::*;
 pub use dp_budget::*;
+pub use masking::*;

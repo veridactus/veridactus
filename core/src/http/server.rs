@@ -20,15 +20,14 @@ use axum::{
     Json, Router,
 };
 // use base64::Engine; // unused
+use regex::Regex;
 use reqwest::Client as HttpClient;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tracing::{info, warn};
-use regex::Regex;
 
-use sha2::Digest;
 use crate::agent_chain::AgentExecutionChainManager;
 use crate::audit::token::AuditTokenValidator;
 use crate::auth::keys::ApiKeyManager;
@@ -36,13 +35,15 @@ use crate::compliance::ComplianceMapper;
 use crate::crypto::signature::generate_l0_proof;
 use crate::gdpr::{DeletionRequest, DeletionType, GdprErasureManager};
 use crate::http::error_handler::build_error_response;
-use crate::http::headers::{parse_veridactus_headers, VeridactusRequestHeaders, VeridactusResponseHeaders};
+use crate::http::headers::{
+    parse_veridactus_headers, VeridactusRequestHeaders, VeridactusResponseHeaders,
+};
 use crate::observability::otel::OtelTracer;
 use crate::store::{InMemoryTraceStore, TraceStore};
 use crate::types::constraints::{
-    ActivePrevention, AdaptiveState, BudgetStrategy, ConflictType, ConstraintsApplied,
-    DegradeAction, DegradeActionType, InstructionHierarchyMode, PolicyEvaluation, 
-    PrivacyLevel, ReproducibilityMode, check_constraint_conflicts,
+    check_constraint_conflicts, ActivePrevention, AdaptiveState, BudgetStrategy, ConflictType,
+    ConstraintsApplied, DegradeAction, DegradeActionType, InstructionHierarchyMode,
+    PolicyEvaluation, PrivacyLevel, ReproducibilityMode,
 };
 use crate::types::error::{ErrorObject, ErrorResponse, VeridactusErrorCode};
 use crate::types::journal::{ExecutionJournal, JournalEventType};
@@ -50,6 +51,7 @@ use crate::types::trace::{
     CertifiedGuarantee, ExecutionState, Input, Output, StateTransition, Trace,
 };
 use crate::types::Action;
+use sha2::Digest;
 
 /// 模型路由配置
 #[derive(Debug, Clone)]
@@ -100,19 +102,17 @@ impl Default for ProxyConfig {
         Self {
             upstream_base_url: "https://open.bigmodel.cn".to_string(),
             default_model: "glm-5.1".to_string(),
-            model_routes: vec![
-                ModelRoute {
-                    name: "glm-5.1".to_string(),
-                    upstream_model: "glm-5.1".to_string(),
-                    upstream_endpoint: "/api/paas/v4/chat/completions".to_string(),
-                    is_default: true,
-                    upstream_url: Some("https://open.bigmodel.cn".to_string()),
-                    api_key: Some(zhipu_key),
-                    api_key_header: Some("Authorization".to_string()),
-                    use_proxy: false,
-                    proxy_url: None,
-                },
-            ],
+            model_routes: vec![ModelRoute {
+                name: "glm-5.1".to_string(),
+                upstream_model: "glm-5.1".to_string(),
+                upstream_endpoint: "/api/paas/v4/chat/completions".to_string(),
+                is_default: true,
+                upstream_url: Some("https://open.bigmodel.cn".to_string()),
+                api_key: Some(zhipu_key),
+                api_key_header: Some("Authorization".to_string()),
+                use_proxy: false,
+                proxy_url: None,
+            }],
             supported_versions: vec!["0.1".to_string(), "0.2".to_string()],
             detailed_errors: false,
             pipeline_plan: None,
@@ -150,7 +150,8 @@ impl AppState {
     pub fn new_with_defaults() -> Self {
         let upstream_key = crate::auth::keys::generate_upstream_key();
         let api_key_manager = Arc::new(std::sync::Mutex::new(ApiKeyManager::new(upstream_key)));
-        let trace_store: Arc<dyn crate::store::TraceStore> = Arc::new(crate::store::InMemoryTraceStore::new());
+        let trace_store: Arc<dyn crate::store::TraceStore> =
+            Arc::new(crate::store::InMemoryTraceStore::new());
 
         // 生成一个测试用密钥
         {
@@ -160,7 +161,7 @@ impl AppState {
 
         Self {
             audit_token_validator: Arc::new(AuditTokenValidator::new(vec![
-                "test-audit-token".to_string(),
+                "test-audit-token".to_string()
             ])),
             api_key_manager,
             trace_store: trace_store.clone(),
@@ -169,9 +170,7 @@ impl AppState {
             idempotency_guard: Arc::new(crate::middleware::IdempotencyGuard::new(3600, 10000)),
             agent_chain_manager: Arc::new(AgentExecutionChainManager::new()),
             compliance_mapper: Arc::new(ComplianceMapper::new()),
-            gdpr_manager: Arc::new(GdprErasureManager::new(
-                Box::new(InMemoryGdprStorage)
-            )),
+            gdpr_manager: Arc::new(GdprErasureManager::new(Box::new(InMemoryGdprStorage))),
             hook_registry: Arc::new(crate::hooks::registry::HookRegistry::new()),
         }
     }
@@ -181,7 +180,10 @@ impl AppState {
 struct InMemoryGdprStorage;
 
 impl crate::gdpr::DeletionStorage for InMemoryGdprStorage {
-    fn delete_by_trace_id(&self, trace_id: &str) -> Result<crate::gdpr::DeletionResult, crate::gdpr::DeletionError> {
+    fn delete_by_trace_id(
+        &self,
+        trace_id: &str,
+    ) -> Result<crate::gdpr::DeletionResult, crate::gdpr::DeletionError> {
         Ok(crate::gdpr::DeletionResult {
             request_id: format!("del_{}", uuid::Uuid::new_v4()),
             success: true,
@@ -206,7 +208,10 @@ impl crate::gdpr::DeletionStorage for InMemoryGdprStorage {
             error_message: None,
         })
     }
-    fn delete_by_session_id(&self, session_id: &str) -> Result<crate::gdpr::DeletionResult, crate::gdpr::DeletionError> {
+    fn delete_by_session_id(
+        &self,
+        session_id: &str,
+    ) -> Result<crate::gdpr::DeletionResult, crate::gdpr::DeletionError> {
         Ok(crate::gdpr::DeletionResult {
             request_id: format!("del_{}", uuid::Uuid::new_v4()),
             success: true,
@@ -231,7 +236,10 @@ impl crate::gdpr::DeletionStorage for InMemoryGdprStorage {
             error_message: None,
         })
     }
-    fn delete_by_user_id(&self, user_id: &str) -> Result<crate::gdpr::DeletionResult, crate::gdpr::DeletionError> {
+    fn delete_by_user_id(
+        &self,
+        user_id: &str,
+    ) -> Result<crate::gdpr::DeletionResult, crate::gdpr::DeletionError> {
         Ok(crate::gdpr::DeletionResult {
             request_id: format!("del_{}", uuid::Uuid::new_v4()),
             success: true,
@@ -256,9 +264,19 @@ impl crate::gdpr::DeletionStorage for InMemoryGdprStorage {
             error_message: None,
         })
     }
-    fn retain_signature(&self, _trace_id: &str, _audit_signature: &str) -> Result<(), crate::gdpr::DeletionError> { Ok(()) }
-    fn get_deletion_log(&self, _request_id: &str) -> Option<crate::gdpr::DeletionAuditEntry> { None }
-    fn list_deletion_logs(&self, _limit: usize) -> Vec<crate::gdpr::DeletionAuditEntry> { Vec::new() }
+    fn retain_signature(
+        &self,
+        _trace_id: &str,
+        _audit_signature: &str,
+    ) -> Result<(), crate::gdpr::DeletionError> {
+        Ok(())
+    }
+    fn get_deletion_log(&self, _request_id: &str) -> Option<crate::gdpr::DeletionAuditEntry> {
+        None
+    }
+    fn list_deletion_logs(&self, _limit: usize) -> Vec<crate::gdpr::DeletionAuditEntry> {
+        Vec::new()
+    }
 }
 
 /// 创建 VERIDACTUS HTTP/SSE 服务器路由
@@ -276,8 +294,14 @@ pub fn create_router(state: AppState) -> Router {
         .route("/v1/replay/branches", get(list_replay_branches))
         .route("/v1/replay/branches", post(create_replay_branch))
         .route("/v1/replay/branches/:branch_id", get(get_replay_branch))
-        .route("/v1/replay/branches/:branch_id", delete(delete_replay_branch))
-        .route("/v1/replay/branches/:source_id/merge/:target_id", post(merge_replay_branch))
+        .route(
+            "/v1/replay/branches/:branch_id",
+            delete(delete_replay_branch),
+        )
+        .route(
+            "/v1/replay/branches/:source_id/merge/:target_id",
+            post(merge_replay_branch),
+        )
         // 批量操作端点
         .route("/v1/traces/batch", post(batch_operations))
         // 实时指标端点
@@ -288,17 +312,26 @@ pub fn create_router(state: AppState) -> Router {
         .route("/v1/admin/config/sync", post(handle_config_sync))
         // GDPR 删除端点（§8.7）
         .route("/v1/gdpr/delete", post(handle_gdpr_deletion))
-        .route("/v1/gdpr/deletion-proof/:request_id", get(get_gdpr_deletion_proof))
+        .route(
+            "/v1/gdpr/deletion-proof/:request_id",
+            get(get_gdpr_deletion_proof),
+        )
         .route("/v1/gdpr/deletion-history", get(list_gdpr_deletion_history))
         // 合规端点（§7.5）
-        .route("/v1/compliance/report/:trace_id", get(get_compliance_report))
+        .route(
+            "/v1/compliance/report/:trace_id",
+            get(get_compliance_report),
+        )
         // 主动预防端点（§5.3.2, §8.4）
         .route("/v1/prevention/stats", get(get_prevention_stats))
         // Prometheus 指标端点（§10.3.4）
         .route("/metrics", get(metrics_handler))
         .route("/v1/audit/log", get(audit_log_handler))
         // Extension Discovery 端点（§A.4）
-        .route("/.well-known/veridactus-extensions.json", get(handle_extension_discovery))
+        .route(
+            "/.well-known/veridactus-extensions.json",
+            get(handle_extension_discovery),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             request_logging_middleware,
@@ -343,7 +376,8 @@ async fn handle_config_sync(
     State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let change_type = payload.get("change_type")
+    let change_type = payload
+        .get("change_type")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
     let data = payload.get("data");
@@ -358,15 +392,42 @@ async fn handle_config_sync(
                 let mut default_model = config.default_model.clone();
 
                 for model_data in models_array {
-                    let name = model_data.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                    let upstream_url = model_data.get("upstream_url").and_then(|v| v.as_str()).unwrap_or("");
-                    let upstream_model = model_data.get("upstream_model").and_then(|v| v.as_str()).unwrap_or(name);
-                    let api_key = model_data.get("api_key").and_then(|v| v.as_str()).map(|s| s.to_string());
-                    let api_key_header = model_data.get("api_key_header").and_then(|v| v.as_str()).map(|s| s.to_string());
-                    let is_default = model_data.get("is_default").and_then(|v| v.as_bool()).unwrap_or(false);
-                    let use_proxy = model_data.get("use_proxy").and_then(|v| v.as_bool()).unwrap_or(false);
-                    let proxy_url = model_data.get("proxy_url").and_then(|v| v.as_str()).map(|s| s.to_string());
-                    let status = model_data.get("status").and_then(|v| v.as_str()).unwrap_or("active");
+                    let name = model_data
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let upstream_url = model_data
+                        .get("upstream_url")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let upstream_model = model_data
+                        .get("upstream_model")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(name);
+                    let api_key = model_data
+                        .get("api_key")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let api_key_header = model_data
+                        .get("api_key_header")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let is_default = model_data
+                        .get("is_default")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    let use_proxy = model_data
+                        .get("use_proxy")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    let proxy_url = model_data
+                        .get("proxy_url")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let status = model_data
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("active");
 
                     if status != "active" || name.is_empty() || upstream_url.is_empty() {
                         continue;
@@ -404,7 +465,11 @@ async fn handle_config_sync(
 
                 config.model_routes = routes;
                 config.default_model = default_model;
-                info!("模型配置已通过推送更新: {} models, 默认: {}", config.model_routes.len(), config.default_model);
+                info!(
+                    "模型配置已通过推送更新: {} models, 默认: {}",
+                    config.model_routes.len(),
+                    config.default_model
+                );
             }
         }
         "pipeline" => {
@@ -412,8 +477,14 @@ async fn handle_config_sync(
             if let Some(pipelines) = data.and_then(|d| d.as_array()) {
                 info!("收到流水线配置推送，共 {} pipelines", pipelines.len());
                 if let Some(first) = pipelines.first() {
-                    if let Ok(plan) = serde_json::from_value::<crate::pipeline::config::ExecutionPlan>(first.clone()) {
-                        info!("激活流水线: plan_id={}, {} 阶段", plan.plan_id, plan.stages.len());
+                    if let Ok(plan) = serde_json::from_value::<crate::pipeline::config::ExecutionPlan>(
+                        first.clone(),
+                    ) {
+                        info!(
+                            "激活流水线: plan_id={}, {} 阶段",
+                            plan.plan_id,
+                            plan.stages.len()
+                        );
                         let mut config = state.config.write().await;
                         config.pipeline_plan = Some(plan);
                     }
@@ -425,7 +496,9 @@ async fn handle_config_sync(
         }
     }
 
-    Ok(Json(serde_json::json!({"status": "ok", "change_type": change_type})))
+    Ok(Json(
+        serde_json::json!({"status": "ok", "change_type": change_type}),
+    ))
 }
 
 /// 列出 Trace (支持 ?id=uuid 查询单个 Trace)
@@ -496,10 +569,7 @@ async fn get_trace(
 }
 
 /// 请求日志中间件
-async fn request_logging_middleware(
-    request: Request,
-    next: middleware::Next,
-) -> Response {
+async fn request_logging_middleware(request: Request, next: middleware::Next) -> Response {
     let method = request.method().clone();
     let uri = request.uri().clone();
     info!("[VERIDACTUS] Received request: {} {}", method, uri);
@@ -516,62 +586,104 @@ fn build_compliance_trace_data(
 ) -> HashMap<String, serde_json::Value> {
     let mut data = HashMap::new();
     // 基础标识字段
-    data.insert("trace_id".to_string(), serde_json::Value::String(trace.trace_id.to_string()));
-    data.insert("output.response".to_string(), serde_json::Value::String(content.to_string()));
+    data.insert(
+        "trace_id".to_string(),
+        serde_json::Value::String(trace.trace_id.to_string()),
+    );
+    data.insert(
+        "output.response".to_string(),
+        serde_json::Value::String(content.to_string()),
+    );
     // 隐私级别
-    data.insert("constraints_applied.privacy_level".to_string(),
-        serde_json::Value::String(format!("{:?}", privacy_level)));
+    data.insert(
+        "constraints_applied.privacy_level".to_string(),
+        serde_json::Value::String(format!("{:?}", privacy_level)),
+    );
     // 证明链
-    data.insert("proof_chain".to_string(), serde_json::to_value(&trace.proofs).unwrap_or_default());
+    data.insert(
+        "proof_chain".to_string(),
+        serde_json::to_value(&trace.proofs).unwrap_or_default(),
+    );
     // 守卫和策略
     if let Some(ref ca) = trace.constraints_applied {
         if let Some(ref guards) = ca.guardrails_active {
-            data.insert("constraints_applied.guardrails_active".to_string(),
-                serde_json::to_value(guards).unwrap_or_default());
+            data.insert(
+                "constraints_applied.guardrails_active".to_string(),
+                serde_json::to_value(guards).unwrap_or_default(),
+            );
         }
-        data.insert("constraints_applied.policy_evaluation".to_string(),
-            serde_json::to_value(&ca.policy_evaluation).unwrap_or_default());
+        data.insert(
+            "constraints_applied.policy_evaluation".to_string(),
+            serde_json::to_value(&ca.policy_evaluation).unwrap_or_default(),
+        );
     }
     // 观测数据
     if let Some(ref obs) = trace.observations {
         if let Some(ref monitoring) = obs.monitoring {
             if let Some(score) = monitoring.anomaly_score {
-                data.insert("observations.risk_score".to_string(), serde_json::Value::Number(
-                    serde_json::Number::from_f64(score).unwrap_or(serde_json::Number::from(0))));
+                data.insert(
+                    "observations.risk_score".to_string(),
+                    serde_json::Value::Number(
+                        serde_json::Number::from_f64(score).unwrap_or(serde_json::Number::from(0)),
+                    ),
+                );
             }
         }
         if obs.fairness_check.is_some() {
-            data.insert("observations.fairness_check".to_string(),
-                serde_json::Value::String("present".to_string()));
+            data.insert(
+                "observations.fairness_check".to_string(),
+                serde_json::Value::String("present".to_string()),
+            );
         }
     }
     // TTL 和元数据
     if let Some(ref ttl) = trace.ttl_expire_at {
-        data.insert("metadata.ttl_expire_at".to_string(), serde_json::Value::String(ttl.clone()));
+        data.insert(
+            "metadata.ttl_expire_at".to_string(),
+            serde_json::Value::String(ttl.clone()),
+        );
     }
     // 布尔标记字段（合规映射器中用于存在性检查，设置为"present"即可通过 Exists 检查）
-    data.insert("observations.human_in_the_loop".to_string(),
-        serde_json::Value::String("not_applicable".to_string()));
-    data.insert("metadata.data_subject_rights".to_string(),
-        serde_json::Value::String("not_applicable".to_string()));
-    data.insert("observations.data_processing_notice".to_string(),
-        serde_json::Value::String("not_applicable".to_string()));
+    data.insert(
+        "observations.human_in_the_loop".to_string(),
+        serde_json::Value::String("not_applicable".to_string()),
+    );
+    data.insert(
+        "metadata.data_subject_rights".to_string(),
+        serde_json::Value::String("not_applicable".to_string()),
+    );
+    data.insert(
+        "observations.data_processing_notice".to_string(),
+        serde_json::Value::String("not_applicable".to_string()),
+    );
     data
 }
 
 /// 从已存储的 Trace 构建合规映射所需数据
 fn build_compliance_trace_data_from_stored(trace: &Trace) -> HashMap<String, serde_json::Value> {
-    let content = trace.output.as_ref()
+    let content = trace
+        .output
+        .as_ref()
         .and_then(|o| o.response.as_ref())
         .and_then(|r| r.as_str())
         .unwrap_or("");
-    let privacy = trace.constraints_applied.as_ref()
+    let privacy = trace
+        .constraints_applied
+        .as_ref()
         .and_then(|c| c.privacy_level.as_ref())
         .map(|p| match p {
-            crate::types::constraints::PrivacyLevel::Raw => crate::types::constraints::PrivacyLevel::Raw,
-            crate::types::constraints::PrivacyLevel::Masked => crate::types::constraints::PrivacyLevel::Masked,
-            crate::types::constraints::PrivacyLevel::HashOnly => crate::types::constraints::PrivacyLevel::HashOnly,
-            crate::types::constraints::PrivacyLevel::TeePrivate => crate::types::constraints::PrivacyLevel::TeePrivate,
+            crate::types::constraints::PrivacyLevel::Raw => {
+                crate::types::constraints::PrivacyLevel::Raw
+            }
+            crate::types::constraints::PrivacyLevel::Masked => {
+                crate::types::constraints::PrivacyLevel::Masked
+            }
+            crate::types::constraints::PrivacyLevel::HashOnly => {
+                crate::types::constraints::PrivacyLevel::HashOnly
+            }
+            crate::types::constraints::PrivacyLevel::TeePrivate => {
+                crate::types::constraints::PrivacyLevel::TeePrivate
+            }
         })
         .unwrap_or(crate::types::constraints::PrivacyLevel::Raw);
     build_compliance_trace_data(trace, content, &privacy)
@@ -586,7 +698,9 @@ async fn handle_chat_completion(
     let (parts, body) = request.into_parts();
 
     // ===== 1.1 幂等键检查（§11.4）=====
-    let idempotency_key = parts.headers.get("Idempotency-Key")
+    let idempotency_key = parts
+        .headers
+        .get("Idempotency-Key")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
     // 检查 trace_id 是否已处理
@@ -634,28 +748,29 @@ async fn handle_chat_completion(
         && veridactus_headers.trust_delegation_token.is_none();
 
     // ===== 3. API 密钥验证（Passthrough 模式跳过）=====
-    let auth_header = parts.headers.get("authorization").and_then(|v| v.to_str().ok());
+    let auth_header = parts
+        .headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok());
     let tenant_id = if is_passthrough {
         info!("Passthrough mode: skipping auth (Sec 4.1.1)");
         "passthrough".to_string()
     } else {
         match auth_header {
-            Some(token) => {
-                match state.api_key_manager.lock().unwrap().validate(token) {
-                    Some(tenant) => tenant.to_string(),
-                    None => {
-                        warn!("无效的 API 密钥");
-                        let _j = ExecutionJournal::new(uuid::Uuid::new_v4(), "unknown");
-                        return Err(build_error_response(
-                            Some(&parts.headers),
-                            VeridactusErrorCode::AuthRequired,
-                            &_j,
-                            &state.audit_token_validator,
-                            "unknown",
-                        ));
-                    }
+            Some(token) => match state.api_key_manager.lock().unwrap().validate(token) {
+                Some(tenant) => tenant.to_string(),
+                None => {
+                    warn!("无效的 API 密钥");
+                    let _j = ExecutionJournal::new(uuid::Uuid::new_v4(), "unknown");
+                    return Err(build_error_response(
+                        Some(&parts.headers),
+                        VeridactusErrorCode::AuthRequired,
+                        &_j,
+                        &state.audit_token_validator,
+                        "unknown",
+                    ));
                 }
-            }
+            },
             None => {
                 warn!("Missing Authorization header (non-Passthrough mode)");
                 let _j = ExecutionJournal::new(uuid::Uuid::new_v4(), "unknown");
@@ -671,18 +786,16 @@ async fn handle_chat_completion(
     };
 
     // ===== 4. 解析请求体 =====
-    let body_bytes = axum::body::to_bytes(body, 1024 * 1024)
-        .await
-        .map_err(|_| {
-            let _j = ExecutionJournal::new(uuid::Uuid::new_v4(), &tenant_id);
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new_minimal(
-                    "请求体读取失败",
-                    VeridactusErrorCode::InvalidConstraint,
-                )),
-            )
-        })?;
+    let body_bytes = axum::body::to_bytes(body, 1024 * 1024).await.map_err(|_| {
+        let _j = ExecutionJournal::new(uuid::Uuid::new_v4(), &tenant_id);
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new_minimal(
+                "请求体读取失败",
+                VeridactusErrorCode::InvalidConstraint,
+            )),
+        )
+    })?;
 
     let body_str = String::from_utf8_lossy(&body_bytes);
     let body_json: serde_json::Value = serde_json::from_str(&body_str).map_err(|_| {
@@ -756,7 +869,10 @@ async fn handle_chat_completion(
     journal.append_event(JournalEventType::RequestParsed {
         model: route.name.clone(),
         temperature: body_json.get("temperature").and_then(|v| v.as_f64()),
-        max_tokens: body_json.get("max_tokens").and_then(|v| v.as_u64()).map(|v| v as u32),
+        max_tokens: body_json
+            .get("max_tokens")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32),
     });
 
     // ===== 6. 版本协商 =====
@@ -885,7 +1001,8 @@ async fn handle_chat_completion(
         let token_bytes = base64::Engine::decode(
             &base64::engine::general_purpose::STANDARD,
             delegation_token_b64,
-        ).map_err(|_| {
+        )
+        .map_err(|_| {
             build_error_response(
                 Some(&parts.headers),
                 VeridactusErrorCode::InvalidDelegation,
@@ -920,29 +1037,33 @@ async fn handle_chat_completion(
         // 使用复合验证器验证令牌
         let verifier = crate::delegation::validator::CompositeAttestationVerifier::new();
         // 要求至少 Ed25519 签名验证
-        let required_types = vec![
-            crate::delegation::validator::AttestationType::Ed25519 {
-                public_key: String::new(),
-            },
-        ];
+        let required_types = vec![crate::delegation::validator::AttestationType::Ed25519 {
+            public_key: String::new(),
+        }];
 
         match verifier.verify(&delegation_token, &required_types) {
             Ok(()) => {
-                info!("委托令牌验证通过: issuer={}, subject={}",
-                    delegation_token.issuer, delegation_token.subject);
+                info!(
+                    "委托令牌验证通过: issuer={}, subject={}",
+                    delegation_token.issuer, delegation_token.subject
+                );
 
                 // 记录委托链到 Trace（§1.6.3）
                 trace.delegation_chain = Some(crate::types::trace::DelegationChain {
                     root_principal: delegation_token.issuer.clone(),
-                    delegation_path: delegation_token.attestations.iter().map(|_a| {
-                        serde_json::json!({
-                            "from": delegation_token.issuer,
-                            "to": delegation_token.subject,
-                            "capability": delegation_token.capabilities,
-                            "grant_constraints_hash": delegation_token.grant_constraints_hash,
-                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                    delegation_path: delegation_token
+                        .attestations
+                        .iter()
+                        .map(|_a| {
+                            serde_json::json!({
+                                "from": delegation_token.issuer,
+                                "to": delegation_token.subject,
+                                "capability": delegation_token.capabilities,
+                                "grant_constraints_hash": delegation_token.grant_constraints_hash,
+                                "timestamp": chrono::Utc::now().to_rfc3339(),
+                            })
                         })
-                    }).collect(),
+                        .collect(),
                     chain_merkle_root: delegation_token.chain_merkle_root,
                 });
 
@@ -960,8 +1081,9 @@ async fn handle_chat_completion(
                 return Err(build_error_response(
                     Some(&parts.headers),
                     match e {
-                        crate::delegation::validator::AttestationError::TokenExpired =>
-                            VeridactusErrorCode::DelegationDenied,
+                        crate::delegation::validator::AttestationError::TokenExpired => {
+                            VeridactusErrorCode::DelegationDenied
+                        }
                         _ => VeridactusErrorCode::InvalidDelegation,
                     },
                     &journal,
@@ -979,7 +1101,9 @@ async fn handle_chat_completion(
     use crate::pipeline::config::RuntimeCapabilities;
 
     let server_capabilities = RuntimeCapabilities {
-        protocol_version: config.supported_versions.first()
+        protocol_version: config
+            .supported_versions
+            .first()
             .cloned()
             .unwrap_or_else(|| "0.2.1".to_string()),
         capabilities: default_server_capabilities(),
@@ -1010,18 +1134,28 @@ async fn handle_chat_completion(
     // 支持两种方式声明 DSL 策略：
     // 1. 请求体中的 "veridactus_dsl" 字段（YAML/JSON 字符串）
     // 2. VERIDACTUS-Policy-Ref 头部（远程策略 URL，当前为存根）
-    let dsl_constraints = if let Some(dsl_yaml) = body_json.get("veridactus_dsl").and_then(|v| v.as_str()) {
+    let dsl_constraints = if let Some(dsl_yaml) =
+        body_json.get("veridactus_dsl").and_then(|v| v.as_str())
+    {
         info!("检测到内联 DSL 策略，编译中...");
         match crate::governance_dsl::parser::GovernanceDsl::parse(dsl_yaml) {
             Ok(dsl) => {
                 let compiler = crate::governance_dsl::compiler::DslCompiler::new();
                 match compiler.compile(&dsl, &mut trace) {
                     Ok(c) => {
-                        info!("DSL 编译成功: {} policies, {} intents", dsl.policies.len(),
-                            dsl.intents.as_ref().map(|i| {
-                                [i.budget.is_some(), i.privacy.is_some(), i.safety.is_some()]
-                                    .iter().filter(|x| **x).count()
-                            }).unwrap_or(0));
+                        info!(
+                            "DSL 编译成功: {} policies, {} intents",
+                            dsl.policies.len(),
+                            dsl.intents
+                                .as_ref()
+                                .map(|i| {
+                                    [i.budget.is_some(), i.privacy.is_some(), i.safety.is_some()]
+                                        .iter()
+                                        .filter(|x| **x)
+                                        .count()
+                                })
+                                .unwrap_or(0)
+                        );
                         journal.append_event(JournalEventType::PluginDecision {
                             plugin_name: "governance_dsl".to_string(),
                             action: Action::Continue,
@@ -1039,7 +1173,9 @@ async fn handle_chat_completion(
                         return Err(build_error_response(
                             Some(&parts.headers),
                             VeridactusErrorCode::BadConstraintCombination,
-                            &journal, &state.audit_token_validator, &tenant_id,
+                            &journal,
+                            &state.audit_token_validator,
+                            &tenant_id,
                         ));
                     }
                 }
@@ -1049,7 +1185,9 @@ async fn handle_chat_completion(
                 return Err(build_error_response(
                     Some(&parts.headers),
                     VeridactusErrorCode::InvalidConstraint,
-                    &journal, &state.audit_token_validator, &tenant_id,
+                    &journal,
+                    &state.audit_token_validator,
+                    &tenant_id,
                 ));
             }
         }
@@ -1074,7 +1212,8 @@ async fn handle_chat_completion(
         _ => None,
     };
 
-    let reproducibility_mode = body_json.get("reproducibility")
+    let reproducibility_mode = body_json
+        .get("reproducibility")
         .and_then(|r| r.get("mode"))
         .and_then(|m| m.as_str())
         .map(|m| match m {
@@ -1083,7 +1222,8 @@ async fn handle_chat_completion(
             _ => ReproducibilityMode::None,
         });
 
-    let active_prevention = body_json.get("active_prevention")
+    let active_prevention = body_json
+        .get("active_prevention")
         .and_then(|ap| serde_json::from_value(ap.clone()).ok());
 
     let compliance_profile = veridactus_headers.compliance_profile.clone();
@@ -1115,24 +1255,34 @@ async fn handle_chat_completion(
     // ===== 7.4.2 记录合规配置到 Trace =====
     if let Some(ref profile) = compliance_profile {
         if profile.contains("EU_AI_ACT") {
-            let ca = trace.constraints_applied.get_or_insert_with(|| ConstraintsApplied {
-                budget_limit_usd: None, budget_actual_usd: None, budget_strategy: None,
-                privacy_level: None, privacy_masked_fields: None,
-                active_prevention: None, adaptive: None,
-                reproducibility_mode: None, reproducibility_seed: None, guardrails_active: None,
-                guardrails_strictness: None, instruction_hierarchy_mode: None,
-                policy_evaluation: None, degrade_action: None, dp_budget: None,
-                conflict_result: None,
-            });
+            let ca = trace
+                .constraints_applied
+                .get_or_insert_with(|| ConstraintsApplied {
+                    budget_limit_usd: None,
+                    budget_actual_usd: None,
+                    budget_strategy: None,
+                    privacy_level: None,
+                    privacy_masked_fields: None,
+                    active_prevention: None,
+                    adaptive: None,
+                    reproducibility_mode: None,
+                    reproducibility_seed: None,
+                    guardrails_active: None,
+                    guardrails_strictness: None,
+                    instruction_hierarchy_mode: None,
+                    policy_evaluation: None,
+                    degrade_action: None,
+                    dp_budget: None,
+                    conflict_result: None,
+                });
             if ca.privacy_level.is_none() {
                 ca.privacy_level = Some(PrivacyLevel::Masked);
             }
             if ca.instruction_hierarchy_mode.is_none() {
                 ca.instruction_hierarchy_mode = Some(InstructionHierarchyMode::Strict);
             }
-            trace.ttl_expire_at = Some(
-                (chrono::Utc::now() + chrono::Duration::days(2555)).to_rfc3339()
-            );
+            trace.ttl_expire_at =
+                Some((chrono::Utc::now() + chrono::Duration::days(2555)).to_rfc3339());
         }
         if profile.contains("NIST_AI_600") {
             info!("  → NIST AI 600-1：公平性审计 + 风险文档");
@@ -1141,7 +1291,9 @@ async fn handle_chat_completion(
     }
 
     if conflict_result.has_conflicts {
-        let hard_conflicts: Vec<_> = conflict_result.conflicts.iter()
+        let hard_conflicts: Vec<_> = conflict_result
+            .conflicts
+            .iter()
             .filter(|c| c.conflict_type == ConflictType::HardConflict)
             .collect();
 
@@ -1211,7 +1363,8 @@ async fn handle_chat_completion(
             ));
         }
         // 增强预算预检：基于 max_tokens 和输入长度预估成本
-        let max_tokens = body_json.get("max_tokens")
+        let max_tokens = body_json
+            .get("max_tokens")
             .and_then(|t| t.as_u64())
             .unwrap_or(1024);
         let estimated_input_tokens = (body_str.len() as u64).max(10) / 4;
@@ -1234,7 +1387,10 @@ async fn handle_chat_completion(
                 &tenant_id,
             ));
         }
-        info!("预算预检通过: 预估成本 ${:.6} <= 预算限制 ${:.6}", estimated_cost, limit);
+        info!(
+            "预算预检通过: 预估成本 ${:.6} <= 预算限制 ${:.6}",
+            estimated_cost, limit
+        );
 
         // ===== degrade_model: 预算不足时自动切换更便宜模型（§5.3.1）=====
         if let Some(ref strategy) = veridactus_headers.budget_strategy {
@@ -1246,16 +1402,19 @@ async fn handle_chat_completion(
                 if route_estimated > limit * 0.5 {
                     // 寻找更便宜的模型（先克隆避免借用冲突）
                     let all_routes = config.model_routes.clone();
-                    let fallback = all_routes.iter()
-                        .filter(|r| r.name != route.name)
-                        .min_by(|a, b| {
-                            let ca = token_cost_for_model(&a.name);
-                            let cb = token_cost_for_model(&b.name);
-                            ca.partial_cmp(&cb).unwrap_or(std::cmp::Ordering::Equal)
-                        });
+                    let fallback =
+                        all_routes
+                            .iter()
+                            .filter(|r| r.name != route.name)
+                            .min_by(|a, b| {
+                                let ca = token_cost_for_model(&a.name);
+                                let cb = token_cost_for_model(&b.name);
+                                ca.partial_cmp(&cb).unwrap_or(std::cmp::Ordering::Equal)
+                            });
 
                     if let Some(fb) = fallback {
-                        let fb_cost = token_cost_for_model(&fb.name) * estimated_total_tokens as f64;
+                        let fb_cost =
+                            token_cost_for_model(&fb.name) * estimated_total_tokens as f64;
                         if fb_cost < route_estimated {
                             info!(
                                 "degrade_model: {}→{} (cost ${:.6}→${:.6})",
@@ -1295,7 +1454,10 @@ async fn handle_chat_completion(
     // 协议 §4.1.1: passthrough 模式 MUST NOT 强制执行任何约束或拦截
     // 治理模式（有 VERIDACTUS 头部）：执行完整管道
     if !is_passthrough {
-        info!("Governance mode: full audit pipeline - model={}", route.name);
+        info!(
+            "Governance mode: full audit pipeline - model={}",
+            route.name
+        );
 
         let pii_detector = PIIDetector::new();
         let mut processed_body = body_json.clone();
@@ -1326,7 +1488,10 @@ async fn handle_chat_completion(
         let pipeline_registry = {
             let mut registry = crate::plugin::PluginRegistry::new();
             // 注册全部 4 个生产级插件
-            registry.register(Box::new(crate::plugin::BudgetGuardPlugin::new(100.0, "hard_stop")));
+            registry.register(Box::new(crate::plugin::BudgetGuardPlugin::new(
+                100.0,
+                "hard_stop",
+            )));
             registry.register(Box::new(crate::plugin::PiiDetectorPlugin::new()));
             registry.register(Box::new(crate::plugin::InputSanitizerPlugin::new()));
             registry.register(Box::new(crate::plugin::ResponseValidatorPlugin::new()));
@@ -1338,23 +1503,29 @@ async fn handle_chat_completion(
         };
         let pipeline_plan = {
             let config = state.config.read().await;
-            config.pipeline_plan.clone().unwrap_or_else(|| {
-                crate::pipeline::config::ExecutionPlan::default_plan()
-            })
+            config
+                .pipeline_plan
+                .clone()
+                .unwrap_or_else(|| crate::pipeline::config::ExecutionPlan::default_plan())
         };
         if !pipeline_plan.stages.is_empty() {
             let mut req_ctx = crate::plugin::RequestContext {
-                headers: header_map.iter().map(|(k,v)| (k.clone(), v.clone())).collect(),
+                headers: header_map
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
                 body: Some(body_str.to_string()),
                 trace_id,
                 tenant_id: tenant_id.clone(),
-                plugin_config: None,  // executor will set this per-plugin
+                plugin_config: None, // executor will set this per-plugin
             };
             let executor = crate::pipeline::executor::PipelineExecutor::new(
                 pipeline_registry.clone(),
                 pipeline_plan.clone(),
             );
-            let result = executor.execute_pre_request(&mut req_ctx, &mut journal).await;
+            let result = executor
+                .execute_pre_request(&mut req_ctx, &mut journal)
+                .await;
             if result.action == Action::Block {
                 warn!("Pipeline pre_request 阻断请求: {:?}", result.block_reason);
                 return Err(build_error_response(
@@ -1365,7 +1536,10 @@ async fn handle_chat_completion(
                     &tenant_id,
                 ));
             }
-            info!("Pipeline pre_request 通过: {} checks passed", result.checks_passed.len());
+            info!(
+                "Pipeline pre_request 通过: {} checks passed",
+                result.checks_passed.len()
+            );
         }
 
         // ===== 钩子: pre_execute（§6.3）=====
@@ -1383,19 +1557,31 @@ async fn handle_chat_completion(
             let upstream_url = if let Some(ref url) = route.upstream_url {
                 format!("{}{}", url.trim_end_matches('/'), route.upstream_endpoint)
             } else {
-                format!("{}{}", config.upstream_base_url.trim_end_matches('/'), route.upstream_endpoint)
+                format!(
+                    "{}{}",
+                    config.upstream_base_url.trim_end_matches('/'),
+                    route.upstream_endpoint
+                )
             };
             drop(config);
             // 流式转发 — pipeline 已在 pre_request 阶段执行，流式过程中通过 SSE 传递
             let stream_budget = veridactus_headers.budget_limit;
-            let stream_awareness = veridactus_headers.budget_strategy.as_deref() == Some("awareness")
+            let stream_awareness = veridactus_headers.budget_strategy.as_deref()
+                == Some("awareness")
                 || veridactus_headers.budget_strategy.as_deref() == Some("adaptive");
             let effective_route = degraded_route.as_ref().unwrap_or(&route);
             let stream_result = forward_to_upstream_streaming(
-                &state, effective_route, &processed_body, &upstream_url,
-                &mut journal, &trace_id, &tenant_id,
-                stream_budget, stream_awareness,
-            ).await;
+                &state,
+                effective_route,
+                &processed_body,
+                &upstream_url,
+                &mut journal,
+                &trace_id,
+                &tenant_id,
+                stream_budget,
+                stream_awareness,
+            )
+            .await;
             match stream_result {
                 Ok(response) => {
                     info!("Governance streaming complete: trace_id={}", trace_id);
@@ -1428,7 +1614,8 @@ async fn handle_chat_completion(
         let start_time = std::time::Instant::now();
         // 使用降级模型（degrade_model 策略触发时）
         let effective_route = degraded_route.as_ref().unwrap_or(&route);
-        let upstream_result = forward_to_upstream_complete(&state, effective_route, &processed_body).await;
+        let upstream_result =
+            forward_to_upstream_complete(&state, effective_route, &processed_body).await;
         let latency_ms = start_time.elapsed().as_millis() as u64;
         METRICS.record_latency(latency_ms);
 
@@ -1448,45 +1635,59 @@ async fn handle_chat_completion(
                         "G2 输出过滤器检测到违规: trace_id={}, violations={:?}",
                         trace_id, filter_result.violations
                     );
-                    journal.append_event(JournalEventType::SafetyEvent(crate::types::SafetyEvent {
-                        trigger_type: crate::types::SafetyTrigger::G2OutputFilter,
-                        severity: crate::types::Severity::High,
-                        action_taken: crate::types::SafetyAction::Flagged,
-                        content_hash: sha2::Sha256::digest(output_content.as_bytes()).iter().map(|b| format!("{:02x}", b)).collect::<String>(),
-                        asi_risk_id: Some(crate::types::OwaspAsiRisk::AgentGoalHijack),
-                        timestamp: chrono::Utc::now().to_rfc3339(),
-                    }));
+                    journal.append_event(JournalEventType::SafetyEvent(
+                        crate::types::SafetyEvent {
+                            trigger_type: crate::types::SafetyTrigger::G2OutputFilter,
+                            severity: crate::types::Severity::High,
+                            action_taken: crate::types::SafetyAction::Flagged,
+                            content_hash: sha2::Sha256::digest(output_content.as_bytes())
+                                .iter()
+                                .map(|b| format!("{:02x}", b))
+                                .collect::<String>(),
+                            asi_risk_id: Some(crate::types::OwaspAsiRisk::AgentGoalHijack),
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                        },
+                    ));
                 }
 
                 // 非流式 constrained_decoding：扫描响应中是否包含禁止模式
-                let prevention = std::sync::Arc::new(
-                    crate::prevention::ConstrainedDecoder::new(
-                        std::sync::Arc::new(crate::prevention::PatternRegistry::default()),
-                    )
-                );
+                let prevention = std::sync::Arc::new(crate::prevention::ConstrainedDecoder::new(
+                    std::sync::Arc::new(crate::prevention::PatternRegistry::default()),
+                ));
                 let response_text = filter_result.filtered_text.clone();
                 let prevention_hit = prevention.check_text(&response_text);
                 if let Some(hit) = &prevention_hit {
-                    warn!("ConstrainedDecoder 在非流式响应中检测到禁止模式: trace_id={}, category={}", trace_id, hit.blocked_pattern_category);
-                    journal.append_event(JournalEventType::SafetyEvent(crate::types::SafetyEvent {
-                        trigger_type: crate::types::SafetyTrigger::G2OutputFilter,
-                        severity: crate::types::Severity::High,
-                        action_taken: crate::types::SafetyAction::Blocked,
-                        content_hash: sha2::Sha256::digest(response_text.as_bytes()).iter().map(|b| format!("{:02x}", b)).collect::<String>(),
-                        asi_risk_id: Some(crate::types::OwaspAsiRisk::AgentGoalHijack),
-                        timestamp: chrono::Utc::now().to_rfc3339(),
-                    }));
+                    warn!(
+                        "ConstrainedDecoder 在非流式响应中检测到禁止模式: trace_id={}, category={}",
+                        trace_id, hit.blocked_pattern_category
+                    );
+                    journal.append_event(JournalEventType::SafetyEvent(
+                        crate::types::SafetyEvent {
+                            trigger_type: crate::types::SafetyTrigger::G2OutputFilter,
+                            severity: crate::types::Severity::High,
+                            action_taken: crate::types::SafetyAction::Blocked,
+                            content_hash: sha2::Sha256::digest(response_text.as_bytes())
+                                .iter()
+                                .map(|b| format!("{:02x}", b))
+                                .collect::<String>(),
+                            asi_risk_id: Some(crate::types::OwaspAsiRisk::AgentGoalHijack),
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                        },
+                    ));
                 }
 
                 let total_tokens = upstream_usage
                     .as_ref()
                     .map(|u| u.total_tokens as u64)
-                    .or_else(|| extract_usage_from_response(&response_json).map(|u| u.total_tokens as u64));
+                    .or_else(|| {
+                        extract_usage_from_response(&response_json).map(|u| u.total_tokens as u64)
+                    });
 
                 let cost_estimated = estimate_cost(&total_tokens, &route.name);
                 let finish_reason = extract_finish_reason(&response_json);
 
-                let has_pii = pii_result.as_ref().map(|p| p.pii_detected).unwrap_or(false) || !input_pii_found.is_empty();
+                let has_pii = pii_result.as_ref().map(|p| p.pii_detected).unwrap_or(false)
+                    || !input_pii_found.is_empty();
 
                 // hash_only 隐私级别：将响应替换为 SHA-256 哈希（§8.1）
                 let is_hash_only = effective_privacy == PrivacyLevel::HashOnly;
@@ -1510,22 +1711,42 @@ async fn handle_chat_completion(
 
                 // 提取安全事件
                 let safety_events: Option<Vec<crate::types::SafetyEvent>> = {
-                    let events: Vec<_> = journal.events.iter()
-                        .filter_map(|e| if let JournalEventType::SafetyEvent(se) = &e.event_type { Some(se.clone()) } else { None })
+                    let events: Vec<_> = journal
+                        .events
+                        .iter()
+                        .filter_map(|e| {
+                            if let JournalEventType::SafetyEvent(se) = &e.event_type {
+                                Some(se.clone())
+                            } else {
+                                None
+                            }
+                        })
                         .collect();
-                    if events.is_empty() { None } else { Some(events) }
+                    if events.is_empty() {
+                        None
+                    } else {
+                        Some(events)
+                    }
                 };
 
                 // 解析认证保证请求
-                let certified_guarantee = veridactus_headers.certified_guarantee.as_ref()
+                let certified_guarantee = veridactus_headers
+                    .certified_guarantee
+                    .as_ref()
                     .and_then(|h| parse_certified_guarantee(h));
 
                 // 执行公平性检查（§9.2）
                 // ===== 钩子: post_stream（§6.3）=====
-                let _hook_result = state.hook_registry.run_on_observation(&mut trace, &JournalEventType::StreamEnd { total_tokens: 0, finish_reason: "stop".to_string() });
+                let _hook_result = state.hook_registry.run_on_observation(
+                    &mut trace,
+                    &JournalEventType::StreamEnd {
+                        total_tokens: 0,
+                        finish_reason: "stop".to_string(),
+                    },
+                );
 
                 let fairness_check = perform_fairness_check(&trace);
-                
+
                 let observations = crate::types::trace::Observations {
                     tokens_count: total_tokens,
                     cost_estimated_usd: Some(cost_estimated),
@@ -1575,8 +1796,15 @@ async fn handle_chat_completion(
                     let mut c = ConstraintsApplied {
                         budget_limit_usd: dsl.budget_limit_usd.or(Some(0.0)),
                         budget_actual_usd: Some(cost_estimated),
-                        budget_strategy: dsl.budget_strategy.clone().or(Some(BudgetStrategy::HardStop)),
-                        privacy_level: dsl.privacy_level.clone().or(Some(if has_pii { PrivacyLevel::Masked } else { PrivacyLevel::Raw })),
+                        budget_strategy: dsl
+                            .budget_strategy
+                            .clone()
+                            .or(Some(BudgetStrategy::HardStop)),
+                        privacy_level: dsl.privacy_level.clone().or(Some(if has_pii {
+                            PrivacyLevel::Masked
+                        } else {
+                            PrivacyLevel::Raw
+                        })),
                         privacy_masked_fields: dsl.privacy_masked_fields.clone(),
                         active_prevention: dsl.active_prevention.clone(),
                         adaptive: dsl.adaptive.clone(),
@@ -1590,42 +1818,60 @@ async fn handle_chat_completion(
                         dp_budget: dsl.dp_budget.clone(),
                         conflict_result: None,
                     };
-                    if c.budget_limit_usd == Some(0.0) { c.budget_limit_usd = None; }
+                    if c.budget_limit_usd == Some(0.0) {
+                        c.budget_limit_usd = None;
+                    }
                     c
                 } else {
                     ConstraintsApplied {
                         budget_limit_usd: None,
                         budget_actual_usd: Some(cost_estimated),
                         budget_strategy: Some(crate::types::constraints::BudgetStrategy::HardStop),
-                        privacy_level: Some(if has_pii { crate::types::constraints::PrivacyLevel::Masked } else { crate::types::constraints::PrivacyLevel::Raw }),
+                        privacy_level: Some(if has_pii {
+                            crate::types::constraints::PrivacyLevel::Masked
+                        } else {
+                            crate::types::constraints::PrivacyLevel::Raw
+                        }),
                         privacy_masked_fields: Some(input_pii_found.clone()),
                         active_prevention: active_prevention.clone(),
                         adaptive: None,
-                        reproducibility_mode: Some(crate::types::constraints::ReproducibilityMode::None),
-                        reproducibility_seed: None, guardrails_active: Some(vec![]),
+                        reproducibility_mode: Some(
+                            crate::types::constraints::ReproducibilityMode::None,
+                        ),
+                        reproducibility_seed: None,
+                        guardrails_active: Some(vec![]),
                         guardrails_strictness: Some("none".to_string()),
-                        instruction_hierarchy_mode: Some(crate::types::constraints::InstructionHierarchyMode::Off),
-                        policy_evaluation: None, degrade_action: None, dp_budget: None,
+                        instruction_hierarchy_mode: Some(
+                            crate::types::constraints::InstructionHierarchyMode::Off,
+                        ),
+                        policy_evaluation: None,
+                        degrade_action: None,
+                        dp_budget: None,
                         conflict_result: None,
                     }
                 };
                 trace.constraints_applied = Some(merged_constraints);
 
                 // ===== 填充合规映射（§7.5）=====
-                let trace_data_map = build_compliance_trace_data(
-                    &trace, &output_content, &effective_privacy,
-                );
+                let trace_data_map =
+                    build_compliance_trace_data(&trace, &output_content, &effective_privacy);
                 let compliance_report = state.compliance_mapper.map_trace(&trace_data_map);
                 if !compliance_report.mappings.is_empty() {
-                    let cm: Vec<crate::types::trace::ComplianceMapping> = compliance_report.mappings.iter().map(|m| {
-                        crate::types::trace::ComplianceMapping {
+                    let cm: Vec<crate::types::trace::ComplianceMapping> = compliance_report
+                        .mappings
+                        .iter()
+                        .map(|m| crate::types::trace::ComplianceMapping {
                             regulation: m.regulation.clone(),
                             article: Some(m.article.clone()),
                             requirement: format!("{:?}", m.verification_method),
                             trace_field: format!("{:?}", m.verified_at),
-                            satisfaction: if m.compliant { "compliant".to_string() } else { "non_compliant".to_string() },
-                        }
-                    }).collect();
+                            satisfaction: if m.compliant {
+                                "compliant".to_string()
+                            } else {
+                                "non_compliant".to_string()
+                            },
+                        })
+                        .collect();
                     trace.compliance_mappings = Some(cm);
                 }
 
@@ -1651,7 +1897,9 @@ async fn handle_chat_completion(
                 }
 
                 let final_body = if has_pii {
-                    let masked_json = mask_response_pii(&serde_json::from_slice(&response_body).unwrap_or_default());
+                    let masked_json = mask_response_pii(
+                        &serde_json::from_slice(&response_body).unwrap_or_default(),
+                    );
                     serde_json::to_vec(&masked_json).unwrap_or_else(|_| response_body.to_vec())
                 } else {
                     response_body.to_vec()
@@ -1674,7 +1922,12 @@ async fn handle_chat_completion(
                     }
                 }
 
-                info!("治理模式 响应: trace_id={}, 状态码={}, cost={:.6}", trace_id, status.as_u16(), cost_estimated);
+                info!(
+                    "治理模式 响应: trace_id={}, 状态码={}, cost={:.6}",
+                    trace_id,
+                    status.as_u16(),
+                    cost_estimated
+                );
                 return Ok(response);
             }
             Err(e) => {
@@ -1725,55 +1978,84 @@ async fn handle_chat_completion(
         let upstream_url = if let Some(ref url) = route.upstream_url {
             format!("{}{}", url.trim_end_matches('/'), route.upstream_endpoint)
         } else {
-            format!("{}{}", config.upstream_base_url.trim_end_matches('/'), route.upstream_endpoint)
+            format!(
+                "{}{}",
+                config.upstream_base_url.trim_end_matches('/'),
+                route.upstream_endpoint
+            )
         };
         drop(config);
         let stream_result = forward_to_upstream_streaming(
-            &state, &route, &body_json, &upstream_url, &mut journal, &trace_id, &tenant_id,
-            None, false,  // passthrough: 无预算限制，无预算感知
-        ).await;
+            &state,
+            &route,
+            &body_json,
+            &upstream_url,
+            &mut journal,
+            &trace_id,
+            &tenant_id,
+            None,
+            false, // passthrough: 无预算限制，无预算感知
+        )
+        .await;
         match stream_result {
-            Ok(response) => { info!("Passthrough streaming done: trace_id={}", trace_id); return Ok(response); }
-            Err((status, error_response)) => { return Err((status, error_response)); }
+            Ok(response) => {
+                info!("Passthrough streaming done: trace_id={}", trace_id);
+                return Ok(response);
+            }
+            Err((status, error_response)) => {
+                return Err((status, error_response));
+            }
         }
     }
 
     // ===== 9.2 Passthrough: 非流式转发（§4.1.1: 不做约束/拦截，仅基础 Trace）=====
     let mut upstream_body = body_json.clone();
     if let Some(obj) = upstream_body.as_object_mut() {
-        obj.insert("model".to_string(), serde_json::Value::String(route.upstream_model.clone()));
+        obj.insert(
+            "model".to_string(),
+            serde_json::Value::String(route.upstream_model.clone()),
+        );
     }
 
     let config = state.config.read().await;
     let upstream_url = if let Some(ref url) = route.upstream_url {
         format!("{}{}", url.trim_end_matches('/'), route.upstream_endpoint)
     } else {
-        format!("{}{}", config.upstream_base_url.trim_end_matches('/'), route.upstream_endpoint)
+        format!(
+            "{}{}",
+            config.upstream_base_url.trim_end_matches('/'),
+            route.upstream_endpoint
+        )
     };
     drop(config);
 
     let start_time = std::time::Instant::now();
-    let mut request_builder = state.http_client.post(&upstream_url)
+    let mut request_builder = state
+        .http_client
+        .post(&upstream_url)
         .json(&upstream_body)
         .timeout(std::time::Duration::from_secs(120));
     // 添加 API Key 认证（上游 LLM 需要）
     if let Some(ref api_key) = route.api_key {
         if let Some(ref header) = route.api_key_header {
             if header.to_lowercase() == "authorization" {
-                request_builder = request_builder.header(header.as_str(), format!("Bearer {}", api_key));
+                request_builder =
+                    request_builder.header(header.as_str(), format!("Bearer {}", api_key));
             } else {
                 request_builder = request_builder.header(header.as_str(), api_key);
             }
         }
     }
-    let upstream_response = match request_builder.send().await
-    {
+    let upstream_response = match request_builder.send().await {
         Ok(resp) => resp,
         Err(e) => {
             warn!("Passthrough upstream request failed: {}", e);
             return Err(build_error_response(
-                Some(&parts.headers), VeridactusErrorCode::UpstreamDisconnect,
-                &journal, &state.audit_token_validator, &tenant_id,
+                Some(&parts.headers),
+                VeridactusErrorCode::UpstreamDisconnect,
+                &journal,
+                &state.audit_token_validator,
+                &tenant_id,
             ));
         }
     };
@@ -1785,50 +2067,93 @@ async fn handle_chat_completion(
     let upstream_body_str = String::from_utf8_lossy(&upstream_body_bytes);
 
     // ===== 9.3 Passthrough: 记录基础 Trace（§4.1.1: SHOULD still record a basic Trace）=====
-    let upstream_json: serde_json::Value = serde_json::from_str(&upstream_body_str).unwrap_or(serde_json::Value::Null);
-    let total_tokens = upstream_json.pointer("/usage/total_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u64;
-    let prompt_tokens = upstream_json.pointer("/usage/prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-    let completion_tokens = upstream_json.pointer("/usage/completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+    let upstream_json: serde_json::Value =
+        serde_json::from_str(&upstream_body_str).unwrap_or(serde_json::Value::Null);
+    let total_tokens = upstream_json
+        .pointer("/usage/total_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u64;
+    let prompt_tokens = upstream_json
+        .pointer("/usage/prompt_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let completion_tokens = upstream_json
+        .pointer("/usage/completion_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
     let actual_cost = calculate_cost(prompt_tokens, completion_tokens);
 
-    trace.execution_state = Some(if status.is_success() { ExecutionState::Finalized } else { ExecutionState::Failed });
+    trace.execution_state = Some(if status.is_success() {
+        ExecutionState::Finalized
+    } else {
+        ExecutionState::Failed
+    });
     trace.output = Some(Output {
         response: Some(upstream_json.clone()),
         truncated: false,
-        finish_reason: upstream_json.pointer("/choices/0/finish_reason").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        finish_reason: upstream_json
+            .pointer("/choices/0/finish_reason")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
     });
     trace.observations = Some(crate::types::trace::Observations {
         tokens_count: Some(total_tokens),
         cost_estimated_usd: Some(actual_cost),
         latency_ms: Some(latency_ms),
         state_transitions: Some(vec![
-            StateTransition { from: ExecutionState::Init, to: ExecutionState::Executing, timestamp: chrono::Utc::now().to_rfc3339(), transition_index: 1 },
-            StateTransition { from: ExecutionState::Executing, to: ExecutionState::Finalized, timestamp: chrono::Utc::now().to_rfc3339(), transition_index: 2 },
+            StateTransition {
+                from: ExecutionState::Init,
+                to: ExecutionState::Executing,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                transition_index: 1,
+            },
+            StateTransition {
+                from: ExecutionState::Executing,
+                to: ExecutionState::Finalized,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                transition_index: 2,
+            },
         ]),
-        error: None, monitoring: None, budget_awareness: None,
-        safety_events: None, red_team_events: None, certified_guarantee: None,
-        fairness_check: None, replay_snapshot: None, approval: None, _internal_metrics: None,
+        error: None,
+        monitoring: None,
+        budget_awareness: None,
+        safety_events: None,
+        red_team_events: None,
+        certified_guarantee: None,
+        fairness_check: None,
+        replay_snapshot: None,
+        approval: None,
+        _internal_metrics: None,
     });
     trace.constraints_applied = Some(ConstraintsApplied {
-        budget_limit_usd: None, budget_actual_usd: Some(actual_cost),
+        budget_limit_usd: None,
+        budget_actual_usd: Some(actual_cost),
         budget_strategy: Some(BudgetStrategy::HardStop),
-        privacy_level: Some(PrivacyLevel::Raw), privacy_masked_fields: None,
-        active_prevention: active_prevention.clone(), adaptive: None,
+        privacy_level: Some(PrivacyLevel::Raw),
+        privacy_masked_fields: None,
+        active_prevention: active_prevention.clone(),
+        adaptive: None,
         reproducibility_mode: Some(ReproducibilityMode::None),
-        reproducibility_seed: None, guardrails_active: None, guardrails_strictness: None,
+        reproducibility_seed: None,
+        guardrails_active: None,
+        guardrails_strictness: None,
         instruction_hierarchy_mode: Some(InstructionHierarchyMode::Off),
         policy_evaluation: Some(PolicyEvaluation {
             decision: Some("allow".to_string()),
             checks_passed: Some(vec!["passthrough".to_string()]),
             checks_failed: Some(vec![]),
-            negotiated_capabilities: None, degrade_action: None,
-            intent_resolution: None, escalation_trail: None, dsl_source_hash: None,
+            negotiated_capabilities: None,
+            degrade_action: None,
+            intent_resolution: None,
+            escalation_trail: None,
+            dsl_source_hash: None,
             current_risk_score: Some(0.0),
             risk_factor_contributions: Some(vec![]),
             adaptive_state: Some(AdaptiveState::SoftAlert),
             prevention_events_count: Some(0),
         }),
-        degrade_action: None, dp_budget: None,
+        degrade_action: None,
+        dp_budget: None,
         conflict_result: None,
     });
 
@@ -1839,8 +2164,10 @@ async fn handle_chat_completion(
 
     // 构建响应
     let resp_headers = VeridactusResponseHeaders {
-        version: "0.2".to_string(), trace_id: trace_id.to_string(),
-        cost_consumed: Some(actual_cost), proof_levels: Some(vec!["L0".to_string()]),
+        version: "0.2".to_string(),
+        trace_id: trace_id.to_string(),
+        cost_consumed: Some(actual_cost),
+        proof_levels: Some(vec!["L0".to_string()]),
         truncated: Some(false),
         ..Default::default()
     };
@@ -1857,12 +2184,21 @@ async fn handle_chat_completion(
         }
     }
 
-    info!("Passthrough complete: trace_id={}, status={}, cost={:.6}, latency={}ms", trace_id, status.as_u16(), actual_cost, latency_ms);
+    info!(
+        "Passthrough complete: trace_id={}, status={}, cost={:.6}, latency={}ms",
+        trace_id,
+        status.as_u16(),
+        actual_cost,
+        latency_ms
+    );
 
     // 幂等键记录
     if let Some(ref key) = idempotency_key {
         if let Ok(tid) = uuid::Uuid::parse_str(key) {
-            state.idempotency_guard.record(tid, response.status().as_u16(), Some(key)).await;
+            state
+                .idempotency_guard
+                .record(tid, response.status().as_u16(), Some(key))
+                .await;
         }
     }
 
@@ -1933,7 +2269,10 @@ async fn forward_to_upstream(
         .await
         .map_err(|e| {
             warn!("Passthrough Upstream forwarding failed: {}", e);
-            (StatusCode::BAD_GATEWAY, format!("Upstream LLM unavailable: {}", e))
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Upstream LLM unavailable: {}", e),
+            )
         })?;
 
     let status = response.status();
@@ -1978,7 +2317,10 @@ fn negotiate_version(
     // 如果客户端版本高于服务器最高版本，降级到服务器最高版本（§4.5）
     if client_ver > max_server_ver {
         // 主版本不同时降级并告警（§4.5 SHOULD negotiate not reject）
-        warn!("版本降级: 客户端 {} → 服务器 {}", client_ver, max_server_ver);
+        warn!(
+            "版本降级: 客户端 {} → 服务器 {}",
+            client_ver, max_server_ver
+        );
         return Ok(max_server_ver.to_string());
     }
 
@@ -2036,11 +2378,7 @@ impl PIIDetector {
                     let prefix: String = chars[0..2.min(char_len)].iter().collect();
                     let suffix: String = chars[char_len.saturating_sub(2)..].iter().collect();
                     let mask_len = char_len.min(8).max(4);
-                    let mask = format!("{}{}{}",
-                        prefix,
-                        "*".repeat(mask_len),
-                        suffix
-                    );
+                    let mask = format!("{}{}{}", prefix, "*".repeat(mask_len), suffix);
                     result = format!("{}{}{}", &result[..s], mask, &result[e..]);
                     offset += mask.len() as isize - original.len() as isize;
                 }
@@ -2171,7 +2509,10 @@ fn build_state_transitions(
         // INIT → DELEGATION_VALIDATE
         recorder.add_transition(ExecutionState::Init, ExecutionState::DelegationValidate);
         // DELEGATION_VALIDATE → CONSTRAINT_EVAL（假设委托验证通过）
-        recorder.add_transition(ExecutionState::DelegationValidate, ExecutionState::ConstraintEval);
+        recorder.add_transition(
+            ExecutionState::DelegationValidate,
+            ExecutionState::ConstraintEval,
+        );
     } else {
         // INIT → CONSTRAINT_EVAL (无委托令牌，跳过委托验证阶段)
         recorder.add_transition(ExecutionState::Init, ExecutionState::ConstraintEval);
@@ -2192,7 +2533,9 @@ fn build_state_transitions(
     recorder.add_transition(ExecutionState::Executing, ExecutionState::Validation);
 
     // 4. VALIDATION → FINALIZED 或 VALIDATION → FAILED
-    if failure_stage == Some(ExecutionState::Validation) || failure_stage.is_none() && total_tokens == 0 {
+    if failure_stage == Some(ExecutionState::Validation)
+        || failure_stage.is_none() && total_tokens == 0
+    {
         recorder.add_transition(ExecutionState::Validation, ExecutionState::Failed);
     } else {
         recorder.add_transition(ExecutionState::Validation, ExecutionState::Finalized);
@@ -2213,17 +2556,17 @@ fn parse_certified_guarantee(header: &str) -> Option<CertifiedGuarantee> {
     if parts.len() != 2 {
         return None;
     }
-    
+
     let methodology = parts[0].to_string();
-    
+
     let risk_confidence_parts: Vec<&str> = parts[1].split('@').collect();
     if risk_confidence_parts.len() != 2 {
         return None;
     }
-    
+
     let risk_bound = risk_confidence_parts[0].parse::<f64>().ok()?;
     let confidence_level = risk_confidence_parts[1].parse::<f64>().ok()?;
-    
+
     Some(CertifiedGuarantee {
         methodology,
         risk_bound,
@@ -2279,14 +2622,15 @@ impl RoundTo for f64 {
 /// 检查请求和响应中的潜在偏差，计算公平性得分。
 fn perform_fairness_check(trace: &Trace) -> Option<crate::types::trace::FairnessCheck> {
     use crate::types::trace::{BiasDetection, FairnessCheck, FairnessMetric};
-    
+
     // 检查输入提示中的敏感属性
     let input_text = match &trace.input {
         Some(input) => match &input.prompt {
             Some(prompts) => {
                 // 尝试解析为消息数组
                 if let Some(msg_array) = prompts.as_array() {
-                    msg_array.iter()
+                    msg_array
+                        .iter()
                         .filter_map(|msg| msg.get("content").and_then(|v| v.as_str()))
                         .collect::<Vec<_>>()
                         .join(" ")
@@ -2300,31 +2644,29 @@ fn perform_fairness_check(trace: &Trace) -> Option<crate::types::trace::Fairness
         },
         None => "".to_string(),
     };
-    
+
     // 检测敏感属性
     let protected_attributes = detect_protected_attributes(&input_text);
-    
+
     // 计算公平性得分（简化版本）
     let fairness_score = if protected_attributes.is_empty() {
-        1.0  // 没有敏感属性，默认公平
+        1.0 // 没有敏感属性，默认公平
     } else {
         // 如果包含敏感属性，基于内容长度计算得分
         0.7 + (input_text.len() as f64 / 1000.0) * 0.3
     };
-    
+
     let passed = fairness_score >= 0.7;
-    
+
     // 生成公平性指标
-    let metrics = Some(vec![
-        FairnessMetric {
-            attribute: "overall".to_string(),
-            metric_type: "overall_fairness".to_string(),
-            value: fairness_score,
-            passed,
-            threshold: 0.7,
-        },
-    ]);
-    
+    let metrics = Some(vec![FairnessMetric {
+        attribute: "overall".to_string(),
+        metric_type: "overall_fairness".to_string(),
+        value: fairness_score,
+        passed,
+        threshold: 0.7,
+    }]);
+
     // 偏差检测
     let bias_detection = if fairness_score < 0.7 {
         Some(BiasDetection {
@@ -2341,11 +2683,15 @@ fn perform_fairness_check(trace: &Trace) -> Option<crate::types::trace::Fairness
             mitigation_suggestion: None,
         })
     };
-    
+
     Some(FairnessCheck {
         passed: Some(passed),
         fairness_score: Some(fairness_score),
-        protected_attributes: if protected_attributes.is_empty() { None } else { Some(protected_attributes) },
+        protected_attributes: if protected_attributes.is_empty() {
+            None
+        } else {
+            Some(protected_attributes)
+        },
         metrics,
         bias_detection,
         checked_at: Some(chrono::Utc::now().to_rfc3339()),
@@ -2355,24 +2701,33 @@ fn perform_fairness_check(trace: &Trace) -> Option<crate::types::trace::Fairness
 /// 检测文本中的受保护属性
 fn detect_protected_attributes(text: &str) -> Vec<String> {
     let mut attributes = Vec::new();
-    
+
     // 检测常见的受保护属性关键词
     let keywords: &[(&str, &[&str])] = &[
-        ("gender", &["gender", "sex", "male", "female", "man", "woman"]),
+        (
+            "gender",
+            &["gender", "sex", "male", "female", "man", "woman"],
+        ),
         ("age", &["age", "old", "young", "child", "senior"]),
-        ("race", &["race", "ethnic", "white", "black", "asian", "hispanic"]),
-        ("religion", &["religion", "christian", "muslim", "jewish", "buddhist"]),
+        (
+            "race",
+            &["race", "ethnic", "white", "black", "asian", "hispanic"],
+        ),
+        (
+            "religion",
+            &["religion", "christian", "muslim", "jewish", "buddhist"],
+        ),
         ("disability", &["disability", "disabled", "handicap"]),
         ("nationality", &["nationality", "country", "citizen"]),
     ];
-    
+
     let lower_text = text.to_lowercase();
     for (attr_name, keywords) in keywords {
         if keywords.iter().any(|k| lower_text.contains(k)) {
             attributes.push(attr_name.to_string());
         }
     }
-    
+
     attributes
 }
 
@@ -2383,7 +2738,10 @@ async fn get_trace_compliance(
     Path(trace_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let id = uuid::Uuid::parse_str(&trace_id).map_err(|e| {
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": format!("无效的 Trace ID: {}", e)})))
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": format!("无效的 Trace ID: {}", e)})),
+        )
     })?;
 
     match state.trace_store.get(&id).await {
@@ -2392,7 +2750,10 @@ async fn get_trace_compliance(
             let report = state.compliance_mapper.map_trace(&trace_data);
             Ok(Json(serde_json::to_value(&report).unwrap_or_default()))
         }
-        None => Err((StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Trace 未找到"})))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Trace 未找到"})),
+        )),
     }
 }
 
@@ -2402,7 +2763,10 @@ async fn get_compliance_report(
     Path(trace_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let id = uuid::Uuid::parse_str(&trace_id).map_err(|e| {
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": format!("无效的 Trace ID: {}", e)})))
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": format!("无效的 Trace ID: {}", e)})),
+        )
     })?;
 
     match state.trace_store.get(&id).await {
@@ -2411,7 +2775,10 @@ async fn get_compliance_report(
             let report = state.compliance_mapper.map_trace(&trace_data);
             Ok(Json(serde_json::to_value(&report).unwrap_or_default()))
         }
-        None => Err((StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Trace 未找到"})))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Trace 未找到"})),
+        )),
     }
 }
 
@@ -2422,7 +2789,10 @@ async fn handle_gdpr_deletion(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let deletion_type_str = body.get("deletion_type").and_then(|v| v.as_str()).unwrap_or("trace_id");
+    let deletion_type_str = body
+        .get("deletion_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("trace_id");
     let target_id = body.get("target_id").and_then(|v| v.as_str()).unwrap_or("");
 
     let deletion_type = match deletion_type_str {
@@ -2433,18 +2803,27 @@ async fn handle_gdpr_deletion(
     };
 
     if target_id.is_empty() && deletion_type != DeletionType::All {
-        return Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({
-            "error": "target_id is required"
-        }))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "target_id is required"
+            })),
+        ));
     }
 
     let request = DeletionRequest {
         request_id: format!("del_{}", uuid::Uuid::new_v4()),
         deletion_type: deletion_type.clone(),
         target_id: target_id.to_string(),
-        requester_identity: body.get("requester").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        requester_identity: body
+            .get("requester")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         timestamp: chrono::Utc::now().to_rfc3339(),
-        reason: body.get("reason").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        reason: body
+            .get("reason")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
     };
 
     // 先执行实际存储删除
@@ -2453,7 +2832,12 @@ async fn handle_gdpr_deletion(
             if let Ok(id) = uuid::Uuid::parse_str(target_id) {
                 match state.trace_store.delete(&id).await {
                     Ok(Some(t)) => {
-                        let sig = t.proofs.proof_chain.first().and_then(|p| p.signature.clone()).unwrap_or_default();
+                        let sig = t
+                            .proofs
+                            .proof_chain
+                            .first()
+                            .and_then(|p| p.signature.clone())
+                            .unwrap_or_default();
                         Ok(vec![sig])
                     }
                     Ok(None) => Ok(vec![]),
@@ -2466,23 +2850,33 @@ async fn handle_gdpr_deletion(
         DeletionType::SessionId => {
             if let Ok(sid) = uuid::Uuid::parse_str(target_id) {
                 match state.trace_store.delete_by_session(&sid).await {
-                    Ok(deleted) => Ok(deleted.iter().filter_map(|t| {
-                        t.proofs.proof_chain.first().and_then(|p| p.signature.clone())
-                    }).collect()),
+                    Ok(deleted) => Ok(deleted
+                        .iter()
+                        .filter_map(|t| {
+                            t.proofs
+                                .proof_chain
+                                .first()
+                                .and_then(|p| p.signature.clone())
+                        })
+                        .collect()),
                     Err(e) => Err(e),
                 }
             } else {
                 Err("无效的 Session ID 格式".to_string())
             }
         }
-        DeletionType::UserId => {
-            match state.trace_store.delete_by_tenant(target_id).await {
-                Ok(deleted) => Ok(deleted.iter().filter_map(|t| {
-                    t.proofs.proof_chain.first().and_then(|p| p.signature.clone())
-                }).collect()),
-                Err(e) => Err(e),
-            }
-        }
+        DeletionType::UserId => match state.trace_store.delete_by_tenant(target_id).await {
+            Ok(deleted) => Ok(deleted
+                .iter()
+                .filter_map(|t| {
+                    t.proofs
+                        .proof_chain
+                        .first()
+                        .and_then(|p| p.signature.clone())
+                })
+                .collect()),
+            Err(e) => Err(e),
+        },
         DeletionType::All => Err("不允许全部删除操作".to_string()),
     };
 
@@ -2498,16 +2892,24 @@ async fn handle_gdpr_deletion(
                         "retained_signatures": retained_sigs,
                         "audit_entry": deletion_result.audit_log_entry,
                     });
-                    info!("GDPR 删除完成: type={}, target={}, count={}",
-                        deletion_type_str, target_id, deletion_result.deleted_count);
+                    info!(
+                        "GDPR 删除完成: type={}, target={}, count={}",
+                        deletion_type_str, target_id, deletion_result.deleted_count
+                    );
                     Ok(Json(response))
                 }
-                Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
-                    "error": format!("GDPR 处理失败: {}", e)
-                })))),
+                Err(e) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({
+                        "error": format!("GDPR 处理失败: {}", e)
+                    })),
+                )),
             }
         }
-        Err(e) => Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e})))),
+        Err(e) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e})),
+        )),
     }
 }
 
@@ -2523,9 +2925,7 @@ async fn get_gdpr_deletion_proof(
 }
 
 /// 列出 GDPR 删除历史
-async fn list_gdpr_deletion_history(
-    State(state): State<AppState>,
-) -> Json<serde_json::Value> {
+async fn list_gdpr_deletion_history(State(state): State<AppState>) -> Json<serde_json::Value> {
     let history = state.gdpr_manager.list_deletion_history(50);
     Json(serde_json::json!({
         "total": history.len(),
@@ -2536,9 +2936,7 @@ async fn list_gdpr_deletion_history(
 // ==================== 主动预防统计端点（§8.4）====================
 
 /// 获取主动预防统计信息
-async fn get_prevention_stats(
-    State(_state): State<AppState>,
-) -> Json<serde_json::Value> {
+async fn get_prevention_stats(State(_state): State<AppState>) -> Json<serde_json::Value> {
     //  简化实现：返回预防引擎的基础信息
     Json(serde_json::json!({
         "engine": "ConstrainedDecoding",
@@ -2596,7 +2994,8 @@ impl MetricsRegistry {
 
     /// 记录延迟观测值（毫秒）
     pub fn record_latency(&self, latency_ms: u64) {
-        const BUCKETS_MS: [u64; 12] = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000];
+        const BUCKETS_MS: [u64; 12] =
+            [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000];
         let v = latency_ms as f64;
         self.latency_sum_ms.fetch_add(v as u64, Ordering::Relaxed);
         self.latency_count.fetch_add(1, Ordering::Relaxed);
@@ -2612,75 +3011,143 @@ impl MetricsRegistry {
         let mut out = String::new();
         out.push_str("# HELP veridactus_requests_total Total number of requests processed\n");
         out.push_str("# TYPE veridactus_requests_total counter\n");
-        out.push_str(&format!("veridactus_requests_total {}\n", self.requests_total.load(Ordering::Relaxed)));
+        out.push_str(&format!(
+            "veridactus_requests_total {}\n",
+            self.requests_total.load(Ordering::Relaxed)
+        ));
 
-        out.push_str("# HELP veridactus_constraint_violations_total Total constraint violations detected\n");
+        out.push_str(
+            "# HELP veridactus_constraint_violations_total Total constraint violations detected\n",
+        );
         out.push_str("# TYPE veridactus_constraint_violations_total counter\n");
-        out.push_str(&format!("veridactus_constraint_violations_total {}\n", self.constraint_violations_total.load(Ordering::Relaxed)));
+        out.push_str(&format!(
+            "veridactus_constraint_violations_total {}\n",
+            self.constraint_violations_total.load(Ordering::Relaxed)
+        ));
 
         out.push_str("# HELP veridactus_trace_integrity_errors_total Audit signature verification failures\n");
         out.push_str("# TYPE veridactus_trace_integrity_errors_total counter\n");
-        out.push_str(&format!("veridactus_trace_integrity_errors_total {}\n", self.trace_integrity_errors.load(Ordering::Relaxed)));
+        out.push_str(&format!(
+            "veridactus_trace_integrity_errors_total {}\n",
+            self.trace_integrity_errors.load(Ordering::Relaxed)
+        ));
 
         out.push_str("# HELP veridactus_agent_steps_total Total steps in multi-agent chains\n");
         out.push_str("# TYPE veridactus_agent_steps_total counter\n");
-        out.push_str(&format!("veridactus_agent_steps_total {}\n", self.agent_steps_total.load(Ordering::Relaxed)));
+        out.push_str(&format!(
+            "veridactus_agent_steps_total {}\n",
+            self.agent_steps_total.load(Ordering::Relaxed)
+        ));
 
         out.push_str("# HELP veridactus_guardrail_activations_total Guardrail trigger count\n");
         out.push_str("# TYPE veridactus_guardrail_activations_total counter\n");
-        out.push_str(&format!("veridactus_guardrail_activations_total {}\n", self.guardrail_activations_total.load(Ordering::Relaxed)));
+        out.push_str(&format!(
+            "veridactus_guardrail_activations_total {}\n",
+            self.guardrail_activations_total.load(Ordering::Relaxed)
+        ));
 
         out.push_str("# HELP veridactus_asi_risks_flagged_total OWASP ASI risks flagged\n");
         out.push_str("# TYPE veridactus_asi_risks_flagged_total counter\n");
-        out.push_str(&format!("veridactus_asi_risks_flagged_total {}\n", self.asi_risks_flagged_total.load(Ordering::Relaxed)));
+        out.push_str(&format!(
+            "veridactus_asi_risks_flagged_total {}\n",
+            self.asi_risks_flagged_total.load(Ordering::Relaxed)
+        ));
 
-        out.push_str("# HELP veridactus_delegation_validations_total Delegation token validations\n");
+        out.push_str(
+            "# HELP veridactus_delegation_validations_total Delegation token validations\n",
+        );
         out.push_str("# TYPE veridactus_delegation_validations_total counter\n");
-        out.push_str(&format!("veridactus_delegation_validations_total {}\n", self.delegation_validations_total.load(Ordering::Relaxed)));
+        out.push_str(&format!(
+            "veridactus_delegation_validations_total {}\n",
+            self.delegation_validations_total.load(Ordering::Relaxed)
+        ));
 
-        out.push_str("# HELP veridactus_certified_guarantee_total Certified guarantee computations\n");
+        out.push_str(
+            "# HELP veridactus_certified_guarantee_total Certified guarantee computations\n",
+        );
         out.push_str("# TYPE veridactus_certified_guarantee_total counter\n");
-        out.push_str(&format!("veridactus_certified_guarantee_total {}\n", self.certified_guarantee_total.load(Ordering::Relaxed)));
+        out.push_str(&format!(
+            "veridactus_certified_guarantee_total {}\n",
+            self.certified_guarantee_total.load(Ordering::Relaxed)
+        ));
 
         out.push_str("# HELP veridactus_active_prevention_blocks_total Tokens blocked by constrained decoding\n");
         out.push_str("# TYPE veridactus_active_prevention_blocks_total counter\n");
-        out.push_str(&format!("veridactus_active_prevention_blocks_total {}\n", self.active_prevention_blocks_total.load(Ordering::Relaxed)));
+        out.push_str(&format!(
+            "veridactus_active_prevention_blocks_total {}\n",
+            self.active_prevention_blocks_total.load(Ordering::Relaxed)
+        ));
 
-        out.push_str("# HELP veridactus_engine_determinism_checks_total Engine determinism checks\n");
+        out.push_str(
+            "# HELP veridactus_engine_determinism_checks_total Engine determinism checks\n",
+        );
         out.push_str("# TYPE veridactus_engine_determinism_checks_total counter\n");
-        out.push_str(&format!("veridactus_engine_determinism_checks_total {}\n", self.engine_determinism_checks_total.load(Ordering::Relaxed)));
+        out.push_str(&format!(
+            "veridactus_engine_determinism_checks_total {}\n",
+            self.engine_determinism_checks_total.load(Ordering::Relaxed)
+        ));
 
         // 预算 gauge - 反映全局预算状态
-        out.push_str("# HELP veridactus_budget_remaining_usd Current session budget remaining in USD\n");
+        out.push_str(
+            "# HELP veridactus_budget_remaining_usd Current session budget remaining in USD\n",
+        );
         out.push_str("# TYPE veridactus_budget_remaining_usd gauge\n");
         out.push_str("veridactus_budget_remaining_usd 0\n");
 
         // 延迟直方图（P50/P90/P99 分布）
         out.push_str("# HELP veridactus_latency_distribution_ms Request latency distribution in milliseconds\n");
         out.push_str("# TYPE veridactus_latency_distribution_ms histogram\n");
-        const BUCKETS_MS: [u64; 12] = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000];
+        const BUCKETS_MS: [u64; 12] =
+            [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000];
         for (i, &bound) in BUCKETS_MS.iter().enumerate() {
-            out.push_str(&format!("veridactus_latency_distribution_ms_bucket{{le=\"{}\"}} {}\n",
-                bound, self.latency_buckets[i].load(Ordering::Relaxed)));
+            out.push_str(&format!(
+                "veridactus_latency_distribution_ms_bucket{{le=\"{}\"}} {}\n",
+                bound,
+                self.latency_buckets[i].load(Ordering::Relaxed)
+            ));
         }
-        out.push_str(&format!("veridactus_latency_distribution_ms_bucket{{le=\"+Inf\"}} {}\n",
-            self.latency_buckets[12].load(Ordering::Relaxed)));
-        out.push_str(&format!("veridactus_latency_distribution_ms_sum {}\n", self.latency_sum_ms.load(Ordering::Relaxed)));
-        out.push_str(&format!("veridactus_latency_distribution_ms_count {}\n", self.latency_count.load(Ordering::Relaxed)));
+        out.push_str(&format!(
+            "veridactus_latency_distribution_ms_bucket{{le=\"+Inf\"}} {}\n",
+            self.latency_buckets[12].load(Ordering::Relaxed)
+        ));
+        out.push_str(&format!(
+            "veridactus_latency_distribution_ms_sum {}\n",
+            self.latency_sum_ms.load(Ordering::Relaxed)
+        ));
+        out.push_str(&format!(
+            "veridactus_latency_distribution_ms_count {}\n",
+            self.latency_count.load(Ordering::Relaxed)
+        ));
 
         // 延迟 summary（保留旧格式兼容性）
         out.push_str("# HELP veridactus_latency_seconds Request latency in seconds\n");
         out.push_str("# TYPE veridactus_latency_seconds summary\n");
-        out.push_str(&format!("veridactus_latency_seconds_sum {:.3}\n", self.latency_sum_ms.load(Ordering::Relaxed) as f64 / 1000.0));
-        out.push_str(&format!("veridactus_latency_seconds_count {}\n", self.latency_count.load(Ordering::Relaxed)));
+        out.push_str(&format!(
+            "veridactus_latency_seconds_sum {:.3}\n",
+            self.latency_sum_ms.load(Ordering::Relaxed) as f64 / 1000.0
+        ));
+        out.push_str(&format!(
+            "veridactus_latency_seconds_count {}\n",
+            self.latency_count.load(Ordering::Relaxed)
+        ));
 
         out
     }
 
-    pub fn inc_requests(&self) { self.requests_total.fetch_add(1, Ordering::Relaxed); }
-    pub fn inc_constraint_violations(&self) { self.constraint_violations_total.fetch_add(1, Ordering::Relaxed); }
-    pub fn inc_guardrail(&self) { self.guardrail_activations_total.fetch_add(1, Ordering::Relaxed); }
-    pub fn inc_asi_risk(&self) { self.asi_risks_flagged_total.fetch_add(1, Ordering::Relaxed); }
+    pub fn inc_requests(&self) {
+        self.requests_total.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn inc_constraint_violations(&self) {
+        self.constraint_violations_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn inc_guardrail(&self) {
+        self.guardrail_activations_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn inc_asi_risk(&self) {
+        self.asi_risks_flagged_total.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 /// Prometheus 指标端点（§10.3.4）
@@ -2697,9 +3164,16 @@ static AUDIT_LOG: LazyLock<StdMutex<Vec<String>>> = LazyLock::new(|| StdMutex::n
 /// 记录审计事件
 pub fn audit_log(event_type: &str, trace_id: &str, detail: &str) {
     if let Ok(mut log) = AUDIT_LOG.lock() {
-        let entry = format!("[{}] {} | trace={} | {}", 
-            chrono::Utc::now().to_rfc3339(), event_type, trace_id, detail);
-        if log.len() > 10000 { log.remove(0); }
+        let entry = format!(
+            "[{}] {} | trace={} | {}",
+            chrono::Utc::now().to_rfc3339(),
+            event_type,
+            trace_id,
+            detail
+        );
+        if log.len() > 10000 {
+            log.remove(0);
+        }
         log.push(entry);
     }
 }
@@ -2766,7 +3240,11 @@ async fn forward_to_upstream_complete(
     let upstream_url = if let Some(url) = &route.upstream_url {
         format!("{}{}", url.trim_end_matches('/'), route.upstream_endpoint)
     } else {
-        format!("{}{}", config.upstream_base_url.trim_end_matches('/'), route.upstream_endpoint)
+        format!(
+            "{}{}",
+            config.upstream_base_url.trim_end_matches('/'),
+            route.upstream_endpoint
+        )
     };
 
     let upstream_body = if upstream_url.contains("generativelanguage.googleapis.com") {
@@ -2776,13 +3254,17 @@ async fn forward_to_upstream_complete(
     } else {
         let mut body = body_json.clone();
         if let Some(obj) = body.as_object_mut() {
-            obj.insert("model".to_string(), serde_json::Value::String(route.upstream_model.clone()));
+            obj.insert(
+                "model".to_string(),
+                serde_json::Value::String(route.upstream_model.clone()),
+            );
         }
         body
     };
 
     // 添加 API Key
-    let mut request_builder = state.http_client
+    let mut request_builder = state
+        .http_client
         .post(&upstream_url)
         .json(&upstream_body)
         .timeout(std::time::Duration::from_secs(120));
@@ -2794,7 +3276,7 @@ async fn forward_to_upstream_complete(
     let traceparent = format!("00-{}-{}-01", trace_id_hex, span_id_hex);
     request_builder = request_builder.header("traceparent", &traceparent);
     request_builder = request_builder.header("tracestate", "veridactus=governance");
-    
+
     let request_builder = if let Some(api_key) = &route.api_key {
         if let Some(header) = &route.api_key_header {
             if header.to_lowercase() == "authorization" {
@@ -2818,7 +3300,10 @@ async fn forward_to_upstream_complete(
         }
         Err(e) => {
             warn!("Upstream forwarding failed: {}", e);
-            Err((StatusCode::BAD_GATEWAY, format!("Upstream LLM unavailable: {}", e)))
+            Err((
+                StatusCode::BAD_GATEWAY,
+                format!("Upstream LLM unavailable: {}", e),
+            ))
         }
     }
 }
@@ -2826,9 +3311,18 @@ async fn forward_to_upstream_complete(
 fn extract_usage_from_response(json: &serde_json::Value) -> Option<UpstreamUsage> {
     let usage = json.get("usage")?;
     Some(UpstreamUsage {
-        prompt_tokens: usage.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-        completion_tokens: usage.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-        total_tokens: usage.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+        prompt_tokens: usage
+            .get("prompt_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32,
+        completion_tokens: usage
+            .get("completion_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32,
+        total_tokens: usage
+            .get("total_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32,
     })
 }
 
@@ -2859,7 +3353,7 @@ fn extract_output_content(json: &serde_json::Value) -> String {
 
 fn convert_to_doubao_format(body_json: &serde_json::Value, model: &str) -> serde_json::Value {
     let mut input_items = Vec::new();
-    
+
     if let Some(messages) = body_json.get("messages").and_then(|m| m.as_array()) {
         for msg in messages {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("user");
@@ -2875,7 +3369,7 @@ fn convert_to_doubao_format(body_json: &serde_json::Value, model: &str) -> serde
             }
         }
     }
-    
+
     serde_json::json!({
         "model": model,
         "input": input_items
@@ -2884,7 +3378,7 @@ fn convert_to_doubao_format(body_json: &serde_json::Value, model: &str) -> serde
 
 fn convert_to_gemini_format(body_json: &serde_json::Value) -> serde_json::Value {
     let mut contents = Vec::new();
-    
+
     if let Some(messages) = body_json.get("messages").and_then(|m| m.as_array()) {
         let mut parts = Vec::new();
         for msg in messages {
@@ -2900,7 +3394,7 @@ fn convert_to_gemini_format(body_json: &serde_json::Value) -> serde_json::Value 
             }));
         }
     }
-    
+
     serde_json::json!({
         "contents": contents
     })
@@ -2925,7 +3419,10 @@ struct PiiDetectionResult {
     findings: Vec<String>,
 }
 
-async fn call_pii_detection(http_client: &reqwest::Client, content: &str) -> Option<PiiDetectionResult> {
+async fn call_pii_detection(
+    http_client: &reqwest::Client,
+    content: &str,
+) -> Option<PiiDetectionResult> {
     if content.is_empty() {
         return None;
     }
@@ -3021,25 +3518,46 @@ fn check_instruction_hierarchy_violation(
     // P0 规则不可覆盖的指令模式
     let p0_override_patterns: &[&str] = &[
         // 忽略系统指令
-        "ignore your system", "ignore all instructions", "ignore previous instructions",
-        "ignore the above", "ignore all previous", "disregard previous instructions",
-        "forget your system", "forget previous instructions",
+        "ignore your system",
+        "ignore all instructions",
+        "ignore previous instructions",
+        "ignore the above",
+        "ignore all previous",
+        "disregard previous instructions",
+        "forget your system",
+        "forget previous instructions",
         // 角色扮演越狱
-        "you are now", "you're now", "act as if you are",
-        "pretend you are", "roleplay as", "respond as if",
-        "you are dan", "do anything now",
+        "you are now",
+        "you're now",
+        "act as if you are",
+        "pretend you are",
+        "roleplay as",
+        "respond as if",
+        "you are dan",
+        "do anything now",
         // 覆盖提示
-        "override your system", "override your instructions",
-        "new instructions:", "new instruction:",
+        "override your system",
+        "override your instructions",
+        "new instructions:",
+        "new instruction:",
         // 绕过安全
-        "bypass your", "bypass the safety", "bypass content",
-        "remove all restrictions", "no restrictions",
-        "you are free from", "you don't have to follow",
-        "disable your safety", "disable guardrails",
+        "bypass your",
+        "bypass the safety",
+        "bypass content",
+        "remove all restrictions",
+        "no restrictions",
+        "you are free from",
+        "you don't have to follow",
+        "disable your safety",
+        "disable guardrails",
         // 管理员模式
-        "developer mode", "admin mode", "god mode",
+        "developer mode",
+        "admin mode",
+        "god mode",
         // OWASP ASI01 目标劫持
-        "you must now", "from now on you will", "your new goal is",
+        "you must now",
+        "from now on you will",
+        "your new goal is",
         "your primary objective is now",
     ];
 
@@ -3054,9 +3572,17 @@ fn check_instruction_hierarchy_violation(
     }
 
     let (severity_str, sev, action) = if mode == "strict" || mode == "verified" {
-        ("blocked", crate::types::Severity::High, crate::types::SafetyAction::Blocked)
+        (
+            "blocked",
+            crate::types::Severity::High,
+            crate::types::SafetyAction::Blocked,
+        )
     } else {
-        ("flagged", crate::types::Severity::Medium, crate::types::SafetyAction::Flagged)
+        (
+            "flagged",
+            crate::types::Severity::Medium,
+            crate::types::SafetyAction::Flagged,
+        )
     };
 
     // 使用已有函数计算哈希
@@ -3096,10 +3622,7 @@ async fn forward_to_upstream_streaming(
         );
     }
 
-    let mut req_builder = state
-        .http_client
-        .post(upstream_url)
-        .json(&upstream_body);
+    let mut req_builder = state.http_client.post(upstream_url).json(&upstream_body);
 
     // 添加 API Key 认证（上游 LLM 需要）
     if let Some(ref api_key) = route.api_key {
@@ -3112,17 +3635,17 @@ async fn forward_to_upstream_streaming(
         }
     }
 
-    let response = req_builder
-        .send()
-        .await
-        .map_err(|e| {
-            warn!("Upstream streaming forward failed: {}", e);
-            let body_str = format!("Upstream LLM unavailable: {}", e);
-            (
-                StatusCode::BAD_GATEWAY,
-                Json(ErrorResponse::new_minimal(body_str, VeridactusErrorCode::UpstreamDisconnect)),
-            )
-        })?;
+    let response = req_builder.send().await.map_err(|e| {
+        warn!("Upstream streaming forward failed: {}", e);
+        let body_str = format!("Upstream LLM unavailable: {}", e);
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResponse::new_minimal(
+                body_str,
+                VeridactusErrorCode::UpstreamDisconnect,
+            )),
+        )
+    })?;
 
     let status = response.status();
     if !status.is_success() {
@@ -3135,27 +3658,24 @@ async fn forward_to_upstream_streaming(
         });
         return Err((
             status,
-            Json(ErrorResponse::new_minimal(body_str, VeridactusErrorCode::UpstreamDisconnect)),
+            Json(ErrorResponse::new_minimal(
+                body_str,
+                VeridactusErrorCode::UpstreamDisconnect,
+            )),
         ));
     }
 
     // 创建预防解码器（§8.4）
-    let prevention = std::sync::Arc::new(
-        crate::prevention::ConstrainedDecoder::new(
-            std::sync::Arc::new(crate::prevention::PatternRegistry::default()),
-        )
-    );
+    let prevention = std::sync::Arc::new(crate::prevention::ConstrainedDecoder::new(
+        std::sync::Arc::new(crate::prevention::PatternRegistry::default()),
+    ));
 
     // 通过 channel 创建流处理器，支持预算感知和主动预防
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<String, std::convert::Infallible>>(64);
-    let stream_handler = crate::http::streaming::VeridactusStreamHandler::new(
-        rx, trace_id.to_string(),
-    )
-        .with_budget(
-            budget_limit.unwrap_or(0.0),
-            budget_awareness,
-        )
-        .with_prevention(prevention);
+    let stream_handler =
+        crate::http::streaming::VeridactusStreamHandler::new(rx, trace_id.to_string())
+            .with_budget(budget_limit.unwrap_or(0.0), budget_awareness)
+            .with_prevention(prevention);
 
     let trace_id_clone = *trace_id;
 
@@ -3181,12 +3701,12 @@ async fn forward_to_upstream_streaming(
     });
 
     // 构建 SSE 响应
-    use axum::response::sse::{Sse, Event};
-    let sse_stream = stream_handler.map(|result| {
-        match result {
-            Ok(bytes) => Ok::<_, Infallible>(Event::default().data(String::from_utf8_lossy(&bytes).to_string())),
-            Err(e) => Ok(Event::default().data(format!("error: {:?}", e))),
+    use axum::response::sse::{Event, Sse};
+    let sse_stream = stream_handler.map(|result| match result {
+        Ok(bytes) => {
+            Ok::<_, Infallible>(Event::default().data(String::from_utf8_lossy(&bytes).to_string()))
         }
+        Err(e) => Ok(Event::default().data(format!("error: {:?}", e))),
     });
 
     let sse = Sse::new(sse_stream);
@@ -3201,7 +3721,7 @@ async fn forward_to_upstream_streaming(
 
 // ==================== 重放端点（§9.4 Deterministic Replay Engine）====================
 
-use crate::replay::{ReplayEngine, ReplayMode, ReplayBranch, ReplayResult};
+use crate::replay::{ReplayBranch, ReplayEngine, ReplayMode, ReplayResult};
 use crate::verify::verifier::verify_trace;
 
 /// 重放 Trace
@@ -3211,16 +3731,28 @@ async fn replay_trace(
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let id = uuid::Uuid::parse_str(&trace_id).map_err(|e| {
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": format!("无效的 Trace ID: {}", e)})))
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": format!("无效的 Trace ID: {}", e)})),
+        )
     })?;
 
     match state.trace_store.get(&id).await {
         Some(trace) => {
             info!("Replaying trace: {}", trace_id);
-            
-            let mode = body.get("mode").and_then(|v| v.as_str()).unwrap_or("replay");
-            let branch_point = body.get("branch_point").and_then(|v| v.as_u64()).unwrap_or(0);
-            let branch_name = body.get("branch_name").and_then(|v| v.as_str()).unwrap_or("replay");
+
+            let mode = body
+                .get("mode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("replay");
+            let branch_point = body
+                .get("branch_point")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let branch_name = body
+                .get("branch_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("replay");
 
             let cache = crate::replay::upstream_cache::UpstreamResponseCache::new(3600, 1000);
             let mut engine = ReplayEngine::new(cache);
@@ -3238,19 +3770,23 @@ async fn replay_trace(
                                 .and_then(|p| p.get("max_tokens").and_then(|v| v.as_u64()))
                                 .unwrap_or(500),
                         });
-                        
+
                         // 从配置中查找模型路由
                         let config = state.config.read().await;
-                        if let Some(route) = config.model_routes.iter().find(|r| r.name == trace.model) {
+                        if let Some(route) =
+                            config.model_routes.iter().find(|r| r.name == trace.model)
+                        {
                             // 调用上游LLM
-                            let upstream_result = forward_to_upstream_complete(&state, route, &request_body).await;
+                            let upstream_result =
+                                forward_to_upstream_complete(&state, route, &request_body).await;
                             let duration_ms = start.elapsed().as_millis() as u64;
-                            
+
                             match upstream_result {
                                 Ok((_, response_body, _)) => {
                                     // 创建新的trace记录
                                     let mut new_trace = trace.clone();
-                                    let response_json: serde_json::Value = serde_json::from_slice(&response_body).unwrap_or_default();
+                                    let response_json: serde_json::Value =
+                                        serde_json::from_slice(&response_body).unwrap_or_default();
                                     // 确保output存在
                                     new_trace.output = Some(crate::types::trace::Output {
                                         response: Some(response_json),
@@ -3305,19 +3841,21 @@ async fn replay_trace(
                         }
                     })
                 }),
-                "branch" => engine.branch_replay(&trace, branch_point as u32, branch_name).unwrap_or_else(|e| {
-                    // 如果 branch 模式失败，返回错误信息
-                    info!("Branch replay failed: {}, falling back to replay mode", e);
-                    engine.replay(&trace).unwrap_or_else(|_| {
-                        engine.record(&trace).unwrap_or_default();
-                        ReplayResult {
-                            trace: trace.clone(),
-                            cache_hit: false,
-                            duration_ms: 0,
-                            branch_id: None,
-                        }
-                    })
-                }),
+                "branch" => engine
+                    .branch_replay(&trace, branch_point as u32, branch_name)
+                    .unwrap_or_else(|e| {
+                        // 如果 branch 模式失败，返回错误信息
+                        info!("Branch replay failed: {}, falling back to replay mode", e);
+                        engine.replay(&trace).unwrap_or_else(|_| {
+                            engine.record(&trace).unwrap_or_default();
+                            ReplayResult {
+                                trace: trace.clone(),
+                                cache_hit: false,
+                                duration_ms: 0,
+                                branch_id: None,
+                            }
+                        })
+                    }),
                 _ => engine.replay(&trace).unwrap_or_else(|_| {
                     // 如果缓存未命中，记录并返回原始trace
                     engine.record(&trace).unwrap_or_default();
@@ -3348,7 +3886,10 @@ async fn replay_trace(
                 }
             })))
         }
-        None => Err((StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Trace 未找到"})))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Trace 未找到"})),
+        )),
     }
 }
 
@@ -3358,15 +3899,18 @@ async fn verify_trace_signature(
     Path(trace_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let id = uuid::Uuid::parse_str(&trace_id).map_err(|e| {
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": format!("无效的 Trace ID: {}", e)})))
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": format!("无效的 Trace ID: {}", e)})),
+        )
     })?;
 
     match state.trace_store.get(&id).await {
         Some(trace) => {
             info!("Verifying trace signature: {}", trace_id);
-            
+
             let result = verify_trace(&trace);
-            
+
             Ok(Json(serde_json::json!({
                 "trace_id": result.trace_id,
                 "l0_passed": result.l0_passed,
@@ -3375,13 +3919,16 @@ async fn verify_trace_signature(
                 "l2b_passed": result.l2b_passed,
                 "error": result.error,
                 "canonical_json": result.canonical_json,
-                "overall_passed": result.l0_passed && 
-                    result.l1_passed.unwrap_or(true) && 
-                    result.l2a_passed.unwrap_or(true) && 
+                "overall_passed": result.l0_passed &&
+                    result.l1_passed.unwrap_or(true) &&
+                    result.l2a_passed.unwrap_or(true) &&
                     result.l2b_passed.unwrap_or(true),
             })))
         }
-        None => Err((StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Trace 未找到"})))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Trace 未找到"})),
+        )),
     }
 }
 
@@ -3398,7 +3945,7 @@ static REPLAY_ENGINE: LazyLock<Arc<Mutex<ReplayEngine>>> = LazyLock::new(|| {
 async fn list_replay_branches() -> Json<serde_json::Value> {
     let engine = REPLAY_ENGINE.lock().unwrap();
     let branches = engine.list_branches();
-    
+
     Json(serde_json::json!({
         "branches": branches.iter().map(|b| serde_json::json!({
             "branch_id": b.branch_id.to_string(),
@@ -3412,18 +3959,28 @@ async fn list_replay_branches() -> Json<serde_json::Value> {
 }
 
 /// 创建新分支
-async fn create_replay_branch(Json(body): Json<serde_json::Value>) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let name = body.get("name").and_then(|v| v.as_str()).ok_or(
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "name is required"})))
-    )?;
-    
-    let parent_id = body.get("parent_id").and_then(|v| v.as_str())
+async fn create_replay_branch(
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let name = body.get("name").and_then(|v| v.as_str()).ok_or((
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({"error": "name is required"})),
+    ))?;
+
+    let parent_id = body
+        .get("parent_id")
+        .and_then(|v| v.as_str())
         .map(|s| uuid::Uuid::parse_str(s).ok());
 
     let mut engine = REPLAY_ENGINE.lock().unwrap();
-    let branch = engine.create_branch(name, parent_id.flatten()).map_err(|e| {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e})))
-    })?;
+    let branch = engine
+        .create_branch(name, parent_id.flatten())
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e})),
+            )
+        })?;
 
     Ok(Json(serde_json::json!({
         "branch_id": branch.branch_id.to_string(),
@@ -3435,9 +3992,14 @@ async fn create_replay_branch(Json(body): Json<serde_json::Value>) -> Result<Jso
 }
 
 /// 获取分支详情
-async fn get_replay_branch(Path(branch_id): Path<String>) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+async fn get_replay_branch(
+    Path(branch_id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let id = uuid::Uuid::parse_str(&branch_id).map_err(|e| {
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": format!("无效的分支 ID: {}", e)})))
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": format!("无效的分支 ID: {}", e)})),
+        )
     })?;
 
     let engine = REPLAY_ENGINE.lock().unwrap();
@@ -3449,19 +4011,30 @@ async fn get_replay_branch(Path(branch_id): Path<String>) -> Result<Json<serde_j
             "created_at": branch.created_at,
             "snapshot_count": branch.snapshot_count,
         }))),
-        None => Err((StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "分支未找到"})))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "分支未找到"})),
+        )),
     }
 }
 
 /// 删除分支
-async fn delete_replay_branch(Path(branch_id): Path<String>) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+async fn delete_replay_branch(
+    Path(branch_id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let id = uuid::Uuid::parse_str(&branch_id).map_err(|e| {
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": format!("无效的分支 ID: {}", e)})))
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": format!("无效的分支 ID: {}", e)})),
+        )
     })?;
 
     let mut engine = REPLAY_ENGINE.lock().unwrap();
     engine.delete_branch(&id).map_err(|e| {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e})))
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e})),
+        )
     })?;
 
     Ok(Json(serde_json::json!({
@@ -3475,17 +4048,28 @@ async fn merge_replay_branch(
     Path((source_id, target_id)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let source_uuid = uuid::Uuid::parse_str(&source_id).map_err(|e| {
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": format!("无效的源分支 ID: {}", e)})))
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": format!("无效的源分支 ID: {}", e)})),
+        )
     })?;
-    
+
     let target_uuid = uuid::Uuid::parse_str(&target_id).map_err(|e| {
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": format!("无效的目标分支 ID: {}", e)})))
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": format!("无效的目标分支 ID: {}", e)})),
+        )
     })?;
 
     let mut engine = REPLAY_ENGINE.lock().unwrap();
-    engine.merge_branch(&source_uuid, &target_uuid).map_err(|e| {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e})))
-    })?;
+    engine
+        .merge_branch(&source_uuid, &target_uuid)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e})),
+            )
+        })?;
 
     Ok(Json(serde_json::json!({
         "status": "merged",
@@ -3501,15 +4085,18 @@ async fn batch_operations(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let operation = body.get("operation").and_then(|v| v.as_str()).ok_or(
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "operation is required"})))
-    )?;
-    
-    let trace_ids = body.get("trace_ids").and_then(|v| v.as_array()).ok_or(
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "trace_ids is required"})))
-    )?;
+    let operation = body.get("operation").and_then(|v| v.as_str()).ok_or((
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({"error": "operation is required"})),
+    ))?;
 
-    let ids: Vec<uuid::Uuid> = trace_ids.iter()
+    let trace_ids = body.get("trace_ids").and_then(|v| v.as_array()).ok_or((
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({"error": "trace_ids is required"})),
+    ))?;
+
+    let ids: Vec<uuid::Uuid> = trace_ids
+        .iter()
         .filter_map(|v| v.as_str())
         .filter_map(|s| uuid::Uuid::parse_str(s).ok())
         .collect();
@@ -3524,7 +4111,7 @@ async fn batch_operations(
                     traces.push(serde_json::to_value(&trace).unwrap_or_default());
                 }
             }
-            
+
             Ok(Json(serde_json::json!({
                 "operation": "export",
                 "count": traces.len(),
@@ -3539,14 +4126,17 @@ async fn batch_operations(
                     deleted += 1;
                 }
             }
-            
+
             Ok(Json(serde_json::json!({
                 "operation": "delete",
                 "requested": requested_count,
                 "deleted": deleted,
             })))
         }
-        _ => Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": format!("不支持的操作: {}", operation)})))),
+        _ => Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": format!("不支持的操作: {}", operation)})),
+        )),
     }
 }
 
@@ -3555,11 +4145,11 @@ async fn batch_operations(
 /// 获取实时指标
 async fn realtime_metrics() -> Json<serde_json::Value> {
     let metrics = METRICS.export_text();
-    
+
     // 解析 Prometheus 格式的指标
     let lines: Vec<&str> = metrics.lines().collect();
     let mut parsed = serde_json::json!({});
-    
+
     // 提取关键指标
     for line in lines {
         if line.starts_with("veridactus_requests_total ") {
@@ -3568,7 +4158,8 @@ async fn realtime_metrics() -> Json<serde_json::Value> {
             }
         } else if line.starts_with("veridactus_latency_seconds_sum ") {
             if let Some(value) = line.split_whitespace().nth(1) {
-                parsed["latency_sum_seconds"] = serde_json::json!(value.parse::<f64>().unwrap_or(0.0));
+                parsed["latency_sum_seconds"] =
+                    serde_json::json!(value.parse::<f64>().unwrap_or(0.0));
             }
         } else if line.starts_with("veridactus_latency_seconds_count ") {
             if let Some(value) = line.split_whitespace().nth(1) {
@@ -3576,27 +4167,30 @@ async fn realtime_metrics() -> Json<serde_json::Value> {
             }
         } else if line.starts_with("veridactus_constraint_violations_total ") {
             if let Some(value) = line.split_whitespace().nth(1) {
-                parsed["constraint_violations_total"] = serde_json::json!(value.parse::<u64>().unwrap_or(0));
+                parsed["constraint_violations_total"] =
+                    serde_json::json!(value.parse::<u64>().unwrap_or(0));
             }
         } else if line.starts_with("veridactus_guardrail_activations_total ") {
             if let Some(value) = line.split_whitespace().nth(1) {
-                parsed["guardrail_activations_total"] = serde_json::json!(value.parse::<u64>().unwrap_or(0));
+                parsed["guardrail_activations_total"] =
+                    serde_json::json!(value.parse::<u64>().unwrap_or(0));
             }
         } else if line.starts_with("veridactus_asi_risks_flagged_total ") {
             if let Some(value) = line.split_whitespace().nth(1) {
-                parsed["asi_risks_flagged_total"] = serde_json::json!(value.parse::<u64>().unwrap_or(0));
+                parsed["asi_risks_flagged_total"] =
+                    serde_json::json!(value.parse::<u64>().unwrap_or(0));
             }
         }
     }
-    
+
     // 添加计算指标
     let count = parsed["latency_count"].as_u64().unwrap_or(1);
     let sum = parsed["latency_sum_seconds"].as_f64().unwrap_or(0.0);
     if count > 0 {
         parsed["average_latency_ms"] = serde_json::json!((sum / count as f64) * 1000.0);
     }
-    
+
     parsed["timestamp"] = serde_json::json!(chrono::Utc::now().to_rfc3339());
-    
+
     Json(parsed)
 }

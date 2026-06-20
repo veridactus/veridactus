@@ -3,18 +3,18 @@
 //! 遵循 VERIDACTUS Protocol Specification v0.2.1 §3.0 Data Model & Trace Schema。
 //! 所有类型与 `trace-schema.json` 严格对齐。
 
-pub mod trace;
+pub mod conflicts;
+pub mod constraints;
+pub mod error;
 pub mod journal;
 pub mod proof;
-pub mod constraints;
-pub mod conflicts;
-pub mod error;
+pub mod trace;
 
-pub use trace::*;
-pub use journal::*;
-pub use proof::*;
 pub use constraints::*;
 pub use error::*;
+pub use journal::*;
+pub use proof::*;
+pub use trace::*;
 
 use serde::{Deserialize, Serialize};
 

@@ -14,7 +14,9 @@ pub struct LabeledCounter {
 
 impl LabeledCounter {
     pub fn new() -> Self {
-        Self { inner: Arc::new(Mutex::new(HashMap::new())) }
+        Self {
+            inner: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     pub fn inc(&self, labels: &[(&str, &str)]) {
@@ -29,7 +31,8 @@ impl LabeledCounter {
     }
 
     fn build_key(labels: &[(&str, &str)]) -> String {
-        let mut parts: Vec<String> = labels.iter()
+        let mut parts: Vec<String> = labels
+            .iter()
             .map(|(k, v)| format!("{}=\"{}\"", k, v))
             .collect();
         parts.sort();
@@ -55,7 +58,9 @@ pub struct LabeledGauge {
 
 impl LabeledGauge {
     pub fn new() -> Self {
-        Self { inner: Arc::new(Mutex::new(HashMap::new())) }
+        Self {
+            inner: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     pub fn set(&self, labels: &[(&str, &str)], value: f64) {
@@ -77,7 +82,9 @@ impl LabeledGauge {
 // ==================== Histogram 支持 ====================
 
 /// 标准延迟桶（毫秒）: 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, +Inf
-const LATENCY_BUCKETS_MS: &[f64] = &[1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0];
+const LATENCY_BUCKETS_MS: &[f64] = &[
+    1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0,
+];
 
 /// 带标签的 Histogram（Prometheus 标准格式）
 #[derive(Clone)]
@@ -99,16 +106,24 @@ impl LabeledHistogram {
     }
 
     /// 默认延迟桶
-    pub fn latency() -> Self { Self::new(LATENCY_BUCKETS_MS) }
+    pub fn latency() -> Self {
+        Self::new(LATENCY_BUCKETS_MS)
+    }
 
     /// 记录一个观测值
     pub fn observe(&self, labels: &[(&str, &str)], value: f64) {
         let key = LabeledCounter::build_key(labels);
-        
+
         // 更新桶计数
         let mut buckets_map = self.inner.lock().unwrap();
-        let bucket_counts = buckets_map.entry(key.clone()).or_insert_with(|| vec![0.0; self.buckets.len() + 1]);
-        let bucket = self.buckets.iter().position(|&b| value <= b).unwrap_or(self.buckets.len());
+        let bucket_counts = buckets_map
+            .entry(key.clone())
+            .or_insert_with(|| vec![0.0; self.buckets.len() + 1]);
+        let bucket = self
+            .buckets
+            .iter()
+            .position(|&b| value <= b)
+            .unwrap_or(self.buckets.len());
         bucket_counts[bucket] += 1.0;
 
         // 更新 sum
@@ -129,17 +144,27 @@ impl LabeledHistogram {
         out.push_str(&format!("# TYPE {} histogram\n", name));
 
         for (key, bucket_counts) in bucket_map.iter() {
-            let labels_str = if key.is_empty() { String::new() } else { format!("{{{}}}", key) };
+            let labels_str = if key.is_empty() {
+                String::new()
+            } else {
+                format!("{{{}}}", key)
+            };
             let count = count_map.get(key).copied().unwrap_or(0);
             let sum = sum_map.get(key).copied().unwrap_or(0.0);
 
             // 每个桶: name_bucket{le="..."} N
             for (i, &bound) in self.buckets.iter().enumerate() {
-                out.push_str(&format!("{}_bucket{}le=\"{}\"}} {}\n",
-                    name, labels_str, bound, bucket_counts[i] as u64));
+                out.push_str(&format!(
+                    "{}_bucket{}le=\"{}\"}} {}\n",
+                    name, labels_str, bound, bucket_counts[i] as u64
+                ));
             }
-            out.push_str(&format!("{}_bucket{}le=\"+Inf\"}} {}\n",
-                name, labels_str, bucket_counts.last().copied().unwrap_or(0.0) as u64));
+            out.push_str(&format!(
+                "{}_bucket{}le=\"+Inf\"}} {}\n",
+                name,
+                labels_str,
+                bucket_counts.last().copied().unwrap_or(0.0) as u64
+            ));
 
             // sum + count
             out.push_str(&format!("{}_sum{} {:.3}\n", name, labels_str, sum));
@@ -170,10 +195,20 @@ pub struct AuditEntry {
 
 impl AuditLogger {
     pub fn new(max_entries: usize) -> Self {
-        Self { inner: Arc::new(Mutex::new(Vec::with_capacity(max_entries))), max_entries }
+        Self {
+            inner: Arc::new(Mutex::new(Vec::with_capacity(max_entries))),
+            max_entries,
+        }
     }
 
-    pub fn log(&self, event_type: &str, trace_id: Option<&str>, tenant_id: Option<&str>, detail: &str, severity: &str) {
+    pub fn log(
+        &self,
+        event_type: &str,
+        trace_id: Option<&str>,
+        tenant_id: Option<&str>,
+        detail: &str,
+        severity: &str,
+    ) {
         let mut entries = self.inner.lock().unwrap();
         if entries.len() >= self.max_entries {
             entries.remove(0);
@@ -227,21 +262,47 @@ impl LabeledMetrics {
     /// 导出所有指标为 Prometheus 文本格式
     pub fn export_all(&self) -> String {
         let mut out = String::new();
-        out.push_str(&self.requests_total.export("veridactus_requests_total", "Total requests processed"));
+        out.push_str(
+            &self
+                .requests_total
+                .export("veridactus_requests_total", "Total requests processed"),
+        );
         out.push_str("\n");
-        out.push_str(&self.constraint_violations_total.export("veridactus_constraint_violations_total", "Constraint violations by type"));
+        out.push_str(&self.constraint_violations_total.export(
+            "veridactus_constraint_violations_total",
+            "Constraint violations by type",
+        ));
         out.push_str("\n");
-        out.push_str(&self.budget_remaining.export("veridactus_budget_remaining", "Current budget remaining by tenant"));
+        out.push_str(&self.budget_remaining.export(
+            "veridactus_budget_remaining",
+            "Current budget remaining by tenant",
+        ));
         out.push_str("\n");
-        out.push_str(&self.latency_seconds.export("veridactus_latency_seconds", "Request latency by phase"));
+        out.push_str(
+            &self
+                .latency_seconds
+                .export("veridactus_latency_seconds", "Request latency by phase"),
+        );
         out.push_str("\n");
-        out.push_str(&self.latency_distribution_ms.export("veridactus_latency_distribution_ms", "Request latency distribution (histogram)"));
+        out.push_str(&self.latency_distribution_ms.export(
+            "veridactus_latency_distribution_ms",
+            "Request latency distribution (histogram)",
+        ));
         out.push_str("\n");
-        out.push_str(&self.guardrail_activations.export("veridactus_guardrail_activations_total", "Guardrail triggers by level and severity"));
+        out.push_str(&self.guardrail_activations.export(
+            "veridactus_guardrail_activations_total",
+            "Guardrail triggers by level and severity",
+        ));
         out.push_str("\n");
-        out.push_str(&self.active_prevention_blocks.export("veridactus_active_prevention_blocks_total", "Tokens blocked by constrained decoding"));
+        out.push_str(&self.active_prevention_blocks.export(
+            "veridactus_active_prevention_blocks_total",
+            "Tokens blocked by constrained decoding",
+        ));
         out.push_str("\n");
-        out.push_str(&self.asi_risks_flagged.export("veridactus_asi_risks_flagged_total", "OWASP ASI risks flagged"));
+        out.push_str(&self.asi_risks_flagged.export(
+            "veridactus_asi_risks_flagged_total",
+            "OWASP ASI risks flagged",
+        ));
         out
     }
 }

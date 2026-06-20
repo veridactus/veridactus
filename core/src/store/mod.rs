@@ -33,14 +33,14 @@
 //! - `BudgetStore` - 预算状态的实时管理
 //! - `AsyncTraceWriter` - 异步写入队列接口
 
-pub mod traits;
 pub mod adapters;
-pub mod queue;
-pub mod facade;
 pub mod backend;
+pub mod facade;
+pub mod queue;
+pub mod traits;
 
-pub use traits::*;
 pub use adapters::*;
+pub use backend::{create_trace_store, StoreBackend};
 pub use facade::StoreManager;
 pub use queue::AsyncWriteQueue;
-pub use backend::{StoreBackend, create_trace_store};
+pub use traits::*;

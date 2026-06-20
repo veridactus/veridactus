@@ -7,7 +7,9 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::types::journal::{ExecutionJournal, JournalEventType};
-use crate::types::{Action, SafetyEvent, SafetyTrigger, Severity, SafetyAction, OwaspAsiRisk, VersionRange};
+use crate::types::{
+    Action, OwaspAsiRisk, SafetyAction, SafetyEvent, SafetyTrigger, Severity, VersionRange,
+};
 
 /// 插件元数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -265,7 +267,8 @@ impl GovernancePlugin for BudgetPlugin {
             name: "budget".to_string(),
             plugin_type: PluginType::Native,
             version: "0.2.1".to_string(),
-            description: "Budget check plugin, supports hard_stop/degrade/adaptive strategies".to_string(),
+            description: "Budget check plugin, supports hard_stop/degrade/adaptive strategies"
+                .to_string(),
             author: Some("VERIDACTUS Core".to_string()),
             supported_protocol_versions: VersionRange {
                 min: "0.2.0".to_string(),
@@ -401,9 +404,15 @@ mod tests {
         let mut registry = PluginRegistry::new();
         registry.register(Box::new(BudgetPlugin));
 
-        assert!(registry.check_version_compatibility("budget", "0.2.0").is_ok());
-        assert!(registry.check_version_compatibility("budget", "0.2.1").is_ok());
-        assert!(registry.check_version_compatibility("budget", "0.3.0").is_err());
+        assert!(registry
+            .check_version_compatibility("budget", "0.2.0")
+            .is_ok());
+        assert!(registry
+            .check_version_compatibility("budget", "0.2.1")
+            .is_ok());
+        assert!(registry
+            .check_version_compatibility("budget", "0.3.0")
+            .is_err());
     }
 
     /// 测试插件版本不兼容降级

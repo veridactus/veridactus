@@ -5,14 +5,14 @@
 
 pub mod governance;
 pub mod guardrails;
-pub mod pii_detector;
 pub mod output_filter;
-pub mod semantic_guard;
+pub mod pii_detector;
 pub mod production_plugins;
+pub mod semantic_guard;
 
 pub use governance::*;
 pub use guardrails::*;
-pub use pii_detector::*;
 pub use output_filter::*;
-pub use semantic_guard::*;
+pub use pii_detector::*;
 pub use production_plugins::*;
+pub use semantic_guard::*;

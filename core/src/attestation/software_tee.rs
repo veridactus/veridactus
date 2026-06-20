@@ -43,7 +43,10 @@ impl SoftwareAttestation {
         let verifying_key = signing_key.verifying_key();
 
         // MRENCLAVE = SHA-256(公钥) 模拟飞地身份
-        let mrenclave = format!("sw:{}", hex::encode(Sha256::digest(verifying_key.as_bytes())));
+        let mrenclave = format!(
+            "sw:{}",
+            hex::encode(Sha256::digest(verifying_key.as_bytes()))
+        );
 
         Self {
             signing_key,
@@ -55,7 +58,10 @@ impl SoftwareAttestation {
     /// 使用指定密钥创建 (用于可复现测试)
     pub fn with_key(signing_key: SigningKey, platform: &str) -> Self {
         let verifying_key = signing_key.verifying_key();
-        let mrenclave = format!("sw:{}", hex::encode(Sha256::digest(verifying_key.as_bytes())));
+        let mrenclave = format!(
+            "sw:{}",
+            hex::encode(Sha256::digest(verifying_key.as_bytes()))
+        );
         Self {
             signing_key,
             platform: platform.to_string(),
@@ -132,8 +138,8 @@ impl SoftwareAttestation {
         let signature_bytes =
             hex::decode(signature_hex).map_err(|e| format!("签名 hex 解码失败: {}", e))?;
 
-        let signature = Signature::from_slice(&signature_bytes)
-            .map_err(|e| format!("签名解析失败: {}", e))?;
+        let signature =
+            Signature::from_slice(&signature_bytes).map_err(|e| format!("签名解析失败: {}", e))?;
 
         // 重建认证数据
         let quote_data = serde_json::json!({
@@ -182,8 +188,16 @@ fn base64_encode(data: &[u8]) -> String {
         let triple = (b0 << 16) | (b1 << 8) | b2;
         result.push(CHARS[((triple >> 18) & 0x3F) as usize]);
         result.push(CHARS[((triple >> 12) & 0x3F) as usize]);
-        result.push(if chunk.len() > 1 { CHARS[((triple >> 6) & 0x3F) as usize] } else { b'=' });
-        result.push(if chunk.len() > 2 { CHARS[(triple & 0x3F) as usize] } else { b'=' });
+        result.push(if chunk.len() > 1 {
+            CHARS[((triple >> 6) & 0x3F) as usize]
+        } else {
+            b'='
+        });
+        result.push(if chunk.len() > 2 {
+            CHARS[(triple & 0x3F) as usize]
+        } else {
+            b'='
+        });
     }
     String::from_utf8(result).unwrap_or_default()
 }
@@ -197,17 +211,24 @@ mod tests {
     fn create_test_trace() -> Trace {
         Trace {
             trace_id: Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap(),
-            parent_id: None, session_id: None, tenant_id: Some("test".to_string()),
+            parent_id: None,
+            session_id: None,
+            tenant_id: Some("test".to_string()),
             execution_state: None,
             model: "openai/gpt-4o".to_string(),
             engine_determinism: None,
-            input: None, output: None, observations: None,
+            input: None,
+            output: None,
+            observations: None,
             proofs: Proofs::default(),
-            constraints_applied: None, supply_chain: None,
-            agent_execution_chain: None, delegation_chain: None,
+            constraints_applied: None,
+            supply_chain: None,
+            agent_execution_chain: None,
+            delegation_chain: None,
             compliance_mappings: None,
             created_at: "2026-01-01T00:00:00Z".to_string(),
-            ttl_expire_at: None, extensions: None,
+            ttl_expire_at: None,
+            extensions: None,
         }
     }
 
@@ -222,7 +243,10 @@ mod tests {
         assert!(proof.signature.is_some());
         assert_eq!(proof.signature.as_ref().unwrap().len(), 128); // Ed25519 sig is 64 bytes = 128 hex chars
         assert!(proof.attestation_quote.is_some());
-        assert_eq!(proof.platform.as_deref(), Some("veridactus-software-tee-v1"));
+        assert_eq!(
+            proof.platform.as_deref(),
+            Some("veridactus-software-tee-v1")
+        );
     }
 
     #[test]
@@ -250,6 +274,10 @@ mod tests {
         let attestor = SoftwareAttestation::new();
         let mrenclave = attestor.mrenclave();
         assert!(mrenclave.starts_with("sw:"));
-        assert!(mrenclave.len() > 10, "mrenclave 应有合理长度: {}", mrenclave.len());
+        assert!(
+            mrenclave.len() > 10,
+            "mrenclave 应有合理长度: {}",
+            mrenclave.len()
+        );
     }
 }

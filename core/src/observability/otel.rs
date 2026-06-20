@@ -47,26 +47,38 @@ impl GenAiSpan {
     }
 
     pub fn set_model(&mut self, model: &str) {
-        self.attributes.insert(genai_attrs::SYSTEM, model.split('/').next().unwrap_or(model).to_string());
-        self.attributes.insert(genai_attrs::REQUEST_MODEL, model.to_string());
+        self.attributes.insert(
+            genai_attrs::SYSTEM,
+            model.split('/').next().unwrap_or(model).to_string(),
+        );
+        self.attributes
+            .insert(genai_attrs::REQUEST_MODEL, model.to_string());
     }
 
     pub fn set_temperature(&mut self, temp: f64) {
-        self.attributes.insert(genai_attrs::REQUEST_TEMPERATURE, temp.to_string());
+        self.attributes
+            .insert(genai_attrs::REQUEST_TEMPERATURE, temp.to_string());
     }
 
     pub fn set_usage(&mut self, input_tokens: u64, output_tokens: u64) {
-        self.attributes.insert(genai_attrs::USAGE_INPUT_TOKENS, input_tokens.to_string());
-        self.attributes.insert(genai_attrs::USAGE_OUTPUT_TOKENS, output_tokens.to_string());
-        self.attributes.insert(genai_attrs::USAGE_TOTAL_TOKENS, (input_tokens + output_tokens).to_string());
+        self.attributes
+            .insert(genai_attrs::USAGE_INPUT_TOKENS, input_tokens.to_string());
+        self.attributes
+            .insert(genai_attrs::USAGE_OUTPUT_TOKENS, output_tokens.to_string());
+        self.attributes.insert(
+            genai_attrs::USAGE_TOTAL_TOKENS,
+            (input_tokens + output_tokens).to_string(),
+        );
     }
 
     pub fn set_finish_reason(&mut self, reason: &str) {
-        self.attributes.insert(genai_attrs::RESPONSE_FINISH_REASON, reason.to_string());
+        self.attributes
+            .insert(genai_attrs::RESPONSE_FINISH_REASON, reason.to_string());
     }
 
     pub fn set_proof_level(&mut self, level: &str) {
-        self.attributes.insert(genai_attrs::VERIDACTUS_PROOF_LEVEL, level.to_string());
+        self.attributes
+            .insert(genai_attrs::VERIDACTUS_PROOF_LEVEL, level.to_string());
     }
 
     pub fn elapsed_ms(&self) -> f64 {
@@ -132,7 +144,11 @@ impl AnomalyDetector {
 
         if self.count == 1 {
             self.mean = current;
-            return AnomalyResult { score: 0.1, z_score: 0.0, is_anomaly: false };
+            return AnomalyResult {
+                score: 0.1,
+                z_score: 0.0,
+                is_anomaly: false,
+            };
         }
 
         // EWMA 更新
@@ -168,7 +184,8 @@ impl AnomalyDetector {
         use std::sync::Mutex;
         use std::sync::OnceLock;
         static DETECTOR: OnceLock<Mutex<AnomalyDetector>> = OnceLock::new();
-        DETECTOR.get_or_init(|| Mutex::new(AnomalyDetector::new(0.1)))
+        DETECTOR
+            .get_or_init(|| Mutex::new(AnomalyDetector::new(0.1)))
             .lock()
             .unwrap()
     }
@@ -189,7 +206,9 @@ impl From<AnomalyResult> for crate::types::trace::DriftDetection {
 pub struct OtelTracer;
 
 impl OtelTracer {
-    pub fn new(_service_name: &str) -> Self { Self }
+    pub fn new(_service_name: &str) -> Self {
+        Self
+    }
 
     pub fn create_span(&self, name: &str, trace_id: &str) -> GenAiSpan {
         let mut span = GenAiSpan::new(trace_id);
@@ -220,10 +239,22 @@ mod tests {
         span.set_temperature(0.7);
         span.set_usage(100, 50);
 
-        assert_eq!(span.attributes.get(genai_attrs::SYSTEM), Some(&"openai".to_string()));
-        assert_eq!(span.attributes.get(genai_attrs::REQUEST_MODEL), Some(&"openai/gpt-4o".to_string()));
-        assert_eq!(span.attributes.get(genai_attrs::USAGE_INPUT_TOKENS), Some(&"100".to_string()));
-        assert_eq!(span.attributes.get(genai_attrs::USAGE_OUTPUT_TOKENS), Some(&"50".to_string()));
+        assert_eq!(
+            span.attributes.get(genai_attrs::SYSTEM),
+            Some(&"openai".to_string())
+        );
+        assert_eq!(
+            span.attributes.get(genai_attrs::REQUEST_MODEL),
+            Some(&"openai/gpt-4o".to_string())
+        );
+        assert_eq!(
+            span.attributes.get(genai_attrs::USAGE_INPUT_TOKENS),
+            Some(&"100".to_string())
+        );
+        assert_eq!(
+            span.attributes.get(genai_attrs::USAGE_OUTPUT_TOKENS),
+            Some(&"50".to_string())
+        );
     }
 
     #[test]
@@ -234,7 +265,11 @@ mod tests {
             detector.evaluate(500.0 + rand::random::<f64>() * 100.0);
         }
         let result = detector.evaluate(550.0);
-        assert!(result.score < 0.5, "normal latency should have low anomaly score, got {}", result.score);
+        assert!(
+            result.score < 0.5,
+            "normal latency should have low anomaly score, got {}",
+            result.score
+        );
     }
 
     #[test]
@@ -244,7 +279,13 @@ mod tests {
             detector.evaluate(500.0 + rand::random::<f64>() * 50.0);
         }
         let result = detector.evaluate(5000.0); // 10x normal
-        assert!(result.is_anomaly, "10x latency should be flagged as anomaly");
-        assert!(result.z_score > 3.0, "z-score should be >3 for extreme anomaly");
+        assert!(
+            result.is_anomaly,
+            "10x latency should be flagged as anomaly"
+        );
+        assert!(
+            result.z_score > 3.0,
+            "z-score should be >3 for extreme anomaly"
+        );
     }
 }

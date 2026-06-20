@@ -5,7 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::types::trace::{Trace, EngineDeterminism};
+use crate::types::trace::{EngineDeterminism, Trace};
 
 /// 确定性策略标识
 const STRATEGIES: &[&str] = &[
@@ -32,7 +32,10 @@ impl std::fmt::Display for DeterminismError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnsupportedStrategy(s) => write!(f, "不支持确定性策略: {}", s),
-            Self::VersionMismatch { required, available } => {
+            Self::VersionMismatch {
+                required,
+                available,
+            } => {
                 write!(f, "版本不匹配: 需要={}, 可用={}", required, available)
             }
             Self::BitwiseGuaranteeNotSupported => write!(f, "当前环境不支持比特级确定性"),
@@ -125,13 +128,13 @@ impl DeterminismChecker {
             .get(&det.strategy)
             .ok_or_else(|| DeterminismError::FrameworkNotAvailable(det.strategy.clone()))?;
 
-        let required_version = det
-            .framework_version
-            .as_ref()
-            .ok_or_else(|| DeterminismError::VersionMismatch {
-                required: "any".to_string(),
-                available: available_version.clone(),
-            })?;
+        let required_version =
+            det.framework_version
+                .as_ref()
+                .ok_or_else(|| DeterminismError::VersionMismatch {
+                    required: "any".to_string(),
+                    available: available_version.clone(),
+                })?;
 
         if required_version > available_version {
             return Err(DeterminismError::VersionMismatch {

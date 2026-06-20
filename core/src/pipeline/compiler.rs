@@ -16,7 +16,11 @@ pub enum CompileError {
     /// 插件未找到
     PluginNotFound(String),
     /// 版本不匹配
-    VersionMismatch { plugin: String, expected: String, actual: String },
+    VersionMismatch {
+        plugin: String,
+        expected: String,
+        actual: String,
+    },
     /// 能力不足
     CapabilityMissing { plugin: String, cap: String },
 }
@@ -25,8 +29,16 @@ impl std::fmt::Display for CompileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::PluginNotFound(p) => write!(f, "Plugin '{}' not registered", p),
-            Self::VersionMismatch { plugin, expected, actual } => {
-                write!(f, "插件 '{}' 版本不匹配: 需要 {}, 运行时 {}", plugin, expected, actual)
+            Self::VersionMismatch {
+                plugin,
+                expected,
+                actual,
+            } => {
+                write!(
+                    f,
+                    "插件 '{}' 版本不匹配: 需要 {}, 运行时 {}",
+                    plugin, expected, actual
+                )
             }
             Self::CapabilityMissing { plugin, cap } => {
                 write!(f, "插件 '{}' 需要能力 '{}' 但运行时不可用", plugin, cap)
@@ -87,7 +99,10 @@ impl PipelineCompiler {
                         VersionMismatchPolicy::Skip => {
                             warn!(
                                 "跳过插件 {}: 版本不兼容 (需要 {}-{}, 运行时 {})",
-                                plugin_cfg.name, version_range.min, version_range.max, runtime.protocol_version
+                                plugin_cfg.name,
+                                version_range.min,
+                                version_range.max,
+                                runtime.protocol_version
                             );
                             continue;
                         }
@@ -104,10 +119,7 @@ impl PipelineCompiler {
                 // 运行时能力检查（AI.md §6.5）
                 for cap in &plugin_cfg.required_capabilities {
                     if !runtime.contains(cap) {
-                        warn!(
-                            "插件 {} 需要能力 {} 但不可用",
-                            plugin_cfg.name, cap
-                        );
+                        warn!("插件 {} 需要能力 {} 但不可用", plugin_cfg.name, cap);
                     }
                 }
 
@@ -151,13 +163,39 @@ mod tests {
                         version: "1.0".into(),
                         description: "test".into(),
                         author: None,
-                        supported_protocol_versions: VersionRange { min: "0.2.0".into(), max: "0.2.1".into() },
+                        supported_protocol_versions: VersionRange {
+                            min: "0.2.0".into(),
+                            max: "0.2.1".into(),
+                        },
                     }
                 }
-                async fn on_request(&self, _ctx: &mut crate::plugin::RequestContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-                async fn on_stream_chunk(&self, _ctx: &mut crate::plugin::StreamChunkContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-                async fn on_response(&self, _ctx: &mut crate::plugin::ResponseContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-                async fn on_async_finalize(&self, _ctx: &mut crate::plugin::AsyncContext) -> Result<serde_json::Value, String> { Ok(serde_json::json!({})) }
+                async fn on_request(
+                    &self,
+                    _ctx: &mut crate::plugin::RequestContext,
+                    _journal: &mut ExecutionJournal,
+                ) -> Result<Action, String> {
+                    Ok(Action::Continue)
+                }
+                async fn on_stream_chunk(
+                    &self,
+                    _ctx: &mut crate::plugin::StreamChunkContext,
+                    _journal: &mut ExecutionJournal,
+                ) -> Result<Action, String> {
+                    Ok(Action::Continue)
+                }
+                async fn on_response(
+                    &self,
+                    _ctx: &mut crate::plugin::ResponseContext,
+                    _journal: &mut ExecutionJournal,
+                ) -> Result<Action, String> {
+                    Ok(Action::Continue)
+                }
+                async fn on_async_finalize(
+                    &self,
+                    _ctx: &mut crate::plugin::AsyncContext,
+                ) -> Result<serde_json::Value, String> {
+                    Ok(serde_json::json!({}))
+                }
             }
         };
     }
@@ -171,7 +209,10 @@ mod tests {
         let compiler = PipelineCompiler::new(registry);
 
         let plan = ExecutionPlan::default_plan();
-        let runtime = RuntimeCapabilities { protocol_version: "0.2.1".into(), ..Default::default() };
+        let runtime = RuntimeCapabilities {
+            protocol_version: "0.2.1".into(),
+            ..Default::default()
+        };
 
         let result = compiler.compile(&plan, &runtime);
         assert!(result.is_ok(), "编译应成功: {:?}", result.err());
@@ -184,7 +225,10 @@ mod tests {
         let compiler = PipelineCompiler::new(registry);
 
         let plan = ExecutionPlan::default_plan();
-        let runtime = RuntimeCapabilities { protocol_version: "0.3.0".into(), ..Default::default() };
+        let runtime = RuntimeCapabilities {
+            protocol_version: "0.3.0".into(),
+            ..Default::default()
+        };
 
         let result = compiler.compile(&plan, &runtime).unwrap();
         // 默认策略是 Skip, 所以插件应被跳过

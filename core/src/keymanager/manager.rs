@@ -101,7 +101,8 @@ impl KeyManager {
 
     /// 生成新密钥
     pub fn generate_key(&mut self, purpose: KeyPurpose, operator: &str) -> KeyEntry {
-        let key_id = format!("{}-{}", 
+        let key_id = format!(
+            "{}-{}",
             match purpose {
                 KeyPurpose::L0Signature => "l0",
                 KeyPurpose::DelegationTokens => "del",
@@ -135,7 +136,10 @@ impl KeyManager {
             details: format!("生成 {:?} 密钥", purpose),
         });
 
-        info!("密钥已生成: {} (purpose={:?}, operator={})", key_id, purpose, operator);
+        info!(
+            "密钥已生成: {} (purpose={:?}, operator={})",
+            key_id, purpose, operator
+        );
         entry
     }
 
@@ -143,10 +147,16 @@ impl KeyManager {
     ///
     /// 将旧密钥标记为 Rotated，生成新密钥。
     pub fn rotate_key(&mut self, key_id: &str, operator: &str) -> Result<KeyEntry, String> {
-        let old_entry = self.keys.get(key_id).ok_or_else(|| format!("Key {} not found", key_id))?;
+        let old_entry = self
+            .keys
+            .get(key_id)
+            .ok_or_else(|| format!("Key {} not found", key_id))?;
 
         if old_entry.status != KeyStatus::Active {
-            return Err(format!("Key {} not in Active state (current: : {:?})", key_id, old_entry.status));
+            return Err(format!(
+                "Key {} not in Active state (current: : {:?})",
+                key_id, old_entry.status
+            ));
         }
 
         let purpose = old_entry.purpose.clone();
@@ -169,13 +179,19 @@ impl KeyManager {
             details: format!("Rotated to new key {}", new_entry.key_id),
         });
 
-        info!("Key rotated: {} -> {} (operator={})", key_id, new_entry.key_id, operator);
+        info!(
+            "Key rotated: {} -> {} (operator={})",
+            key_id, new_entry.key_id, operator
+        );
         Ok(new_entry)
     }
 
     /// 吊销密钥（AI.md §8.1 紧急流程）
     pub fn revoke_key(&mut self, key_id: &str, operator: &str, reason: &str) -> Result<(), String> {
-        let entry = self.keys.get_mut(key_id).ok_or_else(|| format!("Key {} not found", key_id))?;
+        let entry = self
+            .keys
+            .get_mut(key_id)
+            .ok_or_else(|| format!("Key {} not found", key_id))?;
         entry.status = KeyStatus::Revoked;
 
         self.audit_logs.push(KeyAuditLog {
@@ -186,19 +202,31 @@ impl KeyManager {
             details: format!("Revoke reason: {}", reason),
         });
 
-        info!("Key revoked: {} (operator={}, reason={})", key_id, operator, reason);
+        info!(
+            "Key revoked: {} (operator={}, reason={})",
+            key_id, operator, reason
+        );
         Ok(())
     }
 
     /// 获取激活的密钥（用于签名）
     pub fn get_active_key(&self, purpose: &KeyPurpose) -> Option<&KeyEntry> {
-        self.keys.values().find(|k| k.purpose == *purpose && k.status == KeyStatus::Active)
+        self.keys
+            .values()
+            .find(|k| k.purpose == *purpose && k.status == KeyStatus::Active)
     }
 
     /// 检查密钥是否过期（AI.md §8.1 轮换策略）
     pub fn is_rotation_overdue(&self, key_id: &str) -> Result<bool, String> {
-        let entry = self.keys.get(key_id).ok_or_else(|| format!("Key {} not found", key_id))?;
-        let period_days = self.rotation_periods.get(&entry.purpose).copied().unwrap_or(90);
+        let entry = self
+            .keys
+            .get(key_id)
+            .ok_or_else(|| format!("Key {} not found", key_id))?;
+        let period_days = self
+            .rotation_periods
+            .get(&entry.purpose)
+            .copied()
+            .unwrap_or(90);
         let age = Utc::now() - entry.created_at;
         Ok(age.num_days() > period_days as i64)
     }

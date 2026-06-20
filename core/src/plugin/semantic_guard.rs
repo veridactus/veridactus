@@ -99,14 +99,26 @@ impl SemanticGuard {
         let similarity = Self::cosine_similarity(reference_embedding, current_embedding);
 
         let (level, should_block, description) = if similarity >= self.config.warning_threshold {
-            (SemanticRiskLevel::Safe, false, 
-             format!("Semantic consistency good (similarity={:.4})", similarity))
+            (
+                SemanticRiskLevel::Safe,
+                false,
+                format!("Semantic consistency good (similarity={:.4})", similarity),
+            )
         } else if similarity >= self.config.block_threshold {
-            (SemanticRiskLevel::Warning, false,
-             format!("Semantic deviation warning (similarity={:.4})", similarity))
+            (
+                SemanticRiskLevel::Warning,
+                false,
+                format!("Semantic deviation warning (similarity={:.4})", similarity),
+            )
         } else {
-            (SemanticRiskLevel::Dangerous, true,
-             format!("Critical semantic drift, possible model substitution or poisoning (similarity={:.4})", similarity))
+            (
+                SemanticRiskLevel::Dangerous,
+                true,
+                format!(
+                    "Critical semantic drift, possible model substitution or poisoning (similarity={:.4})",
+                    similarity
+                ),
+            )
         };
 
         SemanticGuardResult {

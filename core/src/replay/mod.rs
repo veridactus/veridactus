@@ -4,9 +4,9 @@
 //! 遵循 AI.md §5.3, §7.3 和 §9.4。
 
 pub mod determinism;
-pub mod upstream_cache;
 pub mod engine;
+pub mod upstream_cache;
 
 pub use determinism::*;
-pub use upstream_cache::*;
 pub use engine::*;
+pub use upstream_cache::*;

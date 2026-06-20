@@ -9,8 +9,8 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-use super::Action;
 use super::trace::ExecutionState;
+use super::Action;
 use super::SafetyEvent;
 
 /// Journal 事件类型枚举（覆盖协议关键节点）
@@ -43,10 +43,7 @@ pub enum JournalEventType {
         latency_us: u64,
     },
     /// 上游模型选择事件
-    UpstreamSelected {
-        model: String,
-        endpoint: String,
-    },
+    UpstreamSelected { model: String, endpoint: String },
     /// 流式 chunk 投递事件
     StreamChunkDelivered {
         seq: u64,
@@ -59,15 +56,9 @@ pub enum JournalEventType {
         finish_reason: String,
     },
     /// 流错误事件
-    StreamError {
-        error: String,
-        truncated: bool,
-    },
+    StreamError { error: String, truncated: bool },
     /// 异步任务分发事件
-    AsyncTaskDispatched {
-        task_type: String,
-        task_id: String,
-    },
+    AsyncTaskDispatched { task_type: String, task_id: String },
     /// 异步任务结果事件
     AsyncTaskResult {
         task_type: String,
@@ -76,9 +67,7 @@ pub enum JournalEventType {
         success: bool,
     },
     /// Trace 最终化事件（含 L0 签名）
-    TraceFinalized {
-        signature: String,
-    },
+    TraceFinalized { signature: String },
     /// 安全事件（ASI 相关）
     SafetyEvent(SafetyEvent),
     /// 约束冲突事件（§5.5）
@@ -155,7 +144,7 @@ impl ExecutionJournal {
             tenant_id: tenant_id.into(),
             created_at: Utc::now().to_rfc3339(),
             events: Vec::with_capacity(64), // 预分配空间
-            head_hash: "0".repeat(64),       // 初始哈希为 64 个 '0'
+            head_hash: "0".repeat(64),      // 初始哈希为 64 个 '0'
         }
     }
 
@@ -209,7 +198,8 @@ impl ExecutionJournal {
             }
 
             // 重新计算哈希并验证
-            let recomputed = JournalEvent::compute_hash(&event.event_type, &event.prev_hash, event.seq);
+            let recomputed =
+                JournalEvent::compute_hash(&event.event_type, &event.prev_hash, event.seq);
             if recomputed != event.hash {
                 return Err(format!(
                     "事件 {} 哈希不匹配: 期望 hash={}, 重算 hash={}",

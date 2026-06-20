@@ -24,7 +24,11 @@ pub struct ConfigVersion {
 
 impl Default for ConfigVersion {
     fn default() -> Self {
-        Self { pipeline_version: 0, policy_version: 0, plugin_version: 0 }
+        Self {
+            pipeline_version: 0,
+            policy_version: 0,
+            plugin_version: 0,
+        }
     }
 }
 
@@ -118,10 +122,8 @@ impl ConfigSyncClient {
 /// # 参数
 /// * `client` - 配置同步客户端
 /// * `on_update` - 配置变更回调
-pub async fn config_sync_loop<F>(
-    mut client: ConfigSyncClient,
-    on_update: F,
-) where
+pub async fn config_sync_loop<F>(mut client: ConfigSyncClient, on_update: F)
+where
     F: Fn(ConfigPayload),
 {
     loop {

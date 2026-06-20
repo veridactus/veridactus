@@ -29,11 +29,8 @@ pub fn strip_internal_fields(value: &mut Value) {
     match value {
         Value::Object(obj) => {
             // 收集需要删除的键（避免迭代时修改）
-            let keys_to_remove: Vec<String> = obj
-                .keys()
-                .filter(|k| k.starts_with('_'))
-                .cloned()
-                .collect();
+            let keys_to_remove: Vec<String> =
+                obj.keys().filter(|k| k.starts_with('_')).cloned().collect();
 
             // 删除 _ 开头的字段
             for key in keys_to_remove {
@@ -69,7 +66,11 @@ pub fn generate_l0_proof(trace: &mut Trace) -> ProofChainEntry {
     let original_chain = trace.proofs.proof_chain.clone();
 
     // ② 确保存在一个 L0 占位条目（如果没有则创建）
-    let has_l0 = trace.proofs.proof_chain.iter().any(|p| p.level == ProofLevel::L0);
+    let has_l0 = trace
+        .proofs
+        .proof_chain
+        .iter()
+        .any(|p| p.level == ProofLevel::L0);
     if !has_l0 {
         trace.proofs.proof_chain.push(ProofChainEntry {
             level: ProofLevel::L0,
@@ -203,8 +204,8 @@ pub fn get_canonicalized_trace(trace: &Trace) -> Result<String, String> {
     }
 
     // 剥离内部字段
-    let mut sanitized = serde_json::to_value(&trace_clone)
-        .map_err(|e| format!("Serialization failed: {}", e))?;
+    let mut sanitized =
+        serde_json::to_value(&trace_clone).map_err(|e| format!("Serialization failed: {}", e))?;
     strip_internal_fields(&mut sanitized);
     sanitize_utf8_json(&mut sanitized);
 

@@ -123,8 +123,8 @@ impl AsyncDispatcher {
 
     /// 检查 Redis 连接是否正常
     pub async fn health_check(&self) -> Result<(), String> {
-        let client =
-            redis::Client::open(self.redis_url.as_str()).map_err(|e| format!("Invalid Redis URL: {}", e))?;
+        let client = redis::Client::open(self.redis_url.as_str())
+            .map_err(|e| format!("Invalid Redis URL: {}", e))?;
         let mut conn = client
             .get_multiplexed_async_connection()
             .await

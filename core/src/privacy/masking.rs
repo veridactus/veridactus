@@ -40,9 +40,13 @@ impl Default for PiiPatterns {
         Self {
             email: Regex::new(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}").unwrap(),
             phone: Regex::new(r"1[3-9]\d{9}").unwrap(),
-            id_card: Regex::new(r"[1-9]\d{5}(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]").unwrap(),
+            id_card: Regex::new(
+                r"[1-9]\d{5}(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]",
+            )
+            .unwrap(),
             ip_address: Regex::new(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b").unwrap(),
-            api_key: Regex::new(r"(?i)(sk-[a-zA-Z0-9]{20,}|api[_-]?key[=:]\s*[a-zA-Z0-9]{16,})").unwrap(),
+            api_key: Regex::new(r"(?i)(sk-[a-zA-Z0-9]{20,}|api[_-]?key[=:]\s*[a-zA-Z0-9]{16,})")
+                .unwrap(),
         }
     }
 }
@@ -133,7 +137,9 @@ impl MaskingProcessor {
                     let masked_local = format!(
                         "{}{}",
                         &local_part[..self.config.prefix_keep],
-                        "*".repeat(local_part.len() - self.config.prefix_keep - self.config.suffix_keep),
+                        "*".repeat(
+                            local_part.len() - self.config.prefix_keep - self.config.suffix_keep
+                        ),
                     );
                     format!("{}@{}", masked_local, domain)
                 }
@@ -196,9 +202,7 @@ impl MaskingProcessor {
     fn apply_masking(&self, value: &Value) -> Value {
         match value {
             Value::String(s) => Value::String(self.mask_string(s)),
-            Value::Array(arr) => {
-                Value::Array(arr.iter().map(|v| self.apply_masking(v)).collect())
-            }
+            Value::Array(arr) => Value::Array(arr.iter().map(|v| self.apply_masking(v)).collect()),
             Value::Object(obj) => {
                 let mut new_obj = serde_json::Map::new();
                 for (k, v) in obj {

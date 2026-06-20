@@ -192,9 +192,17 @@ impl DriftDetector {
         if drift_score > (1.0 - self.config.content_similarity_threshold) {
             Some(DriftDetection {
                 drift_type: DriftType::ContentDrift,
-                severity: if drift_score > 0.5 { DriftSeverity::High } else { DriftSeverity::Medium },
+                severity: if drift_score > 0.5 {
+                    DriftSeverity::High
+                } else {
+                    DriftSeverity::Medium
+                },
                 drift_score,
-                description: format!("内容相似度为 {:.2}，低于阈值 {:.2}", 1.0 - drift_score, self.config.content_similarity_threshold),
+                description: format!(
+                    "内容相似度为 {:.2}，低于阈值 {:.2}",
+                    1.0 - drift_score,
+                    self.config.content_similarity_threshold
+                ),
                 token_range: None,
             })
         } else {
@@ -203,7 +211,11 @@ impl DriftDetector {
     }
 
     /// 检测长度漂移
-    fn detect_length_drift(&self, current_len: usize, baseline_len: usize) -> Option<DriftDetection> {
+    fn detect_length_drift(
+        &self,
+        current_len: usize,
+        baseline_len: usize,
+    ) -> Option<DriftDetection> {
         let drift_score = self.compute_length_drift_score(current_len, baseline_len);
         let change_pct = if baseline_len > 0 {
             ((current_len as f64 - baseline_len as f64) / baseline_len as f64 * 100.0).abs()
@@ -214,9 +226,16 @@ impl DriftDetector {
         if change_pct > self.config.length_change_threshold_pct {
             Some(DriftDetection {
                 drift_type: DriftType::LengthDrift,
-                severity: if change_pct > 100.0 { DriftSeverity::High } else { DriftSeverity::Medium },
+                severity: if change_pct > 100.0 {
+                    DriftSeverity::High
+                } else {
+                    DriftSeverity::Medium
+                },
                 drift_score,
-                description: format!("长度变化 {:.1}%，超过阈值 {:.1}%", change_pct, self.config.length_change_threshold_pct),
+                description: format!(
+                    "长度变化 {:.1}%，超过阈值 {:.1}%",
+                    change_pct, self.config.length_change_threshold_pct
+                ),
                 token_range: None,
             })
         } else {
@@ -276,17 +295,23 @@ impl DriftDetector {
 
         // 计算总体漂移得分
         if !report.drift_detections.is_empty() {
-            report.overall_drift_score = report.drift_detections.iter()
+            report.overall_drift_score = report
+                .drift_detections
+                .iter()
                 .map(|d| d.drift_score)
-                .sum::<f64>() / report.drift_detections.len() as f64;
+                .sum::<f64>()
+                / report.drift_detections.len() as f64;
         }
 
         // 检测显著漂移
-        report.significant_drift_detected = report.overall_drift_score > self.config.drift_score_threshold;
+        report.significant_drift_detected =
+            report.overall_drift_score > self.config.drift_score_threshold;
 
         // 生成警告和建议
         if report.significant_drift_detected {
-            let drift_types: Vec<String> = report.drift_detections.iter()
+            let drift_types: Vec<String> = report
+                .drift_detections
+                .iter()
                 .map(|d| format!("{:?}", d.drift_type))
                 .collect();
 
@@ -384,8 +409,14 @@ impl DriftTestCase {
         expected_output: String,
     ) -> Self {
         use sha2::{Digest, Sha256};
-        let prompt_hash = Some(format!("sha256:{}", hex::encode(Sha256::digest(&input_prompt))));
-        let reference_response_hash = Some(format!("sha256:{}", hex::encode(Sha256::digest(&expected_output))));
+        let prompt_hash = Some(format!(
+            "sha256:{}",
+            hex::encode(Sha256::digest(&input_prompt))
+        ));
+        let reference_response_hash = Some(format!(
+            "sha256:{}",
+            hex::encode(Sha256::digest(&expected_output))
+        ));
 
         Self {
             test_id,
@@ -531,8 +562,16 @@ impl DriftTestSuiteExecutor {
             passed,
             failed,
             skipped,
-            pass_rate: if total_tests > 0 { passed as f64 / total_tests as f64 } else { 0.0 },
-            avg_drift_score: if passed + failed > 0 { total_drift_score / (passed + failed) as f64 } else { 0.0 },
+            pass_rate: if total_tests > 0 {
+                passed as f64 / total_tests as f64
+            } else {
+                0.0
+            },
+            avg_drift_score: if passed + failed > 0 {
+                total_drift_score / (passed + failed) as f64
+            } else {
+                0.0
+            },
             max_drift_score,
             execution_time_ms,
         });
@@ -549,7 +588,9 @@ impl DriftTestSuiteExecutor {
 
     /// 获取失败的测试用例
     pub fn get_failed_tests(suite: &DriftTestSuite) -> Vec<&DriftTestCase> {
-        suite.test_cases.iter()
+        suite
+            .test_cases
+            .iter()
             .filter(|tc| tc.status == TestCaseStatus::Failed)
             .collect()
     }
@@ -558,7 +599,11 @@ impl DriftTestSuiteExecutor {
     pub fn generate_semantic_drift_report(&self, suite: &DriftTestSuite) -> SemanticDriftReport {
         let tests_passed = suite.summary.as_ref().map(|s| s.passed).unwrap_or(0);
         let tests_failed = suite.summary.as_ref().map(|s| s.failed).unwrap_or(0);
-        let overall_drift_score = suite.summary.as_ref().map(|s| s.avg_drift_score).unwrap_or(0.0);
+        let overall_drift_score = suite
+            .summary
+            .as_ref()
+            .map(|s| s.avg_drift_score)
+            .unwrap_or(0.0);
 
         let recommendation = if tests_failed == 0 {
             ReportRecommendation::Approve
@@ -568,8 +613,10 @@ impl DriftTestSuiteExecutor {
             ReportRecommendation::BlockRelease
         };
 
-        let test_results: Vec<TestResultEntry> = suite.test_cases.iter().map(|tc| {
-            TestResultEntry {
+        let test_results: Vec<TestResultEntry> = suite
+            .test_cases
+            .iter()
+            .map(|tc| TestResultEntry {
                 test_id: tc.test_id.clone(),
                 test_name: tc.name.clone(),
                 category: tc.category.clone(),
@@ -578,13 +625,22 @@ impl DriftTestSuiteExecutor {
                 reference_response_hash: tc.reference_response_hash.clone(),
                 candidate_response_hash: tc.result.as_ref().map(|r| {
                     use sha2::{Digest, Sha256};
-                    format!("sha256:{}", hex::encode(Sha256::digest(&r.current_preview.clone().unwrap_or_default())))
+                    format!(
+                        "sha256:{}",
+                        hex::encode(Sha256::digest(
+                            &r.current_preview.clone().unwrap_or_default()
+                        ))
+                    )
                 }),
-                similarity_score: tc.result.as_ref().map(|r| r.content_similarity).unwrap_or(1.0),
+                similarity_score: tc
+                    .result
+                    .as_ref()
+                    .map(|r| r.content_similarity)
+                    .unwrap_or(1.0),
                 threshold: tc.get_drift_threshold(self.detector.config.drift_score_threshold),
                 drift_detected: tc.status == TestCaseStatus::Failed,
-            }
-        }).collect();
+            })
+            .collect();
 
         SemanticDriftReport {
             suite_id: suite.suite_id.clone(),
@@ -667,11 +723,15 @@ impl DriftReproducibilityIntegrator {
     pub fn can_release(&self, suite: &DriftTestSuite) -> ReleaseDecisionReport {
         let report = self.executor.generate_semantic_drift_report(suite);
 
-        let critical_failures: usize = report.tests.iter()
+        let critical_failures: usize = report
+            .tests
+            .iter()
             .filter(|t| t.criticality == TestCriticality::Critical && t.drift_detected)
             .count();
 
-        let high_failures: usize = report.tests.iter()
+        let high_failures: usize = report
+            .tests
+            .iter()
             .filter(|t| t.criticality == TestCriticality::High && t.drift_detected)
             .count();
 

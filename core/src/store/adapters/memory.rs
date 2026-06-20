@@ -2,12 +2,12 @@
 //!
 //! 用于开发和测试的内存存储实现。
 
+use crate::store::traits::{CacheStore, ObjectStore, TraceStore};
+use crate::types::trace::Trace;
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::RwLock;
-use async_trait::async_trait;
 use uuid::Uuid;
-use crate::types::trace::Trace;
-use crate::store::traits::{TraceStore, CacheStore, ObjectStore};
 
 pub struct InMemoryTraceStoreAdapter {
     traces: RwLock<HashMap<Uuid, Trace>>,
@@ -52,11 +52,7 @@ impl TraceStore for InMemoryTraceStoreAdapter {
         let traces = self.traces.read().unwrap_or_else(|e| e.into_inner());
         traces
             .values()
-            .filter(|t| {
-                tenant_id.map_or(true, |tid| {
-                    t.tenant_id.as_deref() == Some(tid)
-                })
-            })
+            .filter(|t| tenant_id.map_or(true, |tid| t.tenant_id.as_deref() == Some(tid)))
             .cloned()
             .collect()
     }
@@ -64,7 +60,10 @@ impl TraceStore for InMemoryTraceStoreAdapter {
     async fn count(&self, tenant_id: Option<&str>) -> usize {
         let traces = self.traces.read().unwrap_or_else(|e| e.into_inner());
         if let Some(tid) = tenant_id {
-            traces.values().filter(|t| t.tenant_id.as_deref() == Some(tid)).count()
+            traces
+                .values()
+                .filter(|t| t.tenant_id.as_deref() == Some(tid))
+                .count()
         } else {
             traces.len()
         }
@@ -129,7 +128,9 @@ impl InMemoryTraceStore {
 }
 
 impl Default for InMemoryTraceStore {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait]
@@ -239,7 +240,9 @@ impl ObjectStore for LocalFileStore {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        tokio::fs::write(&path, data).await.map_err(|e| e.to_string())
+        tokio::fs::write(&path, data)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     async fn get(&self, bucket: &str, key: &str) -> Option<Vec<u8>> {
@@ -249,7 +252,9 @@ impl ObjectStore for LocalFileStore {
 
     async fn delete(&self, bucket: &str, key: &str) -> Result<(), String> {
         let path = self.base_path.join(bucket).join(key);
-        tokio::fs::remove_file(&path).await.map_err(|e| e.to_string())
+        tokio::fs::remove_file(&path)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     async fn list(&self, bucket: &str, prefix: &str) -> Vec<String> {

@@ -2,12 +2,12 @@
 //!
 //! 生产环境使用的 PostgreSQL Trace 存储实现。
 
+use crate::store::traits::TraceStore;
+use crate::types::trace::Trace;
 use async_trait::async_trait;
 use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::types::trace::Trace;
-use crate::store::traits::TraceStore;
 
 pub struct PostgresTraceStore {
     pool: Arc<sqlx::PgPool>,
@@ -70,7 +70,7 @@ impl PostgresTraceStore {
 impl TraceStore for PostgresTraceStore {
     async fn save(&self, trace: Trace) -> Result<(), String> {
         let trace_json = serde_json::to_value(&trace).map_err(|e| e.to_string())?;
-        
+
         sqlx::query(
             r#"
             INSERT INTO traces (
@@ -93,13 +93,12 @@ impl TraceStore for PostgresTraceStore {
     }
 
     async fn get(&self, trace_id: &Uuid) -> Option<Trace> {
-        let row: Option<(Value,)> = sqlx::query_as(
-            "SELECT trace_data FROM traces WHERE trace_id = $1"
-        )
-        .bind(trace_id)
-        .fetch_optional(self.pool.as_ref())
-        .await
-        .ok()?;
+        let row: Option<(Value,)> =
+            sqlx::query_as("SELECT trace_data FROM traces WHERE trace_id = $1")
+                .bind(trace_id)
+                .fetch_optional(self.pool.as_ref())
+                .await
+                .ok()?;
 
         row.and_then(|(data,)| serde_json::from_value(data).ok())
     }
@@ -117,7 +116,7 @@ impl TraceStore for PostgresTraceStore {
             .unwrap_or_default()
         } else {
             sqlx::query_as(
-                "SELECT trace_data FROM traces ORDER BY created_at DESC LIMIT $1 OFFSET $2"
+                "SELECT trace_data FROM traces ORDER BY created_at DESC LIMIT $1 OFFSET $2",
             )
             .bind(limit as i64)
             .bind(offset as i64)
@@ -133,59 +132,54 @@ impl TraceStore for PostgresTraceStore {
 
     async fn count(&self, tenant_id: Option<&str>) -> usize {
         if let Some(tid) = tenant_id {
-            sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM traces WHERE tenant_id = $1"
-            )
-            .bind(tid)
-            .fetch_one(self.pool.as_ref())
-            .await
-            .unwrap_or(0) as usize
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM traces WHERE tenant_id = $1")
+                .bind(tid)
+                .fetch_one(self.pool.as_ref())
+                .await
+                .unwrap_or(0) as usize
         } else {
-            sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM traces"
-            )
-            .fetch_one(self.pool.as_ref())
-            .await
-            .unwrap_or(0) as usize
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM traces")
+                .fetch_one(self.pool.as_ref())
+                .await
+                .unwrap_or(0) as usize
         }
     }
 
     async fn delete(&self, trace_id: &Uuid) -> Result<Option<Trace>, String> {
-        let row: Option<(Value,)> = sqlx::query_as(
-            "DELETE FROM traces WHERE trace_id = $1 RETURNING trace_data"
-        )
-        .bind(trace_id)
-        .fetch_optional(self.pool.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
+        let row: Option<(Value,)> =
+            sqlx::query_as("DELETE FROM traces WHERE trace_id = $1 RETURNING trace_data")
+                .bind(trace_id)
+                .fetch_optional(self.pool.as_ref())
+                .await
+                .map_err(|e| e.to_string())?;
 
         Ok(row.and_then(|(data,)| serde_json::from_value(data).ok()))
     }
 
     async fn delete_by_session(&self, session_id: &Uuid) -> Result<Vec<Trace>, String> {
-        let rows: Vec<(Value,)> = sqlx::query_as(
-            "DELETE FROM traces WHERE session_id = $1 RETURNING trace_data"
-        )
-        .bind(session_id)
-        .fetch_all(self.pool.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
+        let rows: Vec<(Value,)> =
+            sqlx::query_as("DELETE FROM traces WHERE session_id = $1 RETURNING trace_data")
+                .bind(session_id)
+                .fetch_all(self.pool.as_ref())
+                .await
+                .map_err(|e| e.to_string())?;
 
-        Ok(rows.into_iter()
+        Ok(rows
+            .into_iter()
             .filter_map(|(data,)| serde_json::from_value(data).ok())
             .collect())
     }
 
     async fn delete_by_tenant(&self, tenant_id: &str) -> Result<Vec<Trace>, String> {
-        let rows: Vec<(Value,)> = sqlx::query_as(
-            "DELETE FROM traces WHERE tenant_id = $1 RETURNING trace_data"
-        )
-        .bind(tenant_id)
-        .fetch_all(self.pool.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
+        let rows: Vec<(Value,)> =
+            sqlx::query_as("DELETE FROM traces WHERE tenant_id = $1 RETURNING trace_data")
+                .bind(tenant_id)
+                .fetch_all(self.pool.as_ref())
+                .await
+                .map_err(|e| e.to_string())?;
 
-        Ok(rows.into_iter()
+        Ok(rows
+            .into_iter()
             .filter_map(|(data,)| serde_json::from_value(data).ok())
             .collect())
     }

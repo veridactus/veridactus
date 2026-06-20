@@ -182,9 +182,14 @@ impl ComplianceMapper {
                     regulation: mapping.regulation.clone(),
                     article: mapping.article.clone(),
                     violation_type: ViolationType::MissingField,
-                    severity: if mapping.required { ViolationSeverity::High } else { ViolationSeverity::Low },
+                    severity: if mapping.required {
+                        ViolationSeverity::High
+                    } else {
+                        ViolationSeverity::Low
+                    },
                     description: format!("Missing required fields: {}", missing_fields.join(", ")),
-                    suggested_action: "Ensure all required fields are present in the trace".to_string(),
+                    suggested_action: "Ensure all required fields are present in the trace"
+                        .to_string(),
                 });
             }
 
@@ -201,7 +206,11 @@ impl ComplianceMapper {
         ComplianceReport {
             report_id: format!("compliance_{}", uuid::Uuid::new_v4()),
             timestamp: chrono::Utc::now().to_rfc3339(),
-            trace_id: trace_data.get("trace_id").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
+            trace_id: trace_data
+                .get("trace_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
             mappings: results,
             overall_compliant: violations.is_empty(),
             violations,
@@ -224,15 +233,18 @@ mod tests {
     #[test]
     fn test_compliance_mapping() {
         let mapper = ComplianceMapper::new();
-        
+
         let mut trace_data = HashMap::new();
         trace_data.insert("trace_id".to_string(), json!("test-trace-123"));
         trace_data.insert("output.response".to_string(), json!("Hello"));
-        trace_data.insert("constraints_applied.privacy_level".to_string(), json!("masked"));
+        trace_data.insert(
+            "constraints_applied.privacy_level".to_string(),
+            json!("masked"),
+        );
         trace_data.insert("proof_chain".to_string(), json!([]));
 
         let report = mapper.map_trace(&trace_data);
-        
+
         assert!(!report.overall_compliant);
         assert!(!report.violations.is_empty());
     }
@@ -241,7 +253,7 @@ mod tests {
     fn test_get_mappings_for_regulation() {
         let mapper = ComplianceMapper::new();
         let mappings = mapper.get_mappings_for_regulation("GDPR");
-        
+
         assert_eq!(mappings.len(), 2);
         assert!(mappings.iter().any(|m| m.article == "Article 5(1)(a)"));
     }

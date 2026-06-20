@@ -11,11 +11,11 @@
 //! - `openapi/data-plane-v0.2.1.json` - JSON格式规范
 //! - `openapi/data-plane-v0.2.1.yaml` - YAML格式规范
 
-use utoipa::{
-    OpenApi,
-    openapi::security::{ApiKey, ApiKeyValue, SecurityRequirement},
-};
 use utoipa::OpenApi as _;
+use utoipa::{
+    openapi::security::{ApiKey, ApiKeyValue, SecurityRequirement},
+    OpenApi,
+};
 
 /// 聊天完成请求
 #[derive(utoipa::ToSchema)]
@@ -567,10 +567,10 @@ mod tests {
     #[test]
     fn test_generate_openapi() {
         let openapi = VeridactusDataPlaneApi::openapi();
-        
+
         // 验证生成成功
         assert!(!openapi.paths().is_empty());
-        
+
         // 验证关键端点存在
         let paths = openapi.paths();
         assert!(paths.get("/health").is_some());
@@ -581,12 +581,12 @@ mod tests {
     #[test]
     fn test_openapi_json_serialization() {
         let openapi = VeridactusDataPlaneApi::openapi();
-        
+
         // 验证JSON序列化
         let json = serde_json::to_string_pretty(&openapi).unwrap();
         assert!(json.contains("openapi"));
         assert!(json.contains("3.0"));
-        
+
         // 验证可以反序列化
         let _ = serde_json::from_str::<utoipa::openapi::OpenApi>(&json).unwrap();
     }

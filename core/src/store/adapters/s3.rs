@@ -11,8 +11,8 @@
 
 #[cfg(feature = "s3")]
 mod s3_impl {
-    use async_trait::async_trait;
     use crate::store::traits::ObjectStore;
+    use async_trait::async_trait;
 
     pub struct S3ObjectStore {
         client: aws_sdk_s3::Client,
@@ -43,7 +43,8 @@ mod s3_impl {
         }
 
         async fn get(&self, bucket: &str, key: &str) -> Option<Vec<u8>> {
-            let output = self.client
+            let output = self
+                .client
                 .get_object()
                 .bucket(bucket)
                 .key(key)

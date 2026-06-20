@@ -279,12 +279,10 @@ pub fn generate_l2b_proof(trace_json: &str) -> crate::types::proof::ProofChainEn
         mrenclave: None,
         merkle_root: None,
         sampling_paths: None,
-        zk_proof: Some(
-            base64::Engine::encode(
-                &base64::engine::general_purpose::STANDARD,
-                serde_json::to_string(&proof).unwrap_or_default().as_bytes(),
-            )
-        ),
+        zk_proof: Some(base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            serde_json::to_string(&proof).unwrap_or_default().as_bytes(),
+        )),
         verification_key_hash: Some(proof.verification_key_hash.clone()),
         proof_aggregation_root: Some(proof.aggregation_root.clone()),
         canonicalization_method: "rfc8785".to_string(),
@@ -307,7 +305,9 @@ mod tests {
         assert_eq!(proof.layer_commitments.len(), 8);
         assert!(!proof.aggregation_root.is_empty());
         assert!(!proof.verification_key_hash.is_empty());
-        assert!(proof.consistency_checks.contains(&"aggregation_consistent".to_string()));
+        assert!(proof
+            .consistency_checks
+            .contains(&"aggregation_consistent".to_string()));
         assert!(proof.proof_size_bytes > 100);
 
         // 验证
@@ -321,8 +321,12 @@ mod tests {
         let mut proof = prover.prove(data.as_bytes());
 
         // 篡改聚合根
-        proof.aggregation_root = "0000000000000000000000000000000000000000000000000000000000000000".to_string();
-        assert!(!verify_l2b_proof(&proof), "Tampered proof should be rejected");
+        proof.aggregation_root =
+            "0000000000000000000000000000000000000000000000000000000000000000".to_string();
+        assert!(
+            !verify_l2b_proof(&proof),
+            "Tampered proof should be rejected"
+        );
     }
 
     #[test]
@@ -342,9 +346,16 @@ mod tests {
         let proof = prover.prove(data.as_bytes());
         let elapsed = start.elapsed();
         // 应在 5 秒内完成（协议 §7.1.6-A 默认超时）
-        assert!(elapsed.as_millis() < 5000,
-            "Proving took {}ms, should be < 5000ms", elapsed.as_millis());
+        assert!(
+            elapsed.as_millis() < 5000,
+            "Proving took {}ms, should be < 5000ms",
+            elapsed.as_millis()
+        );
         assert!(verify_l2b_proof(&proof));
-        println!("L2B proving: {}ms, size: {} bytes", elapsed.as_millis(), proof.proof_size_bytes);
+        println!(
+            "L2B proving: {}ms, size: {} bytes",
+            elapsed.as_millis(),
+            proof.proof_size_bytes
+        );
     }
 }

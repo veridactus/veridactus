@@ -15,7 +15,12 @@ use std::fmt;
 // ==================== TEE ====================
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TeePlatform { IntelTdx, AmdSevSnp, NvidiaCc, ArmCca }
+pub enum TeePlatform {
+    IntelTdx,
+    AmdSevSnp,
+    NvidiaCc,
+    ArmCca,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeeAttestationReport {
@@ -67,26 +72,46 @@ pub trait TeeAttestor: Send + Sync {
     fn is_available(&self) -> bool;
 }
 
-pub struct TeeRegistry { attestors: Vec<Box<dyn TeeAttestor>> }
+pub struct TeeRegistry {
+    attestors: Vec<Box<dyn TeeAttestor>>,
+}
 
 impl TeeRegistry {
-    pub fn new() -> Self { Self { attestors: Vec::new() } }
+    pub fn new() -> Self {
+        Self {
+            attestors: Vec::new(),
+        }
+    }
     pub fn register(&mut self, a: Box<dyn TeeAttestor>) {
         tracing::info!("TEE attestor registered: {:?}", a.platform());
         self.attestors.push(a);
     }
     pub fn get_preferred(&self, pref: Option<TeePlatform>) -> Option<&dyn TeeAttestor> {
         if let Some(p) = pref {
-            self.attestors.iter().find(|a| a.platform() == p && a.is_available()).map(|a| a.as_ref())
+            self.attestors
+                .iter()
+                .find(|a| a.platform() == p && a.is_available())
+                .map(|a| a.as_ref())
         } else {
-            self.attestors.iter().find(|a| a.is_available()).map(|a| a.as_ref())
+            self.attestors
+                .iter()
+                .find(|a| a.is_available())
+                .map(|a| a.as_ref())
         }
     }
     pub fn available_platforms(&self) -> Vec<TeePlatform> {
-        self.attestors.iter().filter(|a| a.is_available()).map(|a| a.platform()).collect()
+        self.attestors
+            .iter()
+            .filter(|a| a.is_available())
+            .map(|a| a.platform())
+            .collect()
     }
 }
-impl Default for TeeRegistry { fn default() -> Self { Self::new() } }
+impl Default for TeeRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ==================== ZK ====================
 
@@ -119,25 +144,49 @@ impl fmt::Display for ZkError {
 }
 impl std::error::Error for ZkError {}
 
-pub struct ZkProofManager { provers: Vec<Box<dyn ZkProver>> }
+pub struct ZkProofManager {
+    provers: Vec<Box<dyn ZkProver>>,
+}
 impl ZkProofManager {
-    pub fn new() -> Self { Self { provers: Vec::new() } }
-    pub fn register(&mut self, p: Box<dyn ZkProver>) { self.provers.push(p); }
+    pub fn new() -> Self {
+        Self {
+            provers: Vec::new(),
+        }
+    }
+    pub fn register(&mut self, p: Box<dyn ZkProver>) {
+        self.provers.push(p);
+    }
     pub fn get(&self, system: &str) -> Option<&dyn ZkProver> {
-        self.provers.iter().find(|p| p.proof_system() == system).map(|p| p.as_ref())
+        self.provers
+            .iter()
+            .find(|p| p.proof_system() == system)
+            .map(|p| p.as_ref())
     }
 }
-impl Default for ZkProofManager { fn default() -> Self { Self::new() } }
+impl Default for ZkProofManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ==================== Sigstore ====================
 
 #[async_trait]
 pub trait SigstoreVerifier: Send + Sync {
-    async fn verify(&self, model_hash: &str, signature: &str, log_entry: &str) -> Result<bool, SigstoreError>;
+    async fn verify(
+        &self,
+        model_hash: &str,
+        signature: &str,
+        log_entry: &str,
+    ) -> Result<bool, SigstoreError>;
 }
 
 #[derive(Debug)]
-pub enum SigstoreError { VerificationFailed(String), LogEntryNotFound(String), SdkError(String) }
+pub enum SigstoreError {
+    VerificationFailed(String),
+    LogEntryNotFound(String),
+    SdkError(String),
+}
 impl fmt::Display for SigstoreError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

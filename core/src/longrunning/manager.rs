@@ -85,7 +85,11 @@ impl LongRunningTraceManager {
 
         // 等待异步结果
         let wait_timeout = Duration::from_secs(timeout_secs);
-        let pending_ids: Vec<TaskId> = self.pending_async_results.iter().map(|e| e.key().clone()).collect();
+        let pending_ids: Vec<TaskId> = self
+            .pending_async_results
+            .iter()
+            .map(|e| e.key().clone())
+            .collect();
 
         for task_id in pending_ids {
             if let Some((_, callback)) = self.pending_async_results.remove(&task_id) {
@@ -144,7 +148,10 @@ fn compute_segment_hash(events: &[JournalEvent]) -> String {
 }
 
 /// 聚合所有段哈希和异步结果
-fn aggregate_hashes(segment_hashes: &[String], async_results: &[serde_json::Value]) -> Result<String, String> {
+fn aggregate_hashes(
+    segment_hashes: &[String],
+    async_results: &[serde_json::Value],
+) -> Result<String, String> {
     let mut hasher = Sha256::new();
     for sh in segment_hashes {
         hasher.update(sh.as_bytes());
@@ -163,7 +170,7 @@ mod tests {
 
     #[test]
     fn test_segment_creation() {
-        let mut mgr = LongRunningTraceManager::new(5);// 每5个事件一个段
+        let mut mgr = LongRunningTraceManager::new(5); // 每5个事件一个段
 
         for i in 0..12u64 {
             let event = JournalEvent {

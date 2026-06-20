@@ -2,17 +2,19 @@
 //!
 //! 测试流水线执行引擎的核心功能：插件查找、串行/并行执行、阻断语义。
 
-use std::sync::Arc;
-use veridactus_core::plugin::{
-    PluginRegistry, GovernancePlugin, PluginMetadata, PluginType,
-    RequestContext, AsyncContext, StreamChunkContext, ResponseContext,
-};
-use veridactus_core::types::{Action, VersionRange};
-use veridactus_core::types::journal::ExecutionJournal;
-use veridactus_core::pipeline::config::{ExecutionPlan, StageConfig, Placement, PluginConfig, VersionMismatchPolicy};
-use veridactus_core::pipeline::executor::PipelineExecutor;
 use async_trait::async_trait;
+use std::sync::Arc;
 use uuid::Uuid;
+use veridactus_core::pipeline::config::{
+    ExecutionPlan, Placement, PluginConfig, StageConfig, VersionMismatchPolicy,
+};
+use veridactus_core::pipeline::executor::PipelineExecutor;
+use veridactus_core::plugin::{
+    AsyncContext, GovernancePlugin, PluginMetadata, PluginRegistry, PluginType, RequestContext,
+    ResponseContext, StreamChunkContext,
+};
+use veridactus_core::types::journal::ExecutionJournal;
+use veridactus_core::types::{Action, VersionRange};
 
 /// 测试用插件：总是通过
 struct PassPlugin;
@@ -20,15 +22,41 @@ struct PassPlugin;
 impl GovernancePlugin for PassPlugin {
     fn metadata(&self) -> PluginMetadata {
         PluginMetadata {
-            name: "test-pass".into(), plugin_type: PluginType::Native,
-            version: "1.0".into(), description: "test".into(), author: None,
-            supported_protocol_versions: VersionRange { min: "0.2.0".into(), max: "0.2.1".into() },
+            name: "test-pass".into(),
+            plugin_type: PluginType::Native,
+            version: "1.0".into(),
+            description: "test".into(),
+            author: None,
+            supported_protocol_versions: VersionRange {
+                min: "0.2.0".into(),
+                max: "0.2.1".into(),
+            },
         }
     }
-    async fn on_request(&self, _: &mut RequestContext, _: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-    async fn on_stream_chunk(&self, _: &mut StreamChunkContext, _: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-    async fn on_response(&self, _: &mut ResponseContext, _: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-    async fn on_async_finalize(&self, _: &mut AsyncContext) -> Result<serde_json::Value, String> { Ok(serde_json::json!({})) }
+    async fn on_request(
+        &self,
+        _: &mut RequestContext,
+        _: &mut ExecutionJournal,
+    ) -> Result<Action, String> {
+        Ok(Action::Continue)
+    }
+    async fn on_stream_chunk(
+        &self,
+        _: &mut StreamChunkContext,
+        _: &mut ExecutionJournal,
+    ) -> Result<Action, String> {
+        Ok(Action::Continue)
+    }
+    async fn on_response(
+        &self,
+        _: &mut ResponseContext,
+        _: &mut ExecutionJournal,
+    ) -> Result<Action, String> {
+        Ok(Action::Continue)
+    }
+    async fn on_async_finalize(&self, _: &mut AsyncContext) -> Result<serde_json::Value, String> {
+        Ok(serde_json::json!({}))
+    }
 }
 
 /// 测试用插件：总是阻断
@@ -37,15 +65,41 @@ struct BlockPlugin;
 impl GovernancePlugin for BlockPlugin {
     fn metadata(&self) -> PluginMetadata {
         PluginMetadata {
-            name: "test-block".into(), plugin_type: PluginType::Native,
-            version: "1.0".into(), description: "blocks".into(), author: None,
-            supported_protocol_versions: VersionRange { min: "0.2.0".into(), max: "0.2.1".into() },
+            name: "test-block".into(),
+            plugin_type: PluginType::Native,
+            version: "1.0".into(),
+            description: "blocks".into(),
+            author: None,
+            supported_protocol_versions: VersionRange {
+                min: "0.2.0".into(),
+                max: "0.2.1".into(),
+            },
         }
     }
-    async fn on_request(&self, _: &mut RequestContext, _: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Block) }
-    async fn on_stream_chunk(&self, _: &mut StreamChunkContext, _: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Block) }
-    async fn on_response(&self, _: &mut ResponseContext, _: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Block) }
-    async fn on_async_finalize(&self, _: &mut AsyncContext) -> Result<serde_json::Value, String> { Ok(serde_json::json!({})) }
+    async fn on_request(
+        &self,
+        _: &mut RequestContext,
+        _: &mut ExecutionJournal,
+    ) -> Result<Action, String> {
+        Ok(Action::Block)
+    }
+    async fn on_stream_chunk(
+        &self,
+        _: &mut StreamChunkContext,
+        _: &mut ExecutionJournal,
+    ) -> Result<Action, String> {
+        Ok(Action::Block)
+    }
+    async fn on_response(
+        &self,
+        _: &mut ResponseContext,
+        _: &mut ExecutionJournal,
+    ) -> Result<Action, String> {
+        Ok(Action::Block)
+    }
+    async fn on_async_finalize(&self, _: &mut AsyncContext) -> Result<serde_json::Value, String> {
+        Ok(serde_json::json!({}))
+    }
 }
 
 #[tokio::test]
@@ -158,7 +212,10 @@ async fn test_executor_plugin_not_found() {
 
     let result = executor.execute_pre_request(&mut ctx, &mut journal).await;
     assert_eq!(result.action, Action::Block);
-    assert!(result.checks_failed.iter().any(|f| f.contains("nonexistent")));
+    assert!(result
+        .checks_failed
+        .iter()
+        .any(|f| f.contains("nonexistent")));
 }
 
 #[tokio::test]

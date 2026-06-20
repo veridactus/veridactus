@@ -2,14 +2,14 @@
 //!
 //! 数据平面通过长轮询从控制平面拉取配置变更。
 
+use futures::Future;
+use serde::{Deserialize, Serialize};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use std::pin::Pin;
 use tokio::sync::RwLock;
 use tokio::time::interval;
-use serde::{Deserialize, Serialize};
-use futures::Future;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 use crate::pipeline::config::ExecutionPlan;
 use crate::store::facade::ConfigStoreAdapter;
@@ -96,11 +96,16 @@ pub struct ConfigPullClient {
     current_version: Arc<RwLock<ConfigVersions>>,
     http_client: reqwest::Client,
     config_store: Arc<ConfigStoreAdapter>,
-    model_config_updater: Option<Arc<dyn Fn(Vec<ModelConfig>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>>,
+    model_config_updater: Option<
+        Arc<dyn Fn(Vec<ModelConfig>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>,
+    >,
 }
 
 impl ConfigPullClient {
-    pub fn new(control_plane_url: impl Into<String>, config_store: Arc<ConfigStoreAdapter>) -> Self {
+    pub fn new(
+        control_plane_url: impl Into<String>,
+        config_store: Arc<ConfigStoreAdapter>,
+    ) -> Self {
         Self {
             control_plane_url: control_plane_url.into(),
             current_version: Arc::new(RwLock::new(ConfigVersions::default())),
@@ -170,7 +175,9 @@ impl ConfigPullClient {
             "pipeline" => {
                 if let Some(pipelines) = payload.data.as_array() {
                     for pipeline_data in pipelines {
-                        if let Ok(plan) = serde_json::from_value::<PipelineData>(pipeline_data.clone()) {
+                        if let Ok(plan) =
+                            serde_json::from_value::<PipelineData>(pipeline_data.clone())
+                        {
                             let execution_plan = self.convert_to_execution_plan(&plan);
                             let tenant = plan.tenant.unwrap_or_default();
                             self.config_store.set_pipeline(&tenant, execution_plan);
@@ -182,7 +189,9 @@ impl ConfigPullClient {
                 if let Some(models) = payload.data.as_array() {
                     let mut model_configs = Vec::new();
                     for model_data in models {
-                        if let Ok(model_config) = serde_json::from_value::<ModelConfig>(model_data.clone()) {
+                        if let Ok(model_config) =
+                            serde_json::from_value::<ModelConfig>(model_data.clone())
+                        {
                             model_configs.push(model_config);
                         }
                     }
@@ -204,14 +213,16 @@ impl ConfigPullClient {
     }
 
     fn convert_to_execution_plan(&self, pipeline: &PipelineData) -> ExecutionPlan {
-        use crate::pipeline::config::{StageConfig, PluginConfig, Placement};
+        use crate::pipeline::config::{Placement, PluginConfig, StageConfig};
         use crate::plugin::PluginType;
 
         ExecutionPlan {
             plan_id: pipeline.plan_id.clone(),
             tenant: pipeline.tenant.clone(),
-            stages: pipeline.stages.iter().map(|s| {
-                StageConfig {
+            stages: pipeline
+                .stages
+                .iter()
+                .map(|s| StageConfig {
                     placement: match s.placement.as_str() {
                         "pre_request" => Placement::PreRequest,
                         "streaming" => Placement::Streaming,
@@ -220,8 +231,10 @@ impl ConfigPullClient {
                         _ => Placement::PreRequest,
                     },
                     parallel: s.parallel,
-                    plugins: s.plugins.iter().map(|p| {
-                        PluginConfig {
+                    plugins: s
+                        .plugins
+                        .iter()
+                        .map(|p| PluginConfig {
                             name: p.name.clone(),
                             r#type: match p.ptype.as_str() {
                                 "native" => PluginType::Native,
@@ -233,11 +246,11 @@ impl ConfigPullClient {
                             depends_on: vec![],
                             endpoint: None,
                             required_capabilities: vec![],
-                        }
-                    }).collect(),
+                        })
+                        .collect(),
                     on_version_mismatch: crate::pipeline::config::VersionMismatchPolicy::Skip,
-                }
-            }).collect(),
+                })
+                .collect(),
         }
     }
 

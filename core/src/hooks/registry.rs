@@ -1,9 +1,9 @@
 //! # Hook Registry（§6.3.1）
-//! 
+//!
 //! 钩子注册中心，负责管理所有注册的钩子并协调它们的执行。
 
-use crate::types::trace::{Trace, ExecutionState};
 use crate::types::journal::JournalEventType;
+use crate::types::trace::{ExecutionState, Trace};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tracing::{info, warn};
@@ -37,7 +37,10 @@ impl HookRegistry {
 
     /// 注册钩子
     pub fn register<H: Hook + Send + Sync + 'static>(&self, name: &str, hook: H) {
-        self.hooks.write().unwrap().insert(name.to_string(), Box::new(hook));
+        self.hooks
+            .write()
+            .unwrap()
+            .insert(name.to_string(), Box::new(hook));
     }
 
     /// 取消注册钩子

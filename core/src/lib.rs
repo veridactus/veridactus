@@ -12,39 +12,39 @@
 //! - `audit` - 审计令牌验证
 //! - `conformance` - 一致性测试工具
 
-pub mod types;
-pub mod crypto;
-pub mod http;
-pub mod plugin;
-pub mod pipeline;
+pub mod agent_chain;
+pub mod attestation;
 pub mod audit;
 pub mod auth;
-pub mod store;
-pub mod privacy;
-pub mod replay;
-pub mod verify;
+pub mod budget;
+pub mod compliance;
+pub mod configsync;
 pub mod conformance;
+pub mod constraints;
+pub mod crypto;
 pub mod delegation;
+pub mod diff;
+pub mod dispatcher;
+pub mod fairness;
+pub mod gdpr;
+pub mod governance_dsl;
+pub mod guarantees;
+pub mod hooks;
+pub mod http;
 pub mod keymanager;
 pub mod longrunning;
-pub mod dispatcher;
-pub mod attestation;
-pub mod configsync;
-pub mod hooks;
-pub mod constraints;
-pub mod observability;
-pub mod diff;
 pub mod middleware;
+pub mod observability;
+pub mod pipeline;
+pub mod plugin;
 pub mod prevention;
-pub mod supply_chain;
-pub mod governance_dsl;
-pub mod fairness;
+pub mod privacy;
 pub mod redteam;
-pub mod guarantees;
-pub mod gdpr;
-pub mod compliance;
-pub mod agent_chain;
-pub mod budget;
+pub mod replay;
+pub mod store;
+pub mod supply_chain;
+pub mod types;
+pub mod verify;
 
 /// VERIDACTUS 协议版本常量
 pub const PROTOCOL_VERSION: &str = "0.2.1";

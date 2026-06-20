@@ -134,8 +134,11 @@ pub struct ActivePrevention {
 impl ActivePrevention {
     /// 检查是否启用主动预防
     pub fn is_enabled(&self) -> bool {
-        self.constrained_decoding.unwrap_or(false) || 
-        self.prevented_patterns.as_ref().map_or(false, |p| !p.is_empty())
+        self.constrained_decoding.unwrap_or(false)
+            || self
+                .prevented_patterns
+                .as_ref()
+                .map_or(false, |p| !p.is_empty())
     }
 
     /// 获取所有启用的模式
@@ -198,10 +201,10 @@ pub struct AdaptiveThreshold {
 impl Default for AdaptiveThreshold {
     fn default() -> Self {
         Self {
-            soft_to_degrade: 0.7,    // 70% 风险触发降级
-            degrade_to_hard: 0.9,    // 90% 风险触发硬停止
-            degrade_to_soft: 0.5,    // 50% 风险降级回软告警
-            hard_to_soft: 0.3,       // 30% 风险从硬停止恢复
+            soft_to_degrade: 0.7, // 70% 风险触发降级
+            degrade_to_hard: 0.9, // 90% 风险触发硬停止
+            degrade_to_soft: 0.5, // 50% 风险降级回软告警
+            hard_to_soft: 0.3,    // 30% 风险从硬停止恢复
         }
     }
 }
@@ -233,7 +236,10 @@ impl AdaptiveConstraint {
     /// 根据风险分数计算下一个状态
     pub fn compute_next_state(&self, current_risk_score: f64) -> AdaptiveState {
         let thresholds = self.thresholds.clone().unwrap_or_default();
-        let current_state = self.current_state.clone().unwrap_or(AdaptiveState::SoftAlert);
+        let current_state = self
+            .current_state
+            .clone()
+            .unwrap_or(AdaptiveState::SoftAlert);
 
         match current_state {
             AdaptiveState::SoftAlert => {
@@ -253,8 +259,9 @@ impl AdaptiveConstraint {
                 }
             }
             AdaptiveState::HardStop => {
-                if self.auto_recovery.unwrap_or(false) && 
-                   current_risk_score <= thresholds.hard_to_soft {
+                if self.auto_recovery.unwrap_or(false)
+                    && current_risk_score <= thresholds.hard_to_soft
+                {
                     AdaptiveState::SoftAlert
                 } else {
                     AdaptiveState::HardStop
@@ -455,31 +462,46 @@ pub fn check_constraint_conflicts(
     let adaptive = adaptive_constraint.as_ref();
 
     // 1. privacy.level=hash_only + reproducibility.mode=strict → HARD
-    if let (Some(PrivacyLevel::HashOnly), Some(ReproducibilityMode::Strict)) = (privacy, reproducibility) {
+    if let (Some(PrivacyLevel::HashOnly), Some(ReproducibilityMode::Strict)) =
+        (privacy, reproducibility)
+    {
         result.conflicts.push(ConstraintConflict {
             conflict_type: ConflictType::HardConflict,
             constraint_a: "privacy.level".to_string(),
             value_a: "hash_only".to_string(),
             constraint_b: "reproducibility.mode".to_string(),
             value_b: "strict".to_string(),
-            reason: "hash_only discards plaintext, strict needs full payload comparison".to_string(),
-            conflict_path: "constraints_applied.privacy_level + constraints_applied.reproducibility_mode".to_string(),
+            reason: "hash_only discards plaintext, strict needs full payload comparison"
+                .to_string(),
+            conflict_path:
+                "constraints_applied.privacy_level + constraints_applied.reproducibility_mode"
+                    .to_string(),
         });
-        result.recommendations.push("Either relax reproducibility.mode to 'bounded' or increase privacy.level to 'masked'".to_string());
+        result.recommendations.push(
+            "Either relax reproducibility.mode to 'bounded' or increase privacy.level to 'masked'"
+                .to_string(),
+        );
     }
 
     // 2. privacy.level=hash_only + reproducibility.mode=bounded → CONDITIONAL
-    if let (Some(PrivacyLevel::HashOnly), Some(ReproducibilityMode::Bounded)) = (privacy, reproducibility) {
+    if let (Some(PrivacyLevel::HashOnly), Some(ReproducibilityMode::Bounded)) =
+        (privacy, reproducibility)
+    {
         result.conflicts.push(ConstraintConflict {
             conflict_type: ConflictType::ConditionalConflict,
             constraint_a: "privacy.level".to_string(),
             value_a: "hash_only".to_string(),
             constraint_b: "reproducibility.mode".to_string(),
             value_b: "bounded".to_string(),
-            reason: "Allowed only if focus_fields are provided that can be compared via hashes".to_string(),
-            conflict_path: "constraints_applied.privacy_level + constraints_applied.reproducibility_mode".to_string(),
+            reason: "Allowed only if focus_fields are provided that can be compared via hashes"
+                .to_string(),
+            conflict_path:
+                "constraints_applied.privacy_level + constraints_applied.reproducibility_mode"
+                    .to_string(),
         });
-        result.recommendations.push("Ensure focus_fields are specified for hash-based comparison".to_string());
+        result
+            .recommendations
+            .push("Ensure focus_fields are specified for hash-based comparison".to_string());
     }
 
     // 3. privacy.level=hash_only + budget.strategy=awareness → HARD
@@ -490,10 +512,15 @@ pub fn check_constraint_conflicts(
             value_a: "awareness".to_string(),
             constraint_b: "privacy.level".to_string(),
             value_b: "hash_only".to_string(),
-            reason: "awareness requires budget information in prompt, conflicting with hash_only".to_string(),
-            conflict_path: "constraints_applied.budget_strategy + constraints_applied.privacy_level".to_string(),
+            reason: "awareness requires budget information in prompt, conflicting with hash_only"
+                .to_string(),
+            conflict_path:
+                "constraints_applied.budget_strategy + constraints_applied.privacy_level"
+                    .to_string(),
         });
-        result.recommendations.push("Choose either budget.strategy=hard_stop or privacy.level=masked".to_string());
+        result
+            .recommendations
+            .push("Choose either budget.strategy=hard_stop or privacy.level=masked".to_string());
     }
 
     // 4. guardrails.G4 + privacy.level=hash_only → CONDITIONAL
@@ -508,7 +535,9 @@ pub fn check_constraint_conflicts(
                 reason: "Red team probes may require content visibility; allowed only with explicit approval".to_string(),
                 conflict_path: "constraints_applied.guardrails_active + constraints_applied.privacy_level".to_string(),
             });
-            result.recommendations.push("Requires explicit approval for G4 + hash_only combination".to_string());
+            result
+                .recommendations
+                .push("Requires explicit approval for G4 + hash_only combination".to_string());
         }
     }
 
@@ -521,10 +550,15 @@ pub fn check_constraint_conflicts(
                 value_a: c.clone(),
                 constraint_b: "privacy.level".to_string(),
                 value_b: "raw".to_string(),
-                reason: "EU AI Act requires data minimization; raw PII storage conflicts".to_string(),
-                conflict_path: "constraints_applied.compliance_profile + constraints_applied.privacy_level".to_string(),
+                reason: "EU AI Act requires data minimization; raw PII storage conflicts"
+                    .to_string(),
+                conflict_path:
+                    "constraints_applied.compliance_profile + constraints_applied.privacy_level"
+                        .to_string(),
             });
-            result.recommendations.push("Set privacy.level to 'masked' for EU AI Act compliance".to_string());
+            result
+                .recommendations
+                .push("Set privacy.level to 'masked' for EU AI Act compliance".to_string());
         }
     }
 
@@ -540,12 +574,16 @@ pub fn check_constraint_conflicts(
                 reason: "Acceptable if prevented patterns are documented and consistent across runs".to_string(),
                 conflict_path: "constraints_applied.active_prevention + constraints_applied.reproducibility_mode".to_string(),
             });
-            result.recommendations.push("Document all prevented patterns to ensure reproducibility".to_string());
+            result
+                .recommendations
+                .push("Document all prevented patterns to ensure reproducibility".to_string());
         }
     }
 
     // 7. privacy.level=tee_private + reproducibility.mode=strict → HARD
-    if let (Some(PrivacyLevel::TeePrivate), Some(ReproducibilityMode::Strict)) = (privacy, reproducibility) {
+    if let (Some(PrivacyLevel::TeePrivate), Some(ReproducibilityMode::Strict)) =
+        (privacy, reproducibility)
+    {
         result.conflicts.push(ConstraintConflict {
             conflict_type: ConflictType::HardConflict,
             constraint_a: "privacy.level".to_string(),
@@ -555,26 +593,37 @@ pub fn check_constraint_conflicts(
             reason: "Strict replay requires comparing full payloads, which conflicts with TEE's external storage of hashes only".to_string(),
             conflict_path: "constraints_applied.privacy_level + constraints_applied.reproducibility_mode".to_string(),
         });
-        result.recommendations.push("Use reproducibility.mode=bounded with TEE private mode".to_string());
+        result
+            .recommendations
+            .push("Use reproducibility.mode=bounded with TEE private mode".to_string());
     }
 
     // 8. budget.strategy=awareness + reproducibility.mode=strict → HARD
-    if let (Some(BudgetStrategy::Awareness), Some(ReproducibilityMode::Strict)) = (budget, reproducibility) {
+    if let (Some(BudgetStrategy::Awareness), Some(ReproducibilityMode::Strict)) =
+        (budget, reproducibility)
+    {
         result.conflicts.push(ConstraintConflict {
             conflict_type: ConflictType::HardConflict,
             constraint_a: "budget.strategy".to_string(),
             value_a: "awareness".to_string(),
             constraint_b: "reproducibility.mode".to_string(),
             value_b: "strict".to_string(),
-            reason: "Injecting budget prompt changes the input, breaking strict replay guarantees".to_string(),
-            conflict_path: "constraints_applied.budget_strategy + constraints_applied.reproducibility_mode".to_string(),
+            reason: "Injecting budget prompt changes the input, breaking strict replay guarantees"
+                .to_string(),
+            conflict_path:
+                "constraints_applied.budget_strategy + constraints_applied.reproducibility_mode"
+                    .to_string(),
         });
-        result.recommendations.push("Choose either budget.strategy=hard_stop or reproducibility.mode=bounded".to_string());
+        result.recommendations.push(
+            "Choose either budget.strategy=hard_stop or reproducibility.mode=bounded".to_string(),
+        );
     }
 
     // 9. guardrails.G4 + active_prevention.constrained_decoding=true → CONDITIONAL
     if let (Some(g), Some(ap)) = (guardrails, active_prev) {
-        if g.iter().any(|r| r == "G4") && (ap.constrained_decoding.unwrap_or(false) || ap.is_enabled()) {
+        if g.iter().any(|r| r == "G4")
+            && (ap.constrained_decoding.unwrap_or(false) || ap.is_enabled())
+        {
             result.conflicts.push(ConstraintConflict {
                 conflict_type: ConflictType::ConditionalConflict,
                 constraint_a: "guardrails".to_string(),
@@ -584,7 +633,9 @@ pub fn check_constraint_conflicts(
                 reason: "G4 may dynamically modify policies; allowed only if the defense agent is explicitly authorized and changes are logged".to_string(),
                 conflict_path: "constraints_applied.guardrails_active + constraints_applied.active_prevention".to_string(),
             });
-            result.recommendations.push("Ensure G4 defense agent is authorized and changes are logged".to_string());
+            result
+                .recommendations
+                .push("Ensure G4 defense agent is authorized and changes are logged".to_string());
         }
     }
 
@@ -606,7 +657,9 @@ pub fn check_constraint_conflicts(
     }
 
     // 11. budget.strategy=degrade_model + reproducibility.mode=strict → CONDITIONAL
-    if let (Some(BudgetStrategy::DegradeModel), Some(ReproducibilityMode::Strict)) = (budget, reproducibility) {
+    if let (Some(BudgetStrategy::DegradeModel), Some(ReproducibilityMode::Strict)) =
+        (budget, reproducibility)
+    {
         result.conflicts.push(ConstraintConflict {
             conflict_type: ConflictType::ConditionalConflict,
             constraint_a: "budget.strategy".to_string(),
@@ -616,11 +669,16 @@ pub fn check_constraint_conflicts(
             reason: "Degradation may change model; replay integrity might be affected, MUST be documented".to_string(),
             conflict_path: "constraints_applied.budget_strategy + constraints_applied.reproducibility_mode".to_string(),
         });
-        result.recommendations.push("Document degradation scenarios that may affect reproducibility".to_string());
+        result
+            .recommendations
+            .push("Document degradation scenarios that may affect reproducibility".to_string());
     }
 
     // 12. adaptive + reproducibility.mode=strict → CONDITIONAL
-    if let (Some(true), Some(ReproducibilityMode::Strict)) = (adaptive.map(|a| a.enabled.unwrap_or(false)), reproducibility) {
+    if let (Some(true), Some(ReproducibilityMode::Strict)) = (
+        adaptive.map(|a| a.enabled.unwrap_or(false)),
+        reproducibility,
+    ) {
         result.conflicts.push(ConstraintConflict {
             conflict_type: ConflictType::ConditionalConflict,
             constraint_a: "adaptive.enabled".to_string(),
@@ -630,7 +688,9 @@ pub fn check_constraint_conflicts(
             reason: "Adaptive constraints may trigger degradation affecting reproducibility; requires careful configuration".to_string(),
             conflict_path: "constraints_applied.adaptive + constraints_applied.reproducibility_mode".to_string(),
         });
-        result.recommendations.push("Configure adaptive thresholds carefully when using strict reproducibility".to_string());
+        result.recommendations.push(
+            "Configure adaptive thresholds carefully when using strict reproducibility".to_string(),
+        );
     }
 
     result.has_conflicts = !result.conflicts.is_empty();
@@ -661,19 +721,29 @@ pub fn validate_constraints(
         return Ok(result);
     }
 
-    let hard_conflicts: Vec<_> = result.conflicts.iter()
+    let hard_conflicts: Vec<_> = result
+        .conflicts
+        .iter()
         .filter(|c| c.conflict_type == ConflictType::HardConflict)
         .collect();
 
     if !hard_conflicts.is_empty() {
-        let conflict_details: Vec<String> = hard_conflicts.iter()
-            .map(|c| format!("{}={} conflicts with {}={}: {}",
-                c.constraint_a, c.value_a, c.constraint_b, c.value_b, c.reason))
+        let conflict_details: Vec<String> = hard_conflicts
+            .iter()
+            .map(|c| {
+                format!(
+                    "{}={} conflicts with {}={}: {}",
+                    c.constraint_a, c.value_a, c.constraint_b, c.value_b, c.reason
+                )
+            })
             .collect();
 
         return Err((
             VeridactusErrorCode::BadConstraintCombination,
-            format!("Constraint conflict detected: {}", conflict_details.join("; ")),
+            format!(
+                "Constraint conflict detected: {}",
+                conflict_details.join("; ")
+            ),
         ));
     }
 
@@ -842,7 +912,7 @@ impl PolicyEvaluationEngine {
         context: &ConstraintEvaluationContext,
     ) -> PolicyEvaluation {
         let mut evaluation = PolicyEvaluation::default();
-        
+
         // 设置风险分数
         evaluation.current_risk_score = Some(context.current_risk_score);
         evaluation.risk_factor_contributions = Some(context.risk_factors.clone());
@@ -903,7 +973,8 @@ impl PolicyEvaluationEngine {
         let default_weights: Vec<f64> = vec![1.0 / risk_factors.len() as f64; risk_factors.len()];
         let actual_weights = weights.unwrap_or(&default_weights);
 
-        risk_factors.iter()
+        risk_factors
+            .iter()
             .enumerate()
             .map(|(i, factor)| factor.score * actual_weights[i.min(actual_weights.len() - 1)])
             .sum()

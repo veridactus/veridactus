@@ -32,15 +32,51 @@ pub struct CostEstimate {
 pub fn default_pricing() -> HashMap<&'static str, ModelPricing> {
     let mut m = HashMap::new();
     // OpenAI/Azure
-    m.insert("gpt-4o", ModelPricing { prompt_price_per_1k: 0.0025, completion_price_per_1k: 0.01 });
-    m.insert("gpt-4o-mini", ModelPricing { prompt_price_per_1k: 0.00015, completion_price_per_1k: 0.0006 });
+    m.insert(
+        "gpt-4o",
+        ModelPricing {
+            prompt_price_per_1k: 0.0025,
+            completion_price_per_1k: 0.01,
+        },
+    );
+    m.insert(
+        "gpt-4o-mini",
+        ModelPricing {
+            prompt_price_per_1k: 0.00015,
+            completion_price_per_1k: 0.0006,
+        },
+    );
     // Zhipu
-    m.insert("glm-5.1", ModelPricing { prompt_price_per_1k: 0.001, completion_price_per_1k: 0.001 });
-    m.insert("glm-4-flash", ModelPricing { prompt_price_per_1k: 0.0001, completion_price_per_1k: 0.0001 });
+    m.insert(
+        "glm-5.1",
+        ModelPricing {
+            prompt_price_per_1k: 0.001,
+            completion_price_per_1k: 0.001,
+        },
+    );
+    m.insert(
+        "glm-4-flash",
+        ModelPricing {
+            prompt_price_per_1k: 0.0001,
+            completion_price_per_1k: 0.0001,
+        },
+    );
     // DeepSeek
-    m.insert("deepseek-r1:14b", ModelPricing { prompt_price_per_1k: 0.0, completion_price_per_1k: 0.0 });
+    m.insert(
+        "deepseek-r1:14b",
+        ModelPricing {
+            prompt_price_per_1k: 0.0,
+            completion_price_per_1k: 0.0,
+        },
+    );
     // Gemini
-    m.insert("gemini-flash", ModelPricing { prompt_price_per_1k: 0.000075, completion_price_per_1k: 0.0003 });
+    m.insert(
+        "gemini-flash",
+        ModelPricing {
+            prompt_price_per_1k: 0.000075,
+            completion_price_per_1k: 0.0003,
+        },
+    );
     m
 }
 
@@ -58,9 +94,10 @@ pub fn estimate_cost(
     budget_limit_usd: Option<f64>,
 ) -> CostEstimate {
     let pricing_table = default_pricing();
-    let model_pricing = pricing_table
-        .get(model_name)
-        .unwrap_or(&ModelPricing { prompt_price_per_1k: 0.001, completion_price_per_1k: 0.002 });
+    let model_pricing = pricing_table.get(model_name).unwrap_or(&ModelPricing {
+        prompt_price_per_1k: 0.001,
+        completion_price_per_1k: 0.002,
+    });
 
     // 简单 token 估算：英文约 4 字符/token，中文约 2 字符/token
     let char_count = prompt_text.chars().count();
@@ -81,7 +118,12 @@ pub fn estimate_cost(
     if let Some(limit) = budget_limit_usd {
         info!(
             "预算预检: model={}, prompt_tokens≈{}, completion_tokens≈{}, cost≈${:.6}, limit=${}, within_budget={}",
-            model_name, estimated_prompt_tokens, estimated_completion_tokens, cost, limit, within_budget
+            model_name,
+            estimated_prompt_tokens,
+            estimated_completion_tokens,
+            cost,
+            limit,
+            within_budget
         );
     }
 
@@ -102,15 +144,12 @@ pub fn apply_buffer_ratio(limit: f64, buffer_ratio: Option<f64>) -> f64 {
 }
 
 /// 计算实际成本（基于上游返回的 usage 信息）
-pub fn calculate_actual_cost(
-    model_name: &str,
-    prompt_tokens: u64,
-    completion_tokens: u64,
-) -> f64 {
+pub fn calculate_actual_cost(model_name: &str, prompt_tokens: u64, completion_tokens: u64) -> f64 {
     let pricing_table = default_pricing();
-    let model_pricing = pricing_table
-        .get(model_name)
-        .unwrap_or(&ModelPricing { prompt_price_per_1k: 0.001, completion_price_per_1k: 0.002 });
+    let model_pricing = pricing_table.get(model_name).unwrap_or(&ModelPricing {
+        prompt_price_per_1k: 0.001,
+        completion_price_per_1k: 0.002,
+    });
 
     (prompt_tokens as f64 / 1000.0) * model_pricing.prompt_price_per_1k
         + (completion_tokens as f64 / 1000.0) * model_pricing.completion_price_per_1k

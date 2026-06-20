@@ -2,14 +2,13 @@
 //!
 //! 提供统一的存储访问入口，协调多种存储后端。
 
-use std::sync::Arc;
-use uuid::Uuid;
-use crate::types::trace::Trace;
 use crate::pipeline::config::ExecutionPlan;
 use crate::store::traits::{
-    TraceStore, ConfigStore, BudgetStore, CacheStore, ObjectStore,
-    ConfigVersions,
+    BudgetStore, CacheStore, ConfigStore, ConfigVersions, ObjectStore, TraceStore,
 };
+use crate::types::trace::Trace;
+use std::sync::Arc;
+use uuid::Uuid;
 
 pub struct StoreManager {
     trace_store: Arc<dyn TraceStore>,
@@ -78,19 +77,26 @@ impl StoreManager {
     }
 
     pub async fn get_pipeline(&self, tenant_id: &str) -> Option<ExecutionPlan> {
-        if let Some(cached) = self.cache_store.get(&format!("pipeline:{}", tenant_id)).await {
+        if let Some(cached) = self
+            .cache_store
+            .get(&format!("pipeline:{}", tenant_id))
+            .await
+        {
             if let Ok(plan) = serde_json::from_str::<ExecutionPlan>(&cached) {
                 return Some(plan);
             }
         }
-        
+
         if let Some(plan) = self.config_store.get_pipeline(tenant_id).await {
             if let Ok(json) = serde_json::to_string(&plan) {
-                let _ = self.cache_store.set(&format!("pipeline:{}", tenant_id), &json, Some(300)).await;
+                let _ = self
+                    .cache_store
+                    .set(&format!("pipeline:{}", tenant_id), &json, Some(300))
+                    .await;
             }
             return Some(plan);
         }
-        
+
         None
     }
 
@@ -169,20 +175,20 @@ impl ConfigStore for ConfigStoreAdapter {
     async fn save_pipeline(&self, plan: &ExecutionPlan) -> Result<(), String> {
         let mut pipelines = self.pipelines.write().unwrap();
         pipelines.insert(plan.tenant.clone().unwrap_or_default(), plan.clone());
-        
+
         let mut versions = self.versions.write().unwrap();
         versions.pipeline_version += 1;
-        
+
         Ok(())
     }
 
     async fn delete_pipeline(&self, plan_id: &str) -> Result<(), String> {
         let mut pipelines = self.pipelines.write().unwrap();
         pipelines.retain(|_, p| p.plan_id != plan_id);
-        
+
         let mut versions = self.versions.write().unwrap();
         versions.pipeline_version += 1;
-        
+
         Ok(())
     }
 

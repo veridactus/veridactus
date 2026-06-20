@@ -25,8 +25,8 @@ impl ApiKeyManager {
         let mut keys = HashMap::new();
 
         // 支持环境变量配置的固定 admin key（用于测试和生产部署）
-        let admin_key = std::env::var("VERIDACTUS_ADMIN_KEY")
-            .unwrap_or_else(|_| generate_api_key("admin"));
+        let admin_key =
+            std::env::var("VERIDACTUS_ADMIN_KEY").unwrap_or_else(|_| generate_api_key("admin"));
         keys.insert(admin_key, "admin".to_string());
 
         Self {
@@ -53,7 +53,10 @@ impl ApiKeyManager {
         if let Some(tenant) = self.keys.get(cleaned) {
             Some(tenant.as_str())
         } else {
-            warn!("Invalid API key attempt: {}...", &cleaned[..cleaned.len().min(8)]);
+            warn!(
+                "Invalid API key attempt: {}...",
+                &cleaned[..cleaned.len().min(8)]
+            );
             None
         }
     }

@@ -174,7 +174,8 @@ impl SupplyChainManager {
     }
 
     pub fn add_trusted_signer(&mut self, public_key_fingerprint: &str) {
-        self.trusted_signers.push(public_key_fingerprint.to_string());
+        self.trusted_signers
+            .push(public_key_fingerprint.to_string());
     }
 
     pub fn verify_model_signature(
@@ -193,11 +194,17 @@ impl SupplyChainManager {
                 sbom_complete: None,
                 tee_attestation_valid: None,
                 warnings: vec![],
-                errors: vec![format!("Unsupported signature algorithm: {}", signature.algorithm)],
+                errors: vec![format!(
+                    "Unsupported signature algorithm: {}",
+                    signature.algorithm
+                )],
             };
         }
 
-        if !self.trusted_signers.contains(&signature.public_key_fingerprint) {
+        if !self
+            .trusted_signers
+            .contains(&signature.public_key_fingerprint)
+        {
             return SupplyChainVerification {
                 verified: false,
                 verified_at: now,
@@ -220,8 +227,16 @@ impl SupplyChainManager {
             model_signature_valid: Some(valid),
             sbom_complete: None,
             tee_attestation_valid: None,
-            warnings: if valid { vec![] } else { vec!["Signature verification result uncertain".to_string()] },
-            errors: if valid { vec![] } else { vec!["Signature does not match model hash".to_string()] },
+            warnings: if valid {
+                vec![]
+            } else {
+                vec!["Signature verification result uncertain".to_string()]
+            },
+            errors: if valid {
+                vec![]
+            } else {
+                vec!["Signature does not match model hash".to_string()]
+            },
         }
     }
 
@@ -246,8 +261,16 @@ impl SupplyChainManager {
                 model_signature_valid: None,
                 sbom_complete: Some(valid),
                 tee_attestation_valid: None,
-                warnings: if valid { vec![] } else { vec!["SBOM hash mismatch".to_string()] },
-                errors: if valid { vec![] } else { vec!["SBOM integrity verification failed".to_string()] },
+                warnings: if valid {
+                    vec![]
+                } else {
+                    vec!["SBOM hash mismatch".to_string()]
+                },
+                errors: if valid {
+                    vec![]
+                } else {
+                    vec!["SBOM integrity verification failed".to_string()]
+                },
             }
         } else {
             SupplyChainVerification {
@@ -270,19 +293,17 @@ impl SupplyChainManager {
             name: model_name.to_string(),
             created_at: Utc::now().to_rfc3339(),
             creator: "VERIDACTUS".to_string(),
-            entries: vec![
-                SbomEntry {
-                    name: model_name.to_string(),
-                    version: model_version.to_string(),
-                    component_type: SbomComponentType::Model,
-                    spdx_id: Some(format!("SPDXRef-Model-{}", model_name)),
-                    supplier: None,
-                    license: None,
-                    sha256: None,
-                    dependencies: None,
-                    published_date: None,
-                },
-            ],
+            entries: vec![SbomEntry {
+                name: model_name.to_string(),
+                version: model_version.to_string(),
+                component_type: SbomComponentType::Model,
+                spdx_id: Some(format!("SPDXRef-Model-{}", model_name)),
+                supplier: None,
+                license: None,
+                sha256: None,
+                dependencies: None,
+                published_date: None,
+            }],
             aggregation_hash: None,
         };
         sbom.compute_aggregation_hash();
@@ -290,7 +311,8 @@ impl SupplyChainManager {
     }
 
     pub fn register_deployment(&mut self, model_name: &str, deployment: TeeDeployment) {
-        self.deployment_db.insert(model_name.to_string(), deployment);
+        self.deployment_db
+            .insert(model_name.to_string(), deployment);
     }
 
     pub fn verify_tee_deployment(&self, model_name: &str) -> SupplyChainVerification {
@@ -329,15 +351,21 @@ impl SupplyChainManager {
         }
     }
 
-    pub fn check_license_compliance(&self, sbom: &Sbom, allowed_licenses: &[String]) -> SupplyChainVerification {
+    pub fn check_license_compliance(
+        &self,
+        sbom: &Sbom,
+        allowed_licenses: &[String],
+    ) -> SupplyChainVerification {
         let now = Utc::now().to_rfc3339();
         let mut violations = Vec::new();
 
         for entry in &sbom.entries {
             if let Some(ref license) = entry.license {
                 if !allowed_licenses.contains(license) && license != "UNKNOWN" {
-                    violations.push(format!("{} ({}) has non-compliant license: {}",
-                        entry.name, entry.version, license));
+                    violations.push(format!(
+                        "{} ({}) has non-compliant license: {}",
+                        entry.name, entry.version, license
+                    ));
                 }
             }
         }
@@ -390,7 +418,10 @@ impl SupplyChainManager {
             if !passed {
                 overall_risk = RiskLevel::High;
                 compliance_score *= 0.5;
-                recommendations.push("Model signature verification failed. Do not deploy until resolved.".to_string());
+                recommendations.push(
+                    "Model signature verification failed. Do not deploy until resolved."
+                        .to_string(),
+                );
             }
         } else {
             verification_results.push(VerificationResult {
@@ -401,13 +432,18 @@ impl SupplyChainManager {
             });
             overall_risk = RiskLevel::Medium;
             compliance_score *= 0.8;
-            recommendations.push("Consider adding model signature for production deployments".to_string());
+            recommendations
+                .push("Consider adding model signature for production deployments".to_string());
         }
 
         if let Some(sb) = sbom {
             let mut sbom_clone = sb.clone();
             sbom_clone.compute_aggregation_hash();
-            let hash_valid = sbom_clone.aggregation_hash.as_ref().map(|h| !h.is_empty()).unwrap_or(false);
+            let hash_valid = sbom_clone
+                .aggregation_hash
+                .as_ref()
+                .map(|h| !h.is_empty())
+                .unwrap_or(false);
 
             verification_results.push(VerificationResult {
                 check_type: CheckType::SBomIntegrity,
@@ -425,10 +461,19 @@ impl SupplyChainManager {
                     overall_risk = RiskLevel::Medium;
                 }
                 compliance_score *= 0.7;
-                recommendations.push("SBOM integrity verification failed. Review SBOM composition.".to_string());
+                recommendations.push(
+                    "SBOM integrity verification failed. Review SBOM composition.".to_string(),
+                );
             }
 
-            let license_result = self.check_license_compliance(sb, &["MIT".to_string(), "Apache-2.0".to_string(), "BSD-3-Clause".to_string()]);
+            let license_result = self.check_license_compliance(
+                sb,
+                &[
+                    "MIT".to_string(),
+                    "Apache-2.0".to_string(),
+                    "BSD-3-Clause".to_string(),
+                ],
+            );
             verification_results.push(VerificationResult {
                 check_type: CheckType::LicenseCompliance,
                 passed: license_result.verified,
@@ -443,7 +488,9 @@ impl SupplyChainManager {
             if !license_result.verified {
                 overall_risk = RiskLevel::High;
                 compliance_score *= 0.6;
-                recommendations.push("License compliance issues detected. Review component licenses.".to_string());
+                recommendations.push(
+                    "License compliance issues detected. Review component licenses.".to_string(),
+                );
             }
         }
 
@@ -464,11 +511,14 @@ impl SupplyChainManager {
                 overall_risk = RiskLevel::Medium;
             }
             compliance_score *= 0.85;
-            recommendations.push("Consider deploying in a TEE environment for enhanced security".to_string());
+            recommendations
+                .push("Consider deploying in a TEE environment for enhanced security".to_string());
         }
 
         if recommendations.is_empty() {
-            recommendations.push("Supply chain verification passed. Continue monitoring for anomalies.".to_string());
+            recommendations.push(
+                "Supply chain verification passed. Continue monitoring for anomalies.".to_string(),
+            );
         }
 
         SupplyChainReport {
@@ -503,19 +553,17 @@ mod tests {
             name: "test-model".to_string(),
             created_at: Utc::now().to_rfc3339(),
             creator: "test".to_string(),
-            entries: vec![
-                SbomEntry {
-                    name: "test-component".to_string(),
-                    version: "1.0.0".to_string(),
-                    component_type: SbomComponentType::Model,
-                    spdx_id: Some("SPDXRef-Component".to_string()),
-                    supplier: None,
-                    license: Some("MIT".to_string()),
-                    sha256: None,
-                    dependencies: None,
-                    published_date: None,
-                },
-            ],
+            entries: vec![SbomEntry {
+                name: "test-component".to_string(),
+                version: "1.0.0".to_string(),
+                component_type: SbomComponentType::Model,
+                spdx_id: Some("SPDXRef-Component".to_string()),
+                supplier: None,
+                license: Some("MIT".to_string()),
+                sha256: None,
+                dependencies: None,
+                published_date: None,
+            }],
             aggregation_hash: None,
         };
 

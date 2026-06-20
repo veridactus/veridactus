@@ -100,19 +100,22 @@ impl DifferentialPrivacyManager {
         }
         // 用写锁创建
         let mut budgets = self.budgets.write().unwrap();
-        budgets.entry(key.to_string()).or_insert_with(|| {
-            Arc::new(RwLock::new(DifferentialPrivacyBudget {
-                epsilon: self.default_budget.epsilon,
-                delta: self.default_budget.delta,
-                mechanism: PrivacyMechanism::Gaussian,
-                total_budget: self.default_budget.clone(),
-                consumed_epsilon: 0.0,
-                consumed_delta: 0.0,
-                remaining_epsilon: self.default_budget.epsilon,
-                remaining_delta: self.default_budget.delta,
-                budget_exhausted: false,
-            }))
-        }).clone()
+        budgets
+            .entry(key.to_string())
+            .or_insert_with(|| {
+                Arc::new(RwLock::new(DifferentialPrivacyBudget {
+                    epsilon: self.default_budget.epsilon,
+                    delta: self.default_budget.delta,
+                    mechanism: PrivacyMechanism::Gaussian,
+                    total_budget: self.default_budget.clone(),
+                    consumed_epsilon: 0.0,
+                    consumed_delta: 0.0,
+                    remaining_epsilon: self.default_budget.epsilon,
+                    remaining_delta: self.default_budget.delta,
+                    budget_exhausted: false,
+                }))
+            })
+            .clone()
     }
 
     pub fn consume_budget(
@@ -138,7 +141,8 @@ impl DifferentialPrivacyManager {
 
         budget_mut.consumed_epsilon += epsilon_consumed;
         budget_mut.consumed_delta += delta_consumed;
-        budget_mut.remaining_epsilon = budget_mut.total_budget.epsilon - budget_mut.consumed_epsilon;
+        budget_mut.remaining_epsilon =
+            budget_mut.total_budget.epsilon - budget_mut.consumed_epsilon;
         budget_mut.remaining_delta = budget_mut.total_budget.delta - budget_mut.consumed_delta;
 
         if budget_mut.remaining_epsilon <= 0.0 || budget_mut.remaining_delta <= 0.0 {
@@ -228,7 +232,7 @@ mod tests {
     fn test_consume_budget() {
         let manager = DifferentialPrivacyManager::new();
         let result = manager.consume_budget("user123", 0.5, 1e-7);
-        
+
         assert!(result.is_ok());
         let consumption = result.unwrap();
         assert_eq!(consumption.consumed_epsilon, 0.5);
@@ -237,13 +241,13 @@ mod tests {
     #[test]
     fn test_budget_exhausted() {
         let manager = DifferentialPrivacyManager::new();
-        
+
         // 消耗全部 epsilon 预算（10 × 0.5 = 5.0，等于默认预算上限）
         // 使用 delta=0.0 避免 delta 预算先耗尽
         for _ in 0..10 {
             let _ = manager.consume_budget("user123", 0.5, 0.0);
         }
-        
+
         // 第 11 次调用应失败（epsilon 已耗尽，budget_exhausted=true）
         let result = manager.consume_budget("user123", 0.5, 0.0);
         assert!(result.is_err());
@@ -252,11 +256,11 @@ mod tests {
     #[test]
     fn test_budget_status() {
         let manager = DifferentialPrivacyManager::new();
-        
+
         for _ in 0..8 {
             let _ = manager.consume_budget("user123", 0.5, 1e-7);
         }
-        
+
         let snapshot = manager.get_budget_snapshot("user123").unwrap();
         assert_eq!(snapshot.budget_status, BudgetStatus::Warning);
     }

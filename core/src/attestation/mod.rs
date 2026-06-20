@@ -9,8 +9,8 @@
 //! 为在无 TEE 硬件时提供 L1 证明能力，使用 Ed25519 签名作为"软件级认证"。
 //! 这提供与 TEE 相同的 API 接口，但基于可信签名密钥而非硬件飞地。
 
-pub mod software_tee;
 /// 硬件 TEE/ZK/Sigstore 接口（等待硬件 SDK 集成）
 pub mod hardware;
+pub mod software_tee;
 
 pub use software_tee::*;

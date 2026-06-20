@@ -2,10 +2,10 @@
 //!
 //! 定义所有存储抽象的核心 trait 接口。
 
+use crate::pipeline::config::ExecutionPlan;
+use crate::types::trace::Trace;
 use async_trait::async_trait;
 use uuid::Uuid;
-use crate::types::trace::Trace;
-use crate::pipeline::config::ExecutionPlan;
 
 #[async_trait]
 pub trait TraceStore: Send + Sync {

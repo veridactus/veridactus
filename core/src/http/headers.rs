@@ -102,22 +102,13 @@ impl VeridactusResponseHeaders {
     pub fn to_headers(&self) -> HashMap<String, String> {
         let mut headers = HashMap::new();
 
-        headers.insert(
-            "VERIDACTUS-Version".to_string(),
-            self.version.clone(),
-        );
+        headers.insert("VERIDACTUS-Version".to_string(), self.version.clone());
 
         if let Some(accepted) = &self.accepted {
-            headers.insert(
-                "VERIDACTUS-Accepted".to_string(),
-                accepted.join(","),
-            );
+            headers.insert("VERIDACTUS-Accepted".to_string(), accepted.join(","));
         }
 
-        headers.insert(
-            "VERIDACTUS-Trace-Id".to_string(),
-            self.trace_id.clone(),
-        );
+        headers.insert("VERIDACTUS-Trace-Id".to_string(), self.trace_id.clone());
 
         if let Some(diff) = &self.diff_report {
             headers.insert("VERIDACTUS-Diff-Report".to_string(), diff.clone());
@@ -145,10 +136,7 @@ impl VeridactusResponseHeaders {
         }
 
         if let Some(truncated) = self.truncated {
-            headers.insert(
-                "VERIDACTUS-Truncated".to_string(),
-                truncated.to_string(),
-            );
+            headers.insert("VERIDACTUS-Truncated".to_string(), truncated.to_string());
         }
 
         if let Some(warning) = &self.warning {
@@ -156,17 +144,11 @@ impl VeridactusResponseHeaders {
         }
 
         if let Some(levels) = &self.proof_levels {
-            headers.insert(
-                "VERIDACTUS-Proof-Levels".to_string(),
-                levels.join(","),
-            );
+            headers.insert("VERIDACTUS-Proof-Levels".to_string(), levels.join(","));
         }
 
         if let Some(risks) = &self.asi_risks_flagged {
-            headers.insert(
-                "VERIDACTUS-ASI-Risks-Flagged".to_string(),
-                risks.join(","),
-            );
+            headers.insert("VERIDACTUS-ASI-Risks-Flagged".to_string(), risks.join(","));
         }
 
         headers
@@ -188,7 +170,8 @@ pub fn parse_veridactus_headers(headers: &BTreeMap<String, String>) -> Veridactu
         match lower_key.as_str() {
             "veridactus-version" => result.version = Some(value.clone()),
             "veridactus-capabilities" => {
-                result.capabilities = Some(value.split(',').map(|s| s.trim().to_string()).collect());
+                result.capabilities =
+                    Some(value.split(',').map(|s| s.trim().to_string()).collect());
             }
             "veridactus-action" => {
                 result.action = match value.as_str() {
@@ -209,18 +192,25 @@ pub fn parse_veridactus_headers(headers: &BTreeMap<String, String>) -> Veridactu
                 result.diff_output = Some(value == "true");
             }
             "veridactus-focus-fields" => {
-                result.focus_fields = Some(value.split(',').map(|s| s.trim().to_string()).collect());
+                result.focus_fields =
+                    Some(value.split(',').map(|s| s.trim().to_string()).collect());
             }
             "veridactus-override-model" => result.override_model = Some(value.clone()),
             "veridactus-guardrails" => {
                 result.guardrails = Some(value.split(',').map(|s| s.trim().to_string()).collect());
             }
-            "veridactus-guardrails-strictness" => result.guardrails_strictness = Some(value.clone()),
-            "veridactus-instruction-hierarchy" => result.instruction_hierarchy = Some(value.clone()),
+            "veridactus-guardrails-strictness" => {
+                result.guardrails_strictness = Some(value.clone())
+            }
+            "veridactus-instruction-hierarchy" => {
+                result.instruction_hierarchy = Some(value.clone())
+            }
             "veridactus-certified-guarantee" => result.certified_guarantee = Some(value.clone()),
             "veridactus-compliance-profile" => result.compliance_profile = Some(value.clone()),
             "veridactus-drift-suite-id" => result.drift_suite_id = Some(value.clone()),
-            "veridactus-trust-delegation-token" => result.trust_delegation_token = Some(value.clone()),
+            "veridactus-trust-delegation-token" => {
+                result.trust_delegation_token = Some(value.clone())
+            }
             "veridactus-audit-token" => result.audit_token = Some(value.clone()),
             "veridactus-proof-timeout" => {
                 result.proof_timeout = value.parse::<u64>().ok();
@@ -252,7 +242,10 @@ mod tests {
         assert_eq!(parsed.version, Some("0.2".to_string()));
         assert!((parsed.budget_limit.unwrap() - 0.05).abs() < f64::EPSILON);
         assert_eq!(parsed.privacy_level, Some("masked".to_string()));
-        assert_eq!(parsed.guardrails, Some(vec!["G1".to_string(), "G2".to_string()]));
+        assert_eq!(
+            parsed.guardrails,
+            Some(vec!["G1".to_string(), "G2".to_string()])
+        );
     }
 
     /// 测试未知头部被安全忽略

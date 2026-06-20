@@ -3,12 +3,12 @@
 //! 提供 Trace 的异步写入功能，支持后台批量处理。
 
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock, Notify};
+use tokio::sync::{mpsc, Notify, RwLock};
 use tracing::{error, info};
 use uuid::Uuid;
 
+use crate::store::traits::{AsyncTraceWriter, ObjectStore, TraceStore};
 use crate::types::trace::Trace;
-use crate::store::traits::{TraceStore, ObjectStore, AsyncTraceWriter};
 
 pub struct AsyncWriteQueue {
     sender: mpsc::Sender<Trace>,
@@ -36,13 +36,13 @@ impl AsyncWriteQueue {
 
         tokio::spawn(async move {
             let mut batch = Vec::with_capacity(batch_size);
-            
+
             loop {
                 tokio::select! {
                     Some(trace) = rx.recv() => {
                         batch.push(trace);
                         *pending_clone.write().await += 1;
-                        
+
                         if batch.len() >= batch_size {
                             Self::flush_batch(&store_clone, &object_store_clone, &mut batch).await;
                             *pending_clone.write().await -= batch.len();
@@ -107,9 +107,7 @@ impl AsyncWriteQueue {
 
 impl AsyncTraceWriter for AsyncWriteQueue {
     fn enqueue(&self, trace: Trace) -> Result<(), String> {
-        self.sender
-            .try_send(trace)
-            .map_err(|e| e.to_string())
+        self.sender.try_send(trace).map_err(|e| e.to_string())
     }
 
     fn len(&self) -> usize {
@@ -129,11 +127,7 @@ pub struct HybridTraceStore<S: TraceStore, O: ObjectStore> {
 }
 
 impl<S: TraceStore, O: ObjectStore> HybridTraceStore<S, O> {
-    pub fn new(
-        persistent_store: S,
-        object_store: O,
-        memory_capacity: usize,
-    ) -> Self {
+    pub fn new(persistent_store: S, object_store: O, memory_capacity: usize) -> Self {
         Self {
             memory_store: Arc::new(RwLock::new(Vec::new())),
             persistent_store,
@@ -143,9 +137,7 @@ impl<S: TraceStore, O: ObjectStore> HybridTraceStore<S, O> {
     }
 
     pub async fn save(&self, trace: Trace) -> Result<(), String> {
-        let trace_size = serde_json::to_string(&trace)
-            .map(|s| s.len())
-            .unwrap_or(0);
+        let trace_size = serde_json::to_string(&trace).map(|s| s.len()).unwrap_or(0);
 
         let trace_for_memory = trace.clone();
 
@@ -159,7 +151,9 @@ impl<S: TraceStore, O: ObjectStore> HybridTraceStore<S, O> {
             let key = format!("traces/{}/{}.json", tenant_id, trace_id);
 
             let trace_json = serde_json::to_vec(&trace).map_err(|e| e.to_string())?;
-            self.object_store.put("veridactus", &key, &trace_json).await?;
+            self.object_store
+                .put("veridactus", &key, &trace_json)
+                .await?;
 
             // PG 存储精简版（仅元数据+S3引用，不包含完整trace_data）
             let mut trace_meta = trace;

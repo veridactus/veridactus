@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 /// 规范化的 JSON 字符串
 ///
 /// # 一致性保证
-/// 此实现与 Go 的 `github.com/cyberphone/json-canonicalization` 
+/// 此实现与 Go 的 `github.com/cyberphone/json-canonicalization`
 /// 和 Python 的 `jsoncanon` 库的输出一致（通过 PROOF_JCS_CONSISTENCY 测试）。
 pub fn jcs_canonicalize(value: &Value) -> String {
     let mut output = String::new();
@@ -42,7 +42,7 @@ fn canonicalize_value(value: &Value, output: &mut String) {
             // RFC 8785 数字规范化
             // serde_json::Number 已经以规范形式存储，直接输出
             let num_str = n.to_string();
-            
+
             // 处理浮点数：去掉尾部 .0
             if let Some(s) = n.as_f64() {
                 if s == s.floor() && !s.is_infinite() && !s.is_nan() {
@@ -56,7 +56,7 @@ fn canonicalize_value(value: &Value, output: &mut String) {
                     return;
                 }
             }
-            
+
             output.push_str(&num_str);
         }
         Value::String(s) => {
@@ -125,8 +125,8 @@ fn canonicalize_string(s: &str, output: &mut String) {
 
 /// 验证两个 JSON 字符串的 JCS 规范化结果是否一致
 pub fn verify_jcs_consistency(input: &str, expected_canonical: &str) -> Result<(), String> {
-    let value: Value = serde_json::from_str(input)
-        .map_err(|e| format!("JSON parse failed: {}", e))?;
+    let value: Value =
+        serde_json::from_str(input).map_err(|e| format!("JSON parse failed: {}", e))?;
     let actual = jcs_canonicalize(&value);
     if actual == expected_canonical {
         Ok(())
@@ -218,17 +218,17 @@ mod tests {
                 ]
             }
         }"#;
-        
+
         let value: Value = serde_json::from_str(input).unwrap();
         let result = jcs_canonicalize(&value);
-        
+
         // 验证基本结构：键排序，无多余空格
         assert!(result.starts_with('{'));
         assert!(result.ends_with('}'));
         assert!(!result.contains(' ')); // 无多余空格
         assert!(!result.contains('\n')); // 无换行
         assert!(!result.contains('\t')); // 无制表符
-        
+
         // 验证键按字母顺序：created_at < model < proofs < trace_id
         let created_idx = result.find("\"created_at\"").unwrap();
         let model_idx = result.find("\"model\"").unwrap();

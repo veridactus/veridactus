@@ -77,9 +77,16 @@ pub enum PolicyType {
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum PolicyRule {
     Allow,
-    Block { message: Option<String> },
-    Degrade { degrade_action: Option<String>, degrade_target: Option<String> },
-    RequireApproval { message: Option<String> },
+    Block {
+        message: Option<String>,
+    },
+    Degrade {
+        degrade_action: Option<String>,
+        degrade_target: Option<String>,
+    },
+    RequireApproval {
+        message: Option<String>,
+    },
     Flag,
 }
 

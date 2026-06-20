@@ -14,9 +14,7 @@
 use std::sync::Arc;
 use tracing::info;
 
-use crate::store::{
-    TraceStore, InMemoryTraceStore, FileTraceStore, PostgresTraceStore,
-};
+use crate::store::{FileTraceStore, InMemoryTraceStore, PostgresTraceStore, TraceStore};
 
 /// 存储后端枚举
 #[derive(Debug, Clone, PartialEq)]
@@ -53,12 +51,10 @@ impl StoreBackend {
 /// 根据后端类型创建 TraceStore
 pub async fn create_trace_store(backend: &StoreBackend) -> Arc<dyn TraceStore> {
     match backend {
-        StoreBackend::Memory => {
-            Arc::new(InMemoryTraceStore::new())
-        }
+        StoreBackend::Memory => Arc::new(InMemoryTraceStore::new()),
         StoreBackend::File => {
-            let data_dir = std::env::var("VERIDACTUS_DATA_DIR")
-                .unwrap_or_else(|_| "data/traces".to_string());
+            let data_dir =
+                std::env::var("VERIDACTUS_DATA_DIR").unwrap_or_else(|_| "data/traces".to_string());
             Arc::new(FileTraceStore::new(&data_dir))
         }
         StoreBackend::Postgres => {
@@ -73,7 +69,8 @@ pub async fn create_trace_store(backend: &StoreBackend) -> Arc<dyn TraceStore> {
                 .expect("Failed to connect to PostgreSQL");
 
             let pool = Arc::new(pool);
-            PostgresTraceStore::init_schema(&pool).await
+            PostgresTraceStore::init_schema(&pool)
+                .await
                 .expect("Failed to initialize PostgreSQL schema");
 
             Arc::new(PostgresTraceStore::new(pool))

@@ -86,7 +86,10 @@ impl DslValidator {
         None
     }
 
-    fn validate_active_prevention_policy(&self, policy: &super::parser::PolicyDefinition) -> Option<String> {
+    fn validate_active_prevention_policy(
+        &self,
+        policy: &super::parser::PolicyDefinition,
+    ) -> Option<String> {
         if policy.rules.is_empty() {
             return Some(format!(
                 "Active prevention policy '{}' must have at least one rule",

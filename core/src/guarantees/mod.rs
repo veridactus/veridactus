@@ -281,7 +281,10 @@ impl CSafeGenGenerator {
         thresholds.insert("equalized_odds_threshold".to_string(), 0.15);
 
         let mut bounds = HashMap::new();
-        bounds.insert("demographic_parity_diff".to_string(), demographic_parity_diff);
+        bounds.insert(
+            "demographic_parity_diff".to_string(),
+            demographic_parity_diff,
+        );
         bounds.insert("equalized_odds_gap".to_string(), equalized_odds_gap);
 
         CertifiedGuaranteeBuilder::new(GuaranteeType::Fairness)
@@ -296,7 +299,10 @@ impl CSafeGenGenerator {
         pii_detected: bool,
     ) -> CertifiedGuarantee {
         let mut bounds = HashMap::new();
-        bounds.insert("pii_detected".to_string(), if pii_detected { 1.0 } else { 0.0 });
+        bounds.insert(
+            "pii_detected".to_string(),
+            if pii_detected { 1.0 } else { 0.0 },
+        );
 
         CertifiedGuaranteeBuilder::new(GuaranteeType::Privacy)
             .with_description(format!("Privacy guarantee at level: {}", privacy_level))
@@ -311,7 +317,10 @@ impl CSafeGenGenerator {
         let mut bounds = HashMap::new();
         bounds.insert("budget_limit_usd".to_string(), budget_limit);
         bounds.insert("actual_cost_usd".to_string(), actual_cost);
-        bounds.insert("cost_variance_pct".to_string(), ((actual_cost - budget_limit) / budget_limit * 100.0).abs());
+        bounds.insert(
+            "cost_variance_pct".to_string(),
+            ((actual_cost - budget_limit) / budget_limit * 100.0).abs(),
+        );
 
         CertifiedGuaranteeBuilder::new(GuaranteeType::BudgetCompliance)
             .with_description("Budget compliance guarantee".to_string())
@@ -322,7 +331,10 @@ impl CSafeGenGenerator {
 
 fn generate_guarantee_id(guarantee_type: &GuaranteeType) -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
     let type_prefix = match guarantee_type {
         GuaranteeType::Safety => "SAF",
         GuaranteeType::Fairness => "FNR",
@@ -378,7 +390,8 @@ impl ConformalAnalyzer {
             return 0.1;
         }
 
-        let mut scores: Vec<f64> = self.validation_set
+        let mut scores: Vec<f64> = self
+            .validation_set
             .iter()
             .map(|e| e.nonconformity_score)
             .collect();
@@ -391,11 +404,7 @@ impl ConformalAnalyzer {
         scores[quantile_idx]
     }
 
-    pub fn predict(
-        &self,
-        output: f64,
-        covariates: Option<&[f64]>,
-    ) -> ConformalPredictionResult {
+    pub fn predict(&self, output: f64, covariates: Option<&[f64]>) -> ConformalPredictionResult {
         let confidence = self.config.default_confidence;
 
         if self.validation_set.is_empty() {
@@ -408,7 +417,8 @@ impl ConformalAnalyzer {
             };
         }
 
-        let mut scores: Vec<f64> = self.validation_set
+        let mut scores: Vec<f64> = self
+            .validation_set
             .iter()
             .map(|e| e.nonconformity_score)
             .collect();
@@ -437,16 +447,20 @@ impl ConformalAnalyzer {
     fn compute_single_nonconformity(&self, output: f64, covariates: Option<&[f64]>) -> f64 {
         if let Some(covariates) = covariates {
             if !self.validation_set.is_empty() {
-                let avg_score: f64 = self.validation_set
+                let avg_score: f64 = self
+                    .validation_set
                     .iter()
                     .map(|e| e.nonconformity_score)
                     .sum::<f64>()
                     / self.validation_set.len() as f64;
 
-                let covariate_similarity: f64 = self.validation_set
+                let covariate_similarity: f64 = self
+                    .validation_set
                     .iter()
                     .map(|e| {
-                        let stored_cov = e.metadata.get("covariates")
+                        let stored_cov = e
+                            .metadata
+                            .get("covariates")
                             .and_then(|s| serde_json::from_str::<Vec<f64>>(s).ok())
                             .unwrap_or_default();
                         let diff: f64 = covariates
@@ -482,10 +496,8 @@ impl ConformalAnalyzer {
         }
 
         let overall_avg: f64 = scores.iter().sum::<f64>() / n as f64;
-        let variance: f64 = bins.iter()
-            .map(|&b| (b - overall_avg).powi(2))
-            .sum::<f64>()
-            / bins.len() as f64;
+        let variance: f64 =
+            bins.iter().map(|&b| (b - overall_avg).powi(2)).sum::<f64>() / bins.len() as f64;
 
         variance.sqrt()
     }
@@ -518,18 +530,19 @@ impl CSafeGenAnalyzer {
         }
     }
 
-    pub fn analyze(&self, trace_output: &str, constraints: &HashMap<String, String>) -> ConformalPredictionResult {
+    pub fn analyze(
+        &self,
+        trace_output: &str,
+        constraints: &HashMap<String, String>,
+    ) -> ConformalPredictionResult {
         let output_len = trace_output.len() as f64;
         let normalized_output_risk = (output_len / 10000.0).min(1.0);
 
-        let budget_limit = constraints.get("budget_limit")
+        let budget_limit = constraints
+            .get("budget_limit")
             .and_then(|s| s.parse::<f64>().ok())
             .unwrap_or(f64::MAX);
-        let budget_risk = if budget_limit > 0.0 {
-            0.0
-        } else {
-            1.0
-        };
+        let budget_risk = if budget_limit > 0.0 { 0.0 } else { 1.0 };
 
         let pii_patterns = [
             r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
@@ -538,15 +551,17 @@ impl CSafeGenAnalyzer {
         ];
 
         let pii_risk = if pii_patterns.iter().any(|p| {
-            regex::Regex::new(p).map(|re| re.is_match(trace_output)).unwrap_or(false)
+            regex::Regex::new(p)
+                .map(|re| re.is_match(trace_output))
+                .unwrap_or(false)
         }) {
             0.8
         } else {
             0.0
         };
 
-        let combined_risk = (normalized_output_risk * 0.3 + budget_risk * 0.4 + pii_risk * 0.3)
-            .min(1.0);
+        let combined_risk =
+            (normalized_output_risk * 0.3 + budget_risk * 0.4 + pii_risk * 0.3).min(1.0);
 
         self.conformal_analyzer.predict(combined_risk, None)
     }

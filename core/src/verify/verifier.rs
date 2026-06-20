@@ -3,11 +3,11 @@
 //! 提供 Trace 的独立验证功能，第三方审核人员可用。
 //! 严格遵循 §7.4 Independent Verification Flow。
 
-use crate::crypto::signature::verify_l0_signature;
 use crate::crypto::jcs::jcs_canonicalize;
-use crate::crypto::utf8::sanitize_utf8_json;
 use crate::crypto::signature::strip_internal_fields;
-use crate::types::proof::{ProofLevel, ProofChainEntry};
+use crate::crypto::signature::verify_l0_signature;
+use crate::crypto::utf8::sanitize_utf8_json;
+use crate::types::proof::{ProofChainEntry, ProofLevel};
 use crate::types::trace::Trace;
 
 /// 验证结果
@@ -120,7 +120,7 @@ pub fn verify_l1_tee_attestation(proof: &ProofChainEntry) -> bool {
     }
 
     let platform = TeePlatform::from_string(proof.platform.as_ref().unwrap());
-    
+
     // 2. 验证平台类型
     match platform {
         TeePlatform::Unknown(_) => return false,
@@ -224,16 +224,16 @@ fn simulate_tee_verification(proof: &ProofChainEntry) -> bool {
     // - Intel SGX: DCAP 验证库
     // - AMD SEV-SNP: sev-snp-tools 或 AMD 提供的验证库
     // - NVIDIA CC: NVIDIA 提供的验证库
-    
+
     // 模拟验证逻辑
     let quote = proof.attestation_quote.as_ref().unwrap();
     let mrenclave = proof.mrenclave.as_ref().unwrap();
-    
+
     // 验证 quote 长度合理（至少1024字节base64编码后约1366字符）
     if quote.len() < 1000 {
         return false;
     }
-    
+
     // 验证 mrenclave 是有效的 SHA-256 哈希
     mrenclave.len() == 64 && is_valid_hex(mrenclave)
 }
@@ -245,7 +245,7 @@ fn verify_merkle_paths(merkle_root: &str, paths: &[String]) -> bool {
     // 1. 获取每个样本的哈希
     // 2. 沿着路径向上计算
     // 3. 对比根哈希
-    
+
     // 模拟验证：检查路径数量是否合理
     paths.len() >= 32 && paths.len() <= 1024
 }
@@ -253,9 +253,9 @@ fn verify_merkle_paths(merkle_root: &str, paths: &[String]) -> bool {
 /// 模拟 ZK 证明验证
 fn simulate_zk_verification(proof: &ProofChainEntry) -> bool {
     // 在生产环境中，这里应该调用具体的 ZK 验证库
-    
+
     let zk_proof = proof.zk_proof.as_ref().unwrap();
-    
+
     // 验证证明长度合理
     zk_proof.len() > 100 && zk_proof.len() < 1_000_000
 }
@@ -299,18 +299,32 @@ mod tests {
     fn create_test_trace() -> Trace {
         let mut t = Trace {
             trace_id: Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap(),
-            parent_id: None, session_id: None, tenant_id: Some("test".to_string()),
+            parent_id: None,
+            session_id: None,
+            tenant_id: Some("test".to_string()),
             execution_state: None,
             model: "openai/gpt-4o".to_string(),
             engine_determinism: None,
-            input: Some(Input { prompt: Some(serde_json::json!([{"role":"user","content":"hi"}])), params: None, metadata: None }),
-            output: Some(Output { response: Some(serde_json::json!("hello")), truncated: false, finish_reason: Some("stop".to_string()) }),
+            input: Some(Input {
+                prompt: Some(serde_json::json!([{"role":"user","content":"hi"}])),
+                params: None,
+                metadata: None,
+            }),
+            output: Some(Output {
+                response: Some(serde_json::json!("hello")),
+                truncated: false,
+                finish_reason: Some("stop".to_string()),
+            }),
             observations: None,
             proofs: Proofs::default(),
-            constraints_applied: None, supply_chain: None, agent_execution_chain: None,
-            delegation_chain: None, compliance_mappings: None,
+            constraints_applied: None,
+            supply_chain: None,
+            agent_execution_chain: None,
+            delegation_chain: None,
+            compliance_mappings: None,
             created_at: "2026-05-12T10:00:00Z".to_string(),
-            ttl_expire_at: None, extensions: None,
+            ttl_expire_at: None,
+            extensions: None,
         };
         let proof = generate_l0_proof(&mut t);
         t.proofs.proof_chain.push(proof);
@@ -321,7 +335,11 @@ mod tests {
     fn test_verify_valid_trace() {
         let trace = create_test_trace();
         let result = verify_trace(&trace);
-        assert!(result.l0_passed, "有效 Trace 应通过 L0 验证: {:?}", result.error);
+        assert!(
+            result.l0_passed,
+            "有效 Trace 应通过 L0 验证: {:?}",
+            result.error
+        );
     }
 
     #[test]

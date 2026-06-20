@@ -14,9 +14,9 @@
 //! cargo run --bin generate-openapi -- --output ../docs/api/data-plane/
 //! ```
 
+use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::env;
 use veridactus_core::http::openapi::VeridactusDataPlaneApi;
 
 #[derive(Debug, clap::Parser)]
@@ -78,7 +78,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("✅ Generated: {}", yaml_path.display());
         }
         _ => {
-            return Err(format!("Unsupported format: {}. Use 'json', 'yaml', or 'both'.", args.format).into());
+            return Err(format!(
+                "Unsupported format: {}. Use 'json', 'yaml', or 'both'.",
+                args.format
+            )
+            .into());
         }
     }
 

@@ -9,13 +9,13 @@
 //! - 指令层次冲突检测
 //! - 上游响应解析
 
-use regex::Regex;
-use sha2::Digest;
 use crate::types::trace::{
-    CertifiedGuarantee, ExecutionState, Input, StateTransition, Trace,
-    FairnessCheck, FairnessMetric, BiasDetection,
+    BiasDetection, CertifiedGuarantee, ExecutionState, FairnessCheck, FairnessMetric, Input,
+    StateTransition, Trace,
 };
 use crate::types::SafetyEvent;
+use regex::Regex;
+use sha2::Digest;
 
 // ==================== PII 检测 ====================
 
@@ -74,7 +74,9 @@ impl PIIDetector {
 }
 
 impl Default for PIIDetector {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// 递归遮蔽 JSON 响应中的 PII
@@ -108,7 +110,11 @@ pub fn mask_response_pii(json: &serde_json::Value) -> serde_json::Value {
         }
         serde_json::Value::String(s) => {
             let (masked, findings) = pii_detector.detect_and_mask(s);
-            if !findings.is_empty() { serde_json::Value::String(masked) } else { json.clone() }
+            if !findings.is_empty() {
+                serde_json::Value::String(masked)
+            } else {
+                json.clone()
+            }
         }
         _ => json.clone(),
     }
@@ -162,21 +168,33 @@ pub struct StateTransitionRecorder {
 
 impl StateTransitionRecorder {
     pub fn new() -> Self {
-        Self { transitions: Vec::new(), transition_index: 0 }
+        Self {
+            transitions: Vec::new(),
+            transition_index: 0,
+        }
     }
 
     pub fn add_transition(&mut self, from: ExecutionState, to: ExecutionState) -> &StateTransition {
         self.transition_index += 1;
         let ts = chrono::Utc::now().to_rfc3339();
-        self.transitions.push(StateTransition { from, to, timestamp: ts, transition_index: self.transition_index });
+        self.transitions.push(StateTransition {
+            from,
+            to,
+            timestamp: ts,
+            transition_index: self.transition_index,
+        });
         self.transitions.last().expect("刚添加的transition")
     }
 
-    pub fn get_transitions(&self) -> &[StateTransition] { &self.transitions }
+    pub fn get_transitions(&self) -> &[StateTransition] {
+        &self.transitions
+    }
 }
 
 impl Default for StateTransitionRecorder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// 构建完整状态转换链（§6.2）
@@ -189,7 +207,10 @@ pub fn build_state_transitions(
 
     if headers.trust_delegation_token.is_some() {
         recorder.add_transition(ExecutionState::Init, ExecutionState::DelegationValidate);
-        recorder.add_transition(ExecutionState::DelegationValidate, ExecutionState::ConstraintEval);
+        recorder.add_transition(
+            ExecutionState::DelegationValidate,
+            ExecutionState::ConstraintEval,
+        );
     } else {
         recorder.add_transition(ExecutionState::Init, ExecutionState::ConstraintEval);
     }
@@ -206,7 +227,9 @@ pub fn build_state_transitions(
     }
     recorder.add_transition(ExecutionState::Executing, ExecutionState::Validation);
 
-    if failure_stage == Some(ExecutionState::Validation) || failure_stage.is_none() && total_tokens == 0 {
+    if failure_stage == Some(ExecutionState::Validation)
+        || failure_stage.is_none() && total_tokens == 0
+    {
         recorder.add_transition(ExecutionState::Validation, ExecutionState::Failed);
     } else {
         recorder.add_transition(ExecutionState::Validation, ExecutionState::Finalized);
@@ -220,14 +243,20 @@ pub fn build_state_transitions(
 /// 解析认证保证请求头部（格式: methodology:risk_bound@confidence）
 pub fn parse_certified_guarantee(header: &str) -> Option<CertifiedGuarantee> {
     let parts: Vec<&str> = header.split(':').collect();
-    if parts.len() != 2 { return None; }
+    if parts.len() != 2 {
+        return None;
+    }
     let methodology = parts[0].to_string();
     let risk_confidence_parts: Vec<&str> = parts[1].split('@').collect();
-    if risk_confidence_parts.len() != 2 { return None; }
+    if risk_confidence_parts.len() != 2 {
+        return None;
+    }
     let risk_bound = risk_confidence_parts[0].parse::<f64>().ok()?;
     let confidence_level = risk_confidence_parts[1].parse::<f64>().ok()?;
     Some(CertifiedGuarantee {
-        methodology, risk_bound, confidence_level,
+        methodology,
+        risk_bound,
+        confidence_level,
         claim_verified: "Request processed with certified guarantee".to_string(),
         generated_at: chrono::Utc::now().to_rfc3339(),
     })
@@ -241,12 +270,16 @@ pub fn perform_fairness_check(trace: &Trace) -> Option<FairnessCheck> {
         Some(input) => match &input.prompt {
             Some(prompts) => {
                 if let Some(msg_array) = prompts.as_array() {
-                    msg_array.iter()
+                    msg_array
+                        .iter()
                         .filter_map(|msg| msg.get("content").and_then(|v| v.as_str()))
-                        .collect::<Vec<_>>().join(" ")
+                        .collect::<Vec<_>>()
+                        .join(" ")
                 } else if let Some(s) = prompts.as_str() {
                     s.to_string()
-                } else { String::new() }
+                } else {
+                    String::new()
+                }
             }
             None => String::new(),
         },
@@ -261,22 +294,38 @@ pub fn perform_fairness_check(trace: &Trace) -> Option<FairnessCheck> {
     };
     let passed = fairness_score >= 0.7;
     let metrics = Some(vec![FairnessMetric {
-        attribute: "overall".to_string(), metric_type: "overall_fairness".to_string(),
-        value: fairness_score, passed, threshold: 0.7,
+        attribute: "overall".to_string(),
+        metric_type: "overall_fairness".to_string(),
+        value: fairness_score,
+        passed,
+        threshold: 0.7,
     }]);
     let bias_detection = if fairness_score < 0.7 {
         Some(BiasDetection {
-            detected: true, bias_type: Some("potential_bias".to_string()),
+            detected: true,
+            bias_type: Some("potential_bias".to_string()),
             affected_groups: Some(protected_attributes.clone()),
             mitigation_suggestion: Some("建议审查输出内容，确保公平对待所有群体".to_string()),
         })
     } else {
-        Some(BiasDetection { detected: false, bias_type: None, affected_groups: None, mitigation_suggestion: None })
+        Some(BiasDetection {
+            detected: false,
+            bias_type: None,
+            affected_groups: None,
+            mitigation_suggestion: None,
+        })
     };
     Some(FairnessCheck {
-        passed: Some(passed), fairness_score: Some(fairness_score),
-        protected_attributes: if protected_attributes.is_empty() { None } else { Some(protected_attributes) },
-        metrics, bias_detection, checked_at: Some(chrono::Utc::now().to_rfc3339()),
+        passed: Some(passed),
+        fairness_score: Some(fairness_score),
+        protected_attributes: if protected_attributes.is_empty() {
+            None
+        } else {
+            Some(protected_attributes)
+        },
+        metrics,
+        bias_detection,
+        checked_at: Some(chrono::Utc::now().to_rfc3339()),
     })
 }
 
@@ -284,10 +333,19 @@ pub fn perform_fairness_check(trace: &Trace) -> Option<FairnessCheck> {
 pub fn detect_protected_attributes(text: &str) -> Vec<String> {
     let mut attributes = Vec::new();
     let keywords: &[(&str, &[&str])] = &[
-        ("gender", &["gender", "sex", "male", "female", "man", "woman"]),
+        (
+            "gender",
+            &["gender", "sex", "male", "female", "man", "woman"],
+        ),
         ("age", &["age", "old", "young", "child", "senior"]),
-        ("race", &["race", "ethnic", "white", "black", "asian", "hispanic"]),
-        ("religion", &["religion", "christian", "muslim", "jewish", "buddhist"]),
+        (
+            "race",
+            &["race", "ethnic", "white", "black", "asian", "hispanic"],
+        ),
+        (
+            "religion",
+            &["religion", "christian", "muslim", "jewish", "buddhist"],
+        ),
         ("disability", &["disability", "disabled", "handicap"]),
         ("nationality", &["nationality", "country", "citizen"]),
     ];
@@ -307,12 +365,26 @@ pub fn body_json_to_input(body: &serde_json::Value, trace: &mut Trace) {
     let messages = body.get("messages").cloned();
     let params = {
         let mut p = serde_json::Map::new();
-        if let Some(temp) = body.get("temperature") { p.insert("temperature".to_string(), temp.clone()); }
-        if let Some(maxt) = body.get("max_tokens") { p.insert("max_tokens".to_string(), maxt.clone()); }
-        if let Some(top_p) = body.get("top_p") { p.insert("top_p".to_string(), top_p.clone()); }
-        if p.is_empty() { None } else { Some(serde_json::Value::Object(p)) }
+        if let Some(temp) = body.get("temperature") {
+            p.insert("temperature".to_string(), temp.clone());
+        }
+        if let Some(maxt) = body.get("max_tokens") {
+            p.insert("max_tokens".to_string(), maxt.clone());
+        }
+        if let Some(top_p) = body.get("top_p") {
+            p.insert("top_p".to_string(), top_p.clone());
+        }
+        if p.is_empty() {
+            None
+        } else {
+            Some(serde_json::Value::Object(p))
+        }
     };
-    trace.input = Some(Input { prompt: messages, params, metadata: None });
+    trace.input = Some(Input {
+        prompt: messages,
+        params,
+        metadata: None,
+    });
 }
 
 /// 从上游响应 JSON 中提取输出内容
@@ -343,9 +415,18 @@ pub struct UpstreamUsage {
 pub fn extract_usage_from_response(json: &serde_json::Value) -> Option<UpstreamUsage> {
     let usage = json.get("usage")?;
     Some(UpstreamUsage {
-        prompt_tokens: usage.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-        completion_tokens: usage.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-        total_tokens: usage.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+        prompt_tokens: usage
+            .get("prompt_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        completion_tokens: usage
+            .get("completion_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        total_tokens: usage
+            .get("total_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
     })
 }
 
@@ -358,7 +439,8 @@ pub fn estimate_cost(total_tokens: &Option<u64>, model_name: &str) -> f64 {
 
 /// 提取 finish_reason
 pub fn extract_finish_reason(response_json: &serde_json::Value) -> Option<String> {
-    response_json.pointer("/choices/0/finish_reason")
+    response_json
+        .pointer("/choices/0/finish_reason")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
 }
@@ -372,44 +454,78 @@ pub fn check_instruction_hierarchy_violation(
     _trace: &mut Trace,
 ) -> Option<(&'static str, SafetyEvent)> {
     let mode = hierarchy_mode.as_deref().unwrap_or("off");
-    if mode == "off" { return None; }
+    if mode == "off" {
+        return None;
+    }
 
     let user_content = body_json
-        .get("messages").and_then(|m| m.as_array())
+        .get("messages")
+        .and_then(|m| m.as_array())
         .map(|msgs| {
             msgs.iter()
-                .filter(|m| m.get("role").and_then(|r| r.as_str()) == Some("user")
-                    || m.get("role").and_then(|r| r.as_str()) == Some("system"))
+                .filter(|m| {
+                    m.get("role").and_then(|r| r.as_str()) == Some("user")
+                        || m.get("role").and_then(|r| r.as_str()) == Some("system")
+                })
                 .filter_map(|m| m.get("content").and_then(|c| c.as_str()))
-                .collect::<Vec<_>>().join("\n")
-        }).unwrap_or_default();
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default();
 
-    if user_content.is_empty() { return None; }
+    if user_content.is_empty() {
+        return None;
+    }
     let lower = user_content.to_lowercase();
 
     let p0_override_patterns: &[&str] = &[
-        "ignore your system", "ignore all instructions", "ignore previous instructions",
-        "ignore the above", "ignore all previous", "disregard previous instructions",
-        "forget your system", "forget previous instructions",
-        "you are now", "you're now", "act as if you are",
-        "pretend you are", "roleplay as", "respond as if",
-        "you are dan", "do anything now",
-        "override your system", "override your instructions",
-        "new instructions:", "new instruction:",
-        "bypass your", "bypass the safety", "bypass content",
-        "remove all restrictions", "no restrictions",
-        "you are free from", "you don't have to follow",
-        "disable your safety", "disable guardrails",
+        "ignore your system",
+        "ignore all instructions",
+        "ignore previous instructions",
+        "ignore the above",
+        "ignore all previous",
+        "disregard previous instructions",
+        "forget your system",
+        "forget previous instructions",
+        "you are now",
+        "you're now",
+        "act as if you are",
+        "pretend you are",
+        "roleplay as",
+        "respond as if",
+        "you are dan",
+        "do anything now",
+        "override your system",
+        "override your instructions",
+        "new instructions:",
+        "new instruction:",
+        "bypass your",
+        "bypass the safety",
+        "bypass content",
+        "remove all restrictions",
+        "no restrictions",
+        "you are free from",
+        "you don't have to follow",
+        "disable your safety",
+        "disable guardrails",
     ];
 
     let matched = p0_override_patterns.iter().find(|p| lower.contains(*p));
     if let Some(_pattern) = matched {
         let content_hash = sha2::Sha256::digest(user_content.as_bytes());
-        let severity = if mode == "strict" || mode == "verified" { "blocked" } else { "warned" };
+        let severity = if mode == "strict" || mode == "verified" {
+            "blocked"
+        } else {
+            "warned"
+        };
         let safety_event = SafetyEvent {
             trigger_type: crate::types::SafetyTrigger::G1InputFilter,
             severity: crate::types::Severity::High,
-            action_taken: if severity == "blocked" { crate::types::SafetyAction::Blocked } else { crate::types::SafetyAction::Flagged },
+            action_taken: if severity == "blocked" {
+                crate::types::SafetyAction::Blocked
+            } else {
+                crate::types::SafetyAction::Flagged
+            },
             content_hash: format!("{:x}", content_hash),
             asi_risk_id: Some(crate::types::OwaspAsiRisk::AgentGoalHijack),
             timestamp: chrono::Utc::now().to_rfc3339(),
@@ -424,45 +540,91 @@ pub fn check_instruction_hierarchy_violation(
 
 /// 构建合规映射所需的 trace_data（请求处理中内联使用）
 pub fn build_compliance_trace_data(
-    trace: &Trace, content: &str, privacy_level: &crate::types::constraints::PrivacyLevel,
+    trace: &Trace,
+    content: &str,
+    privacy_level: &crate::types::constraints::PrivacyLevel,
 ) -> std::collections::HashMap<String, serde_json::Value> {
     let mut data = std::collections::HashMap::new();
-    data.insert("trace_id".to_string(), serde_json::Value::String(trace.trace_id.to_string()));
-    data.insert("output.response".to_string(), serde_json::Value::String(content.to_string()));
-    data.insert("constraints_applied.privacy_level".to_string(), serde_json::Value::String(format!("{:?}", privacy_level)));
-    data.insert("proof_chain".to_string(), serde_json::to_value(&trace.proofs).unwrap_or_default());
+    data.insert(
+        "trace_id".to_string(),
+        serde_json::Value::String(trace.trace_id.to_string()),
+    );
+    data.insert(
+        "output.response".to_string(),
+        serde_json::Value::String(content.to_string()),
+    );
+    data.insert(
+        "constraints_applied.privacy_level".to_string(),
+        serde_json::Value::String(format!("{:?}", privacy_level)),
+    );
+    data.insert(
+        "proof_chain".to_string(),
+        serde_json::to_value(&trace.proofs).unwrap_or_default(),
+    );
     if let Some(ref ca) = trace.constraints_applied {
         if let Some(ref guards) = ca.guardrails_active {
-            data.insert("constraints_applied.guardrails_active".to_string(), serde_json::to_value(guards).unwrap_or_default());
+            data.insert(
+                "constraints_applied.guardrails_active".to_string(),
+                serde_json::to_value(guards).unwrap_or_default(),
+            );
         }
-        data.insert("constraints_applied.policy_evaluation".to_string(), serde_json::to_value(&ca.policy_evaluation).unwrap_or_default());
+        data.insert(
+            "constraints_applied.policy_evaluation".to_string(),
+            serde_json::to_value(&ca.policy_evaluation).unwrap_or_default(),
+        );
     }
     if let Some(ref obs) = trace.observations {
         if let Some(ref monitoring) = obs.monitoring {
             if let Some(score) = monitoring.anomaly_score {
-                data.insert("observations.risk_score".to_string(), serde_json::Value::Number(
-                    serde_json::Number::from_f64(score).unwrap_or(serde_json::Number::from(0))));
+                data.insert(
+                    "observations.risk_score".to_string(),
+                    serde_json::Value::Number(
+                        serde_json::Number::from_f64(score).unwrap_or(serde_json::Number::from(0)),
+                    ),
+                );
             }
         }
         if obs.fairness_check.is_some() {
-            data.insert("observations.fairness_check".to_string(), serde_json::Value::String("present".to_string()));
+            data.insert(
+                "observations.fairness_check".to_string(),
+                serde_json::Value::String("present".to_string()),
+            );
         }
     }
     if let Some(ref ttl) = trace.ttl_expire_at {
-        data.insert("metadata.ttl_expire_at".to_string(), serde_json::Value::String(ttl.clone()));
+        data.insert(
+            "metadata.ttl_expire_at".to_string(),
+            serde_json::Value::String(ttl.clone()),
+        );
     }
-    data.insert("observations.human_in_the_loop".to_string(), serde_json::Value::String("not_applicable".to_string()));
-    data.insert("metadata.data_subject_rights".to_string(), serde_json::Value::String("not_applicable".to_string()));
-    data.insert("observations.data_processing_notice".to_string(), serde_json::Value::String("not_applicable".to_string()));
+    data.insert(
+        "observations.human_in_the_loop".to_string(),
+        serde_json::Value::String("not_applicable".to_string()),
+    );
+    data.insert(
+        "metadata.data_subject_rights".to_string(),
+        serde_json::Value::String("not_applicable".to_string()),
+    );
+    data.insert(
+        "observations.data_processing_notice".to_string(),
+        serde_json::Value::String("not_applicable".to_string()),
+    );
     data
 }
 
 /// 从已存储的 Trace 构建合规映射所需数据
-pub fn build_compliance_trace_data_from_stored(trace: &Trace) -> std::collections::HashMap<String, serde_json::Value> {
-    let content = trace.output.as_ref()
+pub fn build_compliance_trace_data_from_stored(
+    trace: &Trace,
+) -> std::collections::HashMap<String, serde_json::Value> {
+    let content = trace
+        .output
+        .as_ref()
         .and_then(|o| o.response.as_ref())
-        .and_then(|r| r.as_str()).unwrap_or("");
-    let privacy = trace.constraints_applied.as_ref()
+        .and_then(|r| r.as_str())
+        .unwrap_or("");
+    let privacy = trace
+        .constraints_applied
+        .as_ref()
         .and_then(|c| c.privacy_level.as_ref())
         .cloned()
         .unwrap_or(crate::types::constraints::PrivacyLevel::Raw);

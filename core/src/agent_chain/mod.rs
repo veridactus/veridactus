@@ -114,7 +114,7 @@ impl AgentExecutionChainManager {
     pub fn add_entry(&self, chain_id: &str, entry: ChainEntry) -> Result<(), ChainError> {
         let mut chains = self.chains.write().unwrap();
         let chain = chains.get_mut(chain_id).ok_or(ChainError::NotFound)?;
-        
+
         chain.entries.push(entry);
         Ok(())
     }
@@ -127,7 +127,7 @@ impl AgentExecutionChainManager {
     pub fn complete_chain(&self, chain_id: &str) -> Result<(), ChainError> {
         let mut chains = self.chains.write().unwrap();
         let chain = chains.get_mut(chain_id).ok_or(ChainError::NotFound)?;
-        
+
         chain.chain_state = ChainState::Completed;
         chain.completed_at = Some(chrono::Utc::now().to_rfc3339());
         Ok(())
@@ -137,11 +137,13 @@ impl AgentExecutionChainManager {
         let chains = self.chains.read().unwrap();
         let chain = match chains.get(chain_id) {
             Some(c) => c,
-            None => return ChainValidationResult {
-                valid: false,
-                errors: vec!["Chain not found".to_string()],
-                warnings: Vec::new(),
-            },
+            None => {
+                return ChainValidationResult {
+                    valid: false,
+                    errors: vec!["Chain not found".to_string()],
+                    warnings: Vec::new(),
+                };
+            }
         };
 
         let mut errors = Vec::new();
@@ -160,13 +162,23 @@ impl AgentExecutionChainManager {
 
         for entry in &chain.entries {
             if !parent_ids.contains(&entry.entry_id) && entry.parent_entry_id.is_some() {
-                errors.push(format!("Entry {} has invalid parent reference", entry.entry_id));
+                errors.push(format!(
+                    "Entry {} has invalid parent reference",
+                    entry.entry_id
+                ));
             }
         }
 
-        let root_entries: Vec<_> = chain.entries.iter().filter(|e| e.parent_entry_id.is_none()).collect();
+        let root_entries: Vec<_> = chain
+            .entries
+            .iter()
+            .filter(|e| e.parent_entry_id.is_none())
+            .collect();
         if root_entries.len() != 1 {
-            errors.push(format!("Expected exactly 1 root entry, found {}", root_entries.len()));
+            errors.push(format!(
+                "Expected exactly 1 root entry, found {}",
+                root_entries.len()
+            ));
         }
 
         ChainValidationResult {
@@ -182,15 +194,21 @@ impl AgentExecutionChainManager {
 
         let mut path = Vec::new();
         let mut queue = VecDeque::new();
-        
-        let root_entries: Vec<_> = chain.entries.iter().filter(|e| e.parent_entry_id.is_none()).cloned().collect();
+
+        let root_entries: Vec<_> = chain
+            .entries
+            .iter()
+            .filter(|e| e.parent_entry_id.is_none())
+            .cloned()
+            .collect();
         if let Some(root) = root_entries.first() {
             queue.push_back(root.clone());
         }
 
         while let Some(entry) = queue.pop_front() {
             path.push(entry.clone());
-            let children: Vec<_> = chain.entries
+            let children: Vec<_> = chain
+                .entries
                 .iter()
                 .filter(|e| e.parent_entry_id == Some(entry.entry_id.clone()))
                 .cloned()
@@ -237,9 +255,9 @@ mod tests {
     #[test]
     fn test_create_and_validate_chain() {
         let manager = AgentExecutionChainManager::new();
-        
+
         let chain = manager.create_chain("trace-123");
-        
+
         let entry1 = ChainEntry {
             entry_id: "entry-1".to_string(),
             trace_id: "trace-123".to_string(),
@@ -253,9 +271,9 @@ mod tests {
             status: ExecutionStatus::Completed,
             output_hash: "sha256:abc".to_string(),
         };
-        
+
         manager.add_entry(&chain.chain_id, entry1).unwrap();
-        
+
         let result = manager.validate_chain(&chain.chain_id);
         assert!(result.valid);
     }
@@ -264,7 +282,7 @@ mod tests {
     fn test_chain_validation_failure() {
         let manager = AgentExecutionChainManager::new();
         let chain = manager.create_chain("trace-123");
-        
+
         let result = manager.validate_chain(&chain.chain_id);
         assert!(!result.valid);
         assert!(result.errors.contains(&"Chain has no entries".to_string()));

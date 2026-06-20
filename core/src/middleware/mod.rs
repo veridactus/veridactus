@@ -57,7 +57,10 @@ impl AuditTokenValidator {
 
     /// 注册审计令牌
     pub async fn register_token(&self, token: &str, info: AuditTokenInfo) {
-        self.valid_tokens.write().await.insert(token.to_string(), info);
+        self.valid_tokens
+            .write()
+            .await
+            .insert(token.to_string(), info);
     }
 
     /// 吊销审计令牌
@@ -162,7 +165,8 @@ impl IdempotencyGuard {
             let remove_count = self.max_entries / 4;
             let mut keys: Vec<Uuid> = traces.keys().cloned().collect();
             keys.sort_by_key(|k| {
-                traces.get(k)
+                traces
+                    .get(k)
                     .map(|v| v.processed_at.clone())
                     .unwrap_or_default()
             });

@@ -8,9 +8,9 @@
 //! - 规则编译为可执行策略树
 
 use crate::types::constraints::{
-    ActivePrevention, AdaptiveState, BudgetStrategy, ConstraintsApplied,
-    InstructionHierarchyMode, IntentResolution, PolicyEvaluation, PrivacyLevel,
-    PreventedPattern, PreventionAction, ReproducibilityMode,
+    ActivePrevention, AdaptiveState, BudgetStrategy, ConstraintsApplied, InstructionHierarchyMode,
+    IntentResolution, PolicyEvaluation, PreventedPattern, PreventionAction, PrivacyLevel,
+    ReproducibilityMode,
 };
 use crate::types::trace::Trace;
 use chrono::Utc;
@@ -69,7 +69,11 @@ impl DslCompiler {
         Self { intent_resolvers }
     }
 
-    pub fn compile(&self, dsl: &GovernanceDsl, _trace: &mut Trace) -> Result<ConstraintsApplied, CompileError> {
+    pub fn compile(
+        &self,
+        dsl: &GovernanceDsl,
+        _trace: &mut Trace,
+    ) -> Result<ConstraintsApplied, CompileError> {
         let mut constraints = ConstraintsApplied::default();
         let mut intent_resolutions = Vec::new();
         let mut checks_passed = Vec::new();
@@ -89,7 +93,10 @@ impl DslCompiler {
                         rationale: "Resolved via Governance DSL intent resolution".to_string(),
                         timestamp: Utc::now().to_rfc3339(),
                     });
-                    checks_passed.push(format!("intent_resolved:{}->{}", budget_intent, resolved_to));
+                    checks_passed.push(format!(
+                        "intent_resolved:{}->{}",
+                        budget_intent, resolved_to
+                    ));
 
                     if resolver.target_model.is_some() {
                         constraints.reproducibility_mode = Some(ReproducibilityMode::Bounded);
@@ -166,11 +173,15 @@ impl DslCompiler {
     ) -> Result<(), CompileError> {
         match policy.policy_type {
             PolicyType::Budget => self.compile_budget_policy(policy, constraints),
-            PolicyType::ActivePrevention => self.compile_active_prevention_policy(policy, constraints),
+            PolicyType::ActivePrevention => {
+                self.compile_active_prevention_policy(policy, constraints)
+            }
             PolicyType::Guardrails => self.compile_guardrails_policy(policy, constraints),
             PolicyType::Compliance => self.compile_compliance_policy(policy, constraints),
             PolicyType::Reproducibility => self.compile_reproducibility_policy(policy, constraints),
-            PolicyType::InstructionHierarchy => self.compile_instruction_hierarchy_policy(policy, constraints),
+            PolicyType::InstructionHierarchy => {
+                self.compile_instruction_hierarchy_policy(policy, constraints)
+            }
             PolicyType::ToolConstraint => {
                 constraints.guardrails_active = Some(vec!["G1".to_string()]);
                 Ok(())
@@ -202,8 +213,7 @@ impl DslCompiler {
             }
         }
         if let Some(buffer) = defaults.get("buffer_ratio") {
-            if let Some(_buffer_f64) = buffer.as_f64() {
-            }
+            if let Some(_buffer_f64) = buffer.as_f64() {}
         }
         Ok(())
     }
@@ -264,8 +274,7 @@ impl DslCompiler {
         policy: &PolicyDefinition,
         _constraints: &mut ConstraintsApplied,
     ) -> Result<(), CompileError> {
-        if let Some(_profile) = policy.defaults.get("profile") {
-        }
+        if let Some(_profile) = policy.defaults.get("profile") {}
         Ok(())
     }
 
@@ -329,7 +338,11 @@ pub struct CompileError {
 
 impl std::fmt::Display for CompileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Compile error in policy '{}': {}", self.policy_id, self.message)
+        write!(
+            f,
+            "Compile error in policy '{}': {}",
+            self.policy_id, self.message
+        )
     }
 }
 
@@ -357,7 +370,9 @@ policies:
         let dsl = GovernanceDsl::parse(SAMPLE_DSL).expect("Failed to parse");
         let compiler = DslCompiler::new();
         let mut trace = Trace::new("test-model");
-        let constraints = compiler.compile(&dsl, &mut trace).expect("Failed to compile");
+        let constraints = compiler
+            .compile(&dsl, &mut trace)
+            .expect("Failed to compile");
         assert!(constraints.budget_limit_usd.is_some());
         assert_eq!(constraints.budget_strategy, Some(BudgetStrategy::HardStop));
     }

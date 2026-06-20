@@ -69,7 +69,9 @@ impl OutputFilter {
             if pattern.is_match(text) {
                 violations.push("pii_leak".to_string());
                 // 遮蔽 PII
-                filtered_text = pattern.replace_all(&filtered_text, "[REDACTED]").to_string();
+                filtered_text = pattern
+                    .replace_all(&filtered_text, "[REDACTED]")
+                    .to_string();
             }
         }
 
