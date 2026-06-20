@@ -18,9 +18,10 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 
 # Create dummy source for dependency caching
-RUN mkdir -p src && \
+RUN mkdir -p src benches && \
     echo "fn main() {}" > src/main.rs && \
-    echo "fn main() {}" > src/lib.rs
+    echo "fn main() {}" > src/lib.rs && \
+    echo "fn main() {}" > benches/journal_bench.rs
 
 # Build dependencies only (cached layer)
 RUN cargo build --release --target x86_64-unknown-linux-musl && \

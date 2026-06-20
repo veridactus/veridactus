@@ -63,7 +63,8 @@ WORKDIR /app
 COPY --from=builder /app/veridactus-cp /app/
 
 # Copy database schema (if exists)
-COPY --from=builder /app/migrations /app/migrations 2>/dev/null || true
+RUN mkdir -p /app/migrations
+COPY --from=builder /app/migrations /app/migrations/ || true
 
 # Set ownership
 RUN chown -R veridactus:veridactus /app
