@@ -188,8 +188,10 @@ async fn test_executor_plugin_config_injection() {
 
     let executor = PipelineExecutor::new(Arc::new(registry), plan);
     let mut ctx = RequestContext {
-        headers: std::collections::HashMap::new(), body: Some("test".into()),
-        trace_id: Uuid::new_v4(), tenant_id: "test".into(),
+        headers: std::collections::HashMap::new(),
+        body: Some("test".into()),
+        trace_id: Uuid::new_v4(),
+        tenant_id: "test".into(),
         plugin_config: None,
     };
     let mut journal = ExecutionJournal::new(Uuid::new_v4(), "test");

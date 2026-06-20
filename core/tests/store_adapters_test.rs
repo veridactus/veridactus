@@ -5,7 +5,7 @@
 use uuid::Uuid;
 use veridactus_core::store::adapters::memory::InMemoryTraceStore;
 use veridactus_core::store::TraceStore;
-use veridactus_core::types::proof::{ProofChainEntry, ProofLevel, Proofs, ProofType};
+use veridactus_core::types::proof::{ProofChainEntry, ProofLevel, ProofType, Proofs};
 use veridactus_core::types::trace::Trace;
 
 fn create_test_trace(id: &str, tenant: &str) -> Trace {
