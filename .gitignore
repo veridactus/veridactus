@@ -35,7 +35,6 @@ core/build.log
 *.test
 *.out
 *.a
-control-plane/go.sum
 
 # -----------------------------------------------------------------------------
 # Node.js / TypeScript specific
