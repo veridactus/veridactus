@@ -343,7 +343,7 @@ impl OnCertifiedGuaranteeHook {
         }
 
         let nonconformity_score = self.calculate_nonconformity_score(trace);
-        let n = self.validation_set_size as f64;
+        let _n = self.validation_set_size as f64;
         let confidence = self.default_confidence;
 
         // C-SafeGen核心公式：风险边界 = (rank + 1) / (n + 1)

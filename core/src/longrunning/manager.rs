@@ -73,7 +73,7 @@ impl LongRunningTraceManager {
     /// 等待所有异步任务完成或超时。
     pub async fn finalize_with_async_results(
         &mut self,
-        journal: ExecutionJournal,
+        _journal: ExecutionJournal,
         timeout_secs: u64,
     ) -> Result<Trace, String> {
         // 完成最后一段

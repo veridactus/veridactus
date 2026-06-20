@@ -56,7 +56,7 @@ async fn test_stream_handler_with_budget() {
         rx,
         "test-trace-id".to_string(),
     )
-        .with_budget(0.001, true); // $0.001 预算 + 感知
+    .with_budget(0.001, true); // $0.001 预算 + 感知
 
     tx.send(Ok("short".to_string())).await.unwrap();
     drop(tx);
@@ -68,8 +68,10 @@ async fn test_stream_handler_with_budget() {
     }
 
     // 小数据不应触发预算耗尽
-    assert!(received.iter().any(|s| s.contains("short")),
-        "应包含原始内容");
+    assert!(
+        received.iter().any(|s| s.contains("short")),
+        "应包含原始内容"
+    );
 }
 
 #[tokio::test]
