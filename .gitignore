@@ -21,7 +21,7 @@ veridactus-ui/.vite/
 *.rs.bk
 *.rlib
 *.rmeta
-Cargo.lock
+/Cargo.lock
 core/build.log
 
 # -----------------------------------------------------------------------------
