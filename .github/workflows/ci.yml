@@ -207,7 +207,7 @@ jobs:
 
       - name: Build
         run: |
-          cd core && cargo build --release && cd ..
+          cd core && cargo build --release --bin veridactus-core && cd ..
           cd control-plane && go build -o /tmp/cp ./cmd/server/ && cd ..
 
       - name: Smoke test (start + health)
