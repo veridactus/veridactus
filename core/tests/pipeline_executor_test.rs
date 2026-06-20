@@ -54,13 +54,18 @@ async fn test_executor_serial_pass() {
     registry.register(Box::new(PassPlugin));
 
     let plan = ExecutionPlan {
-        plan_id: "test-plan".into(), tenant: Some("test".into()),
+        plan_id: "test-plan".into(),
+        tenant: Some("test".into()),
         stages: vec![StageConfig {
-            placement: Placement::PreRequest, parallel: false,
+            placement: Placement::PreRequest,
+            parallel: false,
             plugins: vec![PluginConfig {
-                name: "test-pass".into(), r#type: PluginType::Native,
-                config: serde_json::json!({}), depends_on: vec![],
-                endpoint: None, required_capabilities: vec![],
+                name: "test-pass".into(),
+                r#type: PluginType::Native,
+                config: serde_json::json!({}),
+                depends_on: vec![],
+                endpoint: None,
+                required_capabilities: vec![],
             }],
             on_version_mismatch: VersionMismatchPolicy::Skip,
         }],
@@ -87,13 +92,18 @@ async fn test_executor_serial_block() {
     registry.register(Box::new(BlockPlugin));
 
     let plan = ExecutionPlan {
-        plan_id: "test-plan".into(), tenant: Some("test".into()),
+        plan_id: "test-plan".into(),
+        tenant: Some("test".into()),
         stages: vec![StageConfig {
-            placement: Placement::PreRequest, parallel: false,
+            placement: Placement::PreRequest,
+            parallel: false,
             plugins: vec![PluginConfig {
-                name: "test-block".into(), r#type: PluginType::Native,
-                config: serde_json::json!({}), depends_on: vec![],
-                endpoint: None, required_capabilities: vec![],
+                name: "test-block".into(),
+                r#type: PluginType::Native,
+                config: serde_json::json!({}),
+                depends_on: vec![],
+                endpoint: None,
+                required_capabilities: vec![],
             }],
             on_version_mismatch: VersionMismatchPolicy::Skip,
         }],
@@ -119,13 +129,18 @@ async fn test_executor_plugin_not_found() {
     let registry = PluginRegistry::new(); // 空注册表
 
     let plan = ExecutionPlan {
-        plan_id: "test-plan".into(), tenant: Some("test".into()),
+        plan_id: "test-plan".into(),
+        tenant: Some("test".into()),
         stages: vec![StageConfig {
-            placement: Placement::PreRequest, parallel: false,
+            placement: Placement::PreRequest,
+            parallel: false,
             plugins: vec![PluginConfig {
-                name: "nonexistent".into(), r#type: PluginType::Native,
-                config: serde_json::json!({}), depends_on: vec![],
-                endpoint: None, required_capabilities: vec![],
+                name: "nonexistent".into(),
+                r#type: PluginType::Native,
+                config: serde_json::json!({}),
+                depends_on: vec![],
+                endpoint: None,
+                required_capabilities: vec![],
             }],
             on_version_mismatch: VersionMismatchPolicy::Skip,
         }],
@@ -150,7 +165,8 @@ async fn test_executor_plugin_not_found() {
 async fn test_executor_no_stages_returns_allow() {
     let registry = PluginRegistry::new();
     let plan = ExecutionPlan {
-        plan_id: "empty".into(), tenant: Some("test".into()),
+        plan_id: "empty".into(),
+        tenant: Some("test".into()),
         stages: vec![],
     };
 
@@ -174,13 +190,18 @@ async fn test_executor_plugin_config_injection() {
     registry.register(Box::new(PassPlugin));
 
     let plan = ExecutionPlan {
-        plan_id: "test-plan".into(), tenant: Some("test".into()),
+        plan_id: "test-plan".into(),
+        tenant: Some("test".into()),
         stages: vec![StageConfig {
-            placement: Placement::PreRequest, parallel: false,
+            placement: Placement::PreRequest,
+            parallel: false,
             plugins: vec![PluginConfig {
-                name: "test-pass".into(), r#type: PluginType::Native,
+                name: "test-pass".into(),
+                r#type: PluginType::Native,
                 config: serde_json::json!({"limit": 0.05}),
-                depends_on: vec![], endpoint: None, required_capabilities: vec![],
+                depends_on: vec![],
+                endpoint: None,
+                required_capabilities: vec![],
             }],
             on_version_mismatch: VersionMismatchPolicy::Skip,
         }],
