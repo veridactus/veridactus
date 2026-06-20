@@ -24,14 +24,14 @@ RUN mkdir -p src benches && \
     echo "fn main() {}" > benches/journal_bench.rs
 
 # Build dependencies only (cached layer)
-RUN cargo build --release --target x86_64-unknown-linux-musl && \
+RUN cargo build --release --target x86_64-unknown-linux-musl --bins && \
     rm -rf src
 
 # Copy actual source code
 COPY src ./src
 
 # Build the final binary
-RUN cargo build --release --target x86_64-unknown-linux-musl
+RUN cargo build --release --target x86_64-unknown-linux-musl --bins
 
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime
