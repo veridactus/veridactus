@@ -84,7 +84,7 @@ async fn test_stream_handler_prevention_blocks() {
         rx,
         "test-trace-id".to_string(),
     )
-        .with_prevention(prevention);
+    .with_prevention(prevention);
 
     // 发送包含危险内容的 chunk
     tx.send(Ok("normal text".to_string())).await.unwrap();

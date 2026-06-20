@@ -26,10 +26,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-cyclonedx
-        run: cargo install cargo-cyclonedx 2>/dev/null || echo "Already installed"
+        run: cargo install cargo-cyclonedx
 
       - name: Generate CycloneDX SBOM
-        run: cargo cyclonedx --format json --spec-version 1.5 --output-format json
+        run: cargo cyclonedx --format json --spec-version 1.5
 
       - name: Upload Rust SBOM
         uses: actions/upload-artifact@v4
@@ -54,8 +54,11 @@ jobs:
 
       - name: Install bom (SPDX generator)
         run: |
-          go install sigs.k8s.io/bom/cmd/bom@latest 2>/dev/null || \
-          curl -sL https://github.com/kubernetes-sigs/bom/releases/download/v0.6.0/bom_0.6.0_linux_amd64.tar.gz | tar xz && sudo mv bom /usr/local/bin/
+          go install sigs.k8s.io/bom/cmd/bom@latest || {
+            curl -sLo /tmp/bom.tar.gz https://github.com/kubernetes-sigs/bom/releases/download/v0.6.0/bom_0.6.0_linux_amd64.tar.gz
+            tar -xzf /tmp/bom.tar.gz -C /tmp
+            sudo mv /tmp/bom /usr/local/bin/
+          }
 
       - name: Generate SPDX SBOM
         run: |
