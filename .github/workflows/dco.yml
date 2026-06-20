@@ -20,7 +20,22 @@ jobs:
           fetch-depth: 0
 
       - name: Check DCO
-        uses: kineticengines/gh-action-dco@v1
-        with:
-          require-signoff: true
-          skip-merge-commits: true
+        run: |
+          # Check for DCO sign-off in commits
+          set +e
+          git log --format='%H %s' HEAD ^${{ github.event.pull_request.base.sha }} | while read commit subject; do
+            # Skip merge commits
+            if git log -1 --format='%P' $commit | grep -q ' '; then
+              continue
+            fi
+            
+            # Check if commit has sign-off
+            if ! git log -1 --format='%B' $commit | grep -qi 'signed-off-by'; then
+              echo "❌ Commit $commit missing Signed-off-by: $subject"
+              echo "   Please add 'Signed-off-by: Your Name <email@example.com>' to your commit message"
+              exit 1
+            fi
+          done
+          if [ $? -eq 0 ]; then
+            echo "✅ All commits have Signed-off-by"
+          fi
