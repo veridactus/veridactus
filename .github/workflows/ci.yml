@@ -115,7 +115,9 @@ jobs:
         with:
           context: ./core
           push: false
-          tags: ghcr.io/${{ github.repository }}/veridactus-core:pr-${{ github.event.pull_request.number }}
+          tags: |
+            ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-${{ github.sha }}
+            ghcr.io/${{ github.repository }}/veridactus-core:pr-${{ github.event.pull_request.number || 'test' }}
           load: true
           no-cache-filters: core
           provenance: false
@@ -123,7 +125,7 @@ jobs:
 
       - name: Run container health check
         run: |
-          docker run -d --name veridactus-core-test ghcr.io/${{ github.repository }}/veridactus-core:pr-${{ github.event.pull_request.number }}
+          docker run -d --name veridactus-core-test ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-${{ github.sha }}
           sleep 5
           docker logs veridactus-core-test
           docker stop veridactus-core-test
@@ -145,7 +147,9 @@ jobs:
         with:
           context: ./control-plane
           push: false
-          tags: ghcr.io/${{ github.repository }}/veridactus-cp:pr-${{ github.event.pull_request.number }}
+          tags: |
+            ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}-${{ github.sha }}
+            ghcr.io/${{ github.repository }}/veridactus-cp:pr-${{ github.event.pull_request.number || 'test' }}
           load: true
           no-cache-filters: control-plane
           provenance: false
@@ -153,7 +157,7 @@ jobs:
 
       - name: Run container health check
         run: |
-          docker run -d --name veridactus-cp-test ghcr.io/${{ github.repository }}/veridactus-cp:pr-${{ github.event.pull_request.number }}
+          docker run -d --name veridactus-cp-test ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}-${{ github.sha }}
           sleep 5
           docker logs veridactus-cp-test
           docker stop veridactus-cp-test
@@ -175,7 +179,9 @@ jobs:
         with:
           context: ./veridactus-ui
           push: false
-          tags: ghcr.io/${{ github.repository }}/veridactus-ui:pr-${{ github.event.pull_request.number }}
+          tags: |
+            ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}-${{ github.sha }}
+            ghcr.io/${{ github.repository }}/veridactus-ui:pr-${{ github.event.pull_request.number || 'test' }}
           load: true
           no-cache-filters: ui
           provenance: false
@@ -183,7 +189,7 @@ jobs:
 
       - name: Run container health check
         run: |
-          docker run -d --name veridactus-ui-test ghcr.io/${{ github.repository }}/veridactus-ui:pr-${{ github.event.pull_request.number }}
+          docker run -d --name veridactus-ui-test ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}-${{ github.sha }}
           sleep 5
           docker logs veridactus-ui-test
           docker stop veridactus-ui-test
