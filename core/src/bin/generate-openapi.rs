@@ -14,12 +14,12 @@
 //! cargo run --bin generate-openapi -- --output ../docs/api/data-plane/
 //! ```
 
-use std::env;
 use std::fs;
 use std::path::PathBuf;
+use clap::Parser;
 use veridactus_core::http::openapi::VeridactusDataPlaneApi;
 
-#[derive(Debug, clap::Parser)]
+#[derive(Debug, Parser)]
 struct Args {
     /// 输出格式：json 或 yaml
     #[arg(short, long, default_value = "json")]

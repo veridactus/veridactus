@@ -60,7 +60,7 @@ WORKDIR /app
 COPY --from=builder /build/target/x86_64-unknown-linux-musl/release/veridactus-core /app/
 
 # Copy configuration (if exists)
-COPY --from=builder /build/veridactus.toml /app/ 2>/dev/null || true
+RUN if [ -f /build/veridactus.toml ]; then cp /build/veridactus.toml /app/; fi
 
 # Set ownership
 RUN chown -R veridactus:veridactus /app

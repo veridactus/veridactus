@@ -11,32 +11,27 @@
 //! - `openapi/data-plane-v0.2.1.json` - JSON格式规范
 //! - `openapi/data-plane-v0.2.1.yaml` - YAML格式规范
 
-use utoipa::OpenApi as _;
-use utoipa::{
-    openapi::security::{ApiKey, ApiKeyValue, SecurityRequirement},
-    OpenApi,
-};
+use utoipa::OpenApi;
+use utoipa::openapi::security::SecurityRequirement;
+use serde::{Serialize, Deserialize};
 
 /// 聊天完成请求
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ChatCompletionRequest {
     /// 模型标识符
     pub model: String,
     /// 消息列表
     pub messages: Vec<Message>,
     /// 最大令牌数
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
     /// 温度参数
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
     /// 流式响应
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
 }
 
 /// 消息结构
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct Message {
     /// 角色：system/user/assistant
     pub role: String,
@@ -45,7 +40,7 @@ pub struct Message {
 }
 
 /// 聊天完成响应
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ChatCompletionResponse {
     /// 响应ID
     pub id: String,
@@ -58,7 +53,7 @@ pub struct ChatCompletionResponse {
 }
 
 /// 选择项
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct Choice {
     /// 索引
     pub index: u32,
@@ -69,7 +64,7 @@ pub struct Choice {
 }
 
 /// 使用量
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct Usage {
     /// 提示令牌数
     pub prompt_tokens: u32,
@@ -80,7 +75,7 @@ pub struct Usage {
 }
 
 /// 轨迹摘要
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct TraceSummary {
     /// 轨迹ID
     pub trace_id: String,
@@ -93,7 +88,7 @@ pub struct TraceSummary {
 }
 
 /// 轨迹详情
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct TraceDetail {
     /// 轨迹ID
     pub trace_id: String,
@@ -114,7 +109,7 @@ pub struct TraceDetail {
 }
 
 /// 输入结构
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct Input {
     /// 消息列表
     pub messages: Vec<Message>,
@@ -123,7 +118,7 @@ pub struct Input {
 }
 
 /// 输出结构
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct Output {
     /// 响应内容
     pub content: String,
@@ -134,7 +129,7 @@ pub struct Output {
 }
 
 /// 合规报告
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ComplianceReport {
     /// 报告ID
     pub report_id: String,
@@ -145,7 +140,7 @@ pub struct ComplianceReport {
 }
 
 /// 控制项
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct Control {
     /// 控制ID
     pub control_id: String,
@@ -156,7 +151,7 @@ pub struct Control {
 }
 
 /// 重放分支
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ReplayBranch {
     /// 分支ID
     pub branch_id: String,
@@ -171,7 +166,7 @@ pub struct ReplayBranch {
 }
 
 /// 签名验证结果
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct VerificationResult {
     /// 是否验证通过
     pub verified: bool,
@@ -180,7 +175,7 @@ pub struct VerificationResult {
 }
 
 /// 验证详情
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct VerificationDetails {
     /// 算法
     pub algorithm: String,
@@ -193,7 +188,7 @@ pub struct VerificationDetails {
 }
 
 /// GDPR删除请求
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct GdprDeleteRequest {
     /// 目标ID
     pub target_id: String,
@@ -204,7 +199,7 @@ pub struct GdprDeleteRequest {
 }
 
 /// GDPR删除响应
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct GdprDeleteResponse {
     /// 请求ID
     pub request_id: String,
@@ -215,7 +210,7 @@ pub struct GdprDeleteResponse {
 }
 
 /// 删除证明
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct DeletionProof {
     /// 证明类型
     pub proof_type: String,
@@ -226,7 +221,7 @@ pub struct DeletionProof {
 }
 
 /// 实时指标
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct RealtimeMetrics {
     /// 请求总数
     pub total_requests: u64,
@@ -243,7 +238,7 @@ pub struct RealtimeMetrics {
 }
 
 /// 模型信息
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ModelInfo {
     /// 模型ID
     pub id: String,
@@ -256,26 +251,25 @@ pub struct ModelInfo {
 }
 
 /// 错误响应
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ErrorResponse {
     /// 错误代码
     pub error: ErrorDetail,
 }
 
 /// 错误详情
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ErrorDetail {
     /// 错误代码
     pub code: String,
     /// 错误消息
     pub message: String,
     /// 提示信息
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
 }
 
 /// 健康检查响应
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct HealthResponse {
     /// 状态
     pub status: String,
@@ -284,7 +278,7 @@ pub struct HealthResponse {
 }
 
 /// 审计日志项
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct AuditLogEntry {
     /// 日志ID
     pub id: String,
@@ -299,7 +293,7 @@ pub struct AuditLogEntry {
 }
 
 /// 防护统计
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PreventionStats {
     /// 阻止的请求数
     pub blocked_requests: u64,
@@ -310,7 +304,7 @@ pub struct PreventionStats {
 }
 
 /// 防护事件
-#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PreventionEvent {
     /// 事件类型
     pub event_type: String,
@@ -330,8 +324,8 @@ pub struct PreventionEvent {
     ),
     tag = "系统"
 )]
-pub fn health_check_handler() -> impl utoipa::IntoResponse {
-    utoipa::IntoResponse::into_response(HealthResponse {
+pub fn health_check_handler() -> axum::Json<HealthResponse> {
+    axum::Json(HealthResponse {
         status: "ok".to_string(),
         version: "0.2.1".to_string(),
     })
@@ -341,8 +335,8 @@ pub fn health_check_handler() -> impl utoipa::IntoResponse {
     get,
     path = "/v1/traces",
     params(
-        ("limit" = u32, Query, description = "返回数量限制", optional),
-        ("offset" = u32, Query, description = "偏移量", optional)
+        ("limit" = Option<u32>, Query, description = "返回数量限制"),
+        ("offset" = Option<u32>, Query, description = "偏移量")
     ),
     responses(
         (status = 200, description = "轨迹列表", body = Vec<TraceSummary>),
@@ -412,9 +406,6 @@ pub fn verify_signature_handler() {}
     params(
         ("id" = String, Path, description = "轨迹ID")
     ),
-    request_body(
-        openapi::OneOf::new()
-    ),
     responses(
         (status = 200, description = "重放结果", body = TraceDetail),
         (status = 404, description = "轨迹不存在", body = ErrorResponse)
@@ -458,9 +449,9 @@ pub fn realtime_metrics_handler() {}
     get,
     path = "/v1/audit/log",
     params(
-        ("limit" = u32, Query, description = "返回数量", optional),
-        ("start_time" = String, Query, description = "开始时间", optional),
-        ("end_time" = String, Query, description = "结束时间", optional)
+        ("limit" = Option<u32>, Query, description = "返回数量"),
+        ("start_time" = Option<String>, Query, description = "开始时间"),
+        ("end_time" = Option<String>, Query, description = "结束时间")
     ),
     responses(
         (status = 200, description = "审计日志", body = Vec<AuditLogEntry>)
@@ -485,7 +476,7 @@ pub fn audit_log_handler() {}
 )]
 pub fn prevention_stats_handler() {}
 
-#[utoipa::OpenApi]
+#[derive(OpenApi)]
 #[openapi(
     paths(
         health_check_handler,
@@ -547,16 +538,15 @@ pub struct VeridactusDataPlaneApi;
 struct SecurityAddon;
 
 impl utoipa::Modify for SecurityAddon {
-    fn modify(&self, openapi: &mut utoipa::openapi::OpenApiBuilder) -> () {
-        openapi.security = Some(vec![
-            SecurityRequirement::new("api_key" => vec![])
-        ]);
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let security_requirement = SecurityRequirement::new("api_key", Vec::<String>::new());
+        openapi.security = Some(vec![security_requirement]);
     }
 }
 
 impl VeridactusDataPlaneApi {
     pub fn openapi() -> utoipa::openapi::OpenApi {
-        <Self as utoipa::OpenApi>::openapi()
+        <Self as OpenApi>::openapi()
     }
 }
 
