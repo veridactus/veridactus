@@ -5,8 +5,8 @@
 use uuid::Uuid;
 use veridactus_core::store::adapters::memory::InMemoryTraceStore;
 use veridactus_core::store::TraceStore;
+use veridactus_core::types::proof::{ProofChainEntry, ProofLevel, Proofs, ProofType};
 use veridactus_core::types::trace::Trace;
-use veridactus_core::types::proof::{Proofs, ProofChainEntry, ProofLevel, ProofType};
 
 fn create_test_trace(id: &str, tenant: &str) -> Trace {
     let mut trace = Trace::new("glm-5.1".to_string());
@@ -17,10 +17,15 @@ fn create_test_trace(id: &str, tenant: &str) -> Trace {
             level: ProofLevel::L0,
             r#type: ProofType::HashChain,
             signature: Some("test_sig".to_string()),
-            signature_pq: None, attestation_quote: None,
-            model_fingerprint: None, platform: None, mrenclave: None,
-            merkle_root: None, sampling_paths: None,
-            zk_proof: None, verification_key_hash: None,
+            signature_pq: None,
+            attestation_quote: None,
+            model_fingerprint: None,
+            platform: None,
+            mrenclave: None,
+            merkle_root: None,
+            sampling_paths: None,
+            zk_proof: None,
+            verification_key_hash: None,
             proof_aggregation_root: None,
             canonicalization_method: "rfc8785".to_string(),
         }],
