@@ -117,8 +117,7 @@ jobs:
           push: false
           tags: ghcr.io/${{ github.repository }}/veridactus-core:pr-${{ github.event.pull_request.number }}
           load: true
-          cache-from: type=gha,scope=core
-          cache-to: type=gha,mode=max,scope=core
+          no-cache-filters: core
           provenance: false
           sbom: false
 
@@ -148,8 +147,7 @@ jobs:
           push: false
           tags: ghcr.io/${{ github.repository }}/veridactus-cp:pr-${{ github.event.pull_request.number }}
           load: true
-          cache-from: type=gha,scope=cp
-          cache-to: type=gha,mode=max,scope=cp
+          no-cache-filters: control-plane
           provenance: false
           sbom: false
 
@@ -179,8 +177,7 @@ jobs:
           push: false
           tags: ghcr.io/${{ github.repository }}/veridactus-ui:pr-${{ github.event.pull_request.number }}
           load: true
-          cache-from: type=gha,scope=ui
-          cache-to: type=gha,mode=max,scope=ui
+          no-cache-filters: ui
           provenance: false
           sbom: false
 
@@ -229,8 +226,7 @@ jobs:
           push: true
           tags: ${{ steps.meta-core.outputs.tags }}
           labels: ${{ steps.meta-core.outputs.labels }}
-          cache-from: type=gha,scope=core
-          cache-to: type=gha,mode=max,scope=core
+          no-cache-filters: core
           provenance: false
           sbom: false
 
@@ -250,8 +246,7 @@ jobs:
           push: true
           tags: ${{ steps.meta-cp.outputs.tags }}
           labels: ${{ steps.meta-cp.outputs.labels }}
-          cache-from: type=gha,scope=cp
-          cache-to: type=gha,mode=max,scope=cp
+          no-cache-filters: control-plane
           provenance: false
           sbom: false
 
@@ -271,8 +266,7 @@ jobs:
           push: true
           tags: ${{ steps.meta-ui.outputs.tags }}
           labels: ${{ steps.meta-ui.outputs.labels }}
-          cache-from: type=gha,scope=ui
-          cache-to: type=gha,mode=max,scope=ui
+          no-cache-filters: ui
           provenance: false
           sbom: false
 
