@@ -2,10 +2,10 @@
 //!
 //! 测试 SSE 流处理器的核心功能：chunk 传递、预算感知、主动预防、正常终止。
 
-use std::convert::Infallible;
-use tokio::sync::mpsc;
 use bytes::Bytes;
 use futures::StreamExt;
+use std::convert::Infallible;
+use tokio::sync::mpsc;
 
 #[tokio::test]
 async fn test_stream_handler_basic_flow() {

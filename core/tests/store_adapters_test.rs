@@ -95,10 +95,7 @@ async fn test_memory_store_lru_eviction() {
 
     // 存储 150 个 trace，应淘汰最旧的
     for i in 0..150 {
-        let trace = create_test_trace(
-            &format!("00000000-0000-0000-0000-{:012}", i),
-            "lru-tenant",
-        );
+        let trace = create_test_trace(&format!("00000000-0000-0000-0000-{:012}", i), "lru-tenant");
         store.save(trace).await.unwrap();
     }
 
@@ -121,7 +118,10 @@ async fn test_memory_store_delete_by_session() {
         store.save(trace).await.unwrap();
     }
 
-    let deleted = store.delete_by_session(&session_id).await.expect("delete by session failed");
+    let deleted = store
+        .delete_by_session(&session_id)
+        .await
+        .expect("delete by session failed");
     assert_eq!(deleted.len(), 3);
 }
 
