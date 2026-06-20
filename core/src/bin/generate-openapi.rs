@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "yaml" => {
             let filename = format!("{}-{}.yaml", args.filename, version);
             let path = output_dir.join(&filename);
-            let yaml = serde_yaml_ng::to_string(&openapi)?;
+            let yaml = serde_yaml::to_string(&openapi)?;
             fs::write(&path, yaml)?;
             println!("✅ Generated: {}", path.display());
         }
@@ -73,7 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // 生成 YAML
             let yaml_filename = format!("{}-{}.yaml", args.filename, version);
             let yaml_path = output_dir.join(&yaml_filename);
-            let yaml = serde_yaml_ng::to_string(&openapi)?;
+            let yaml = serde_yaml::to_string(&openapi)?;
             fs::write(&yaml_path, yaml)?;
             println!("✅ Generated: {}", yaml_path.display());
         }
