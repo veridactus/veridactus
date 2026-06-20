@@ -75,11 +75,9 @@ async fn test_stream_handler_with_budget() {
 #[tokio::test]
 async fn test_stream_handler_prevention_blocks() {
     let (tx, rx) = mpsc::channel::<Result<String, Infallible>>(16);
-    let prevention = std::sync::Arc::new(
-        veridactus_core::prevention::ConstrainedDecoder::new(
-            std::sync::Arc::new(veridactus_core::prevention::PatternRegistry::default()),
-        ),
-    );
+    let prevention = std::sync::Arc::new(veridactus_core::prevention::ConstrainedDecoder::new(
+        std::sync::Arc::new(veridactus_core::prevention::PatternRegistry::default()),
+    ));
     let handler = veridactus_core::http::streaming::VeridactusStreamHandler::new(
         rx,
         "test-trace-id".to_string(),
