@@ -96,11 +96,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Docker metadata (Core)
         id: meta-core
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/veridactus-core
+          images: |
+            ghcr.io/${{ github.repository }}/veridactus-core
+            veridactus/veridactus-core
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -142,11 +150,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Docker metadata (Control Plane)
         id: meta-cp
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/veridactus-cp
+          images: |
+            ghcr.io/${{ github.repository }}/veridactus-cp
+            veridactus/veridactus-cp
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -187,11 +203,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Docker metadata (UI)
         id: meta-ui
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/veridactus-ui
+          images: |
+            ghcr.io/${{ github.repository }}/veridactus-ui
+            veridactus/veridactus-ui
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
