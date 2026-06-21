@@ -14,15 +14,15 @@ WORKDIR /build
 # Copy dependency manifests first for better layer caching
 COPY Cargo.toml Cargo.lock ./
 
-# Create a dummy src directory and file to build dependencies
-RUN mkdir -p src && echo "fn main() {}" > src/main.rs
+# Create dummy source files to satisfy Cargo.toml requirements
+RUN mkdir -p src && echo "fn main() {}" > src/main.rs && \
+    mkdir -p benches && echo "fn main() {}" > benches/journal_bench.rs
 
 # Build dependencies (this layer will be cached if Cargo.toml/Cargo.lock don't change)
-# --ignore-bench: Skip bench targets since we don't have the benches directory yet
-RUN cargo build --release --bin veridactus-core --ignore-bench
+RUN cargo build --release --bin veridactus-core
 
 # Remove dummy source
-RUN rm -rf src
+RUN rm -rf src benches
 
 # Copy actual source code
 COPY src/ ./src/
