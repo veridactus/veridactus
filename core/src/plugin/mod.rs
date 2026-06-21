@@ -1,7 +1,26 @@
-//! # 治理插件框架（M03）
+//! # Governance Plugin Framework (M03)
 //!
-//! 严格遵循 AI.md §6.0 插件化流水线设计。
-//! 支持 Native (Rust)、Wasm 和 External gRPC 三种插件类型。
+//! Strictly follows AI.md §6.0 plugin-based pipeline design.
+//! Supports three plugin types: Native (Rust), Wasm, and External gRPC.
+//!
+//! ## Plugin Categories
+//!
+//! | Category | Plugin | Purpose | Execution Stage |
+//! |----------|--------|---------|-----------------|
+//! | **Budget Control** | BudgetGuard | Micro-dollar precision spending limits | Pre-Request |
+//! | **Privacy Protection** | PiiDetector | PII detection and masking | Pre-Request |
+//! | **Input Safety** | InputSanitizer | Prompt injection/jailbreak detection | Pre-Request |
+//! | **Input Safety** | G1InputFilter | OWASP ASI G1 input guardrail | Pre-Request |
+//! | **Output Safety** | G2OutputFilter | Harmful content detection | Post-Response |
+//! | **Semantic Safety** | G3SemanticGuard | Factuality and consistency validation | Post-Response |
+//! | **Adversarial Defense** | G4MultiAgentDefense | Red-team attack detection | All Stages |
+//! | **Schema Validation** | ResponseValidator | OpenAI-format response validation | Post-Response |
+//!
+//! ## Plugin Types
+//!
+//! 1. **Native**: Compiled Rust plugins with highest performance
+//! 2. **WASM**: WebAssembly plugins for sandboxed execution
+//! 3. **gRPC**: External services for specialized processing
 
 pub mod governance;
 pub mod guardrails;

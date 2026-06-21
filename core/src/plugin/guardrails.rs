@@ -1,12 +1,16 @@
-//! # 四层防护插件 (G1-G4)
+//! # Four-Tier Guardrail Plugins (G1-G4)
 //!
-//! 遵循协议 §5.6 Content Safety Guardrails。
-//! 实现为 GovernancePlugin，集成到流水线中执行。
+//! Implements VERIDACTUS Protocol §5.6 Content Safety Guardrails.
+//! All plugins implement the GovernancePlugin trait for pipeline integration.
 //!
-//! G1: 输入过滤器 — prompt注入检测
-//! G2: 输出过滤器 — 有害内容检测
-//! G3: 语义守卫 — 事实一致性
-//! G4: 多代理动态防御
+//! ## Guardrail Layers
+//!
+//! | Layer | Name | Protection | Severity |
+//! |-------|------|------------|----------|
+//! | **G1** | Input Filter | Prompt injection, jailbreak attacks | Critical |
+//! | **G2** | Output Filter | Harmful content, PII leakage | High |
+//! | **G3** | Semantic Guard | Factuality, consistency validation | Medium |
+//! | **G4** | Multi-Agent Defense | Red-team attacks, adversarial prompts | Variable |
 
 use async_trait::async_trait;
 use regex::Regex;
@@ -20,7 +24,9 @@ use crate::types::journal::JournalEventType;
 use crate::types::Action;
 use crate::types::{SafetyAction, SafetyEvent, SafetyTrigger, Severity};
 
-// ==================== G1: 输入过滤器 ====================
+// ==================== G1: Input Filter ====================
+// Detects and blocks prompt injection and jailbreak attempts
+// Targets: OWASP ASI01 (Agent Goal Hijack)
 
 pub struct G1InputFilter {
     patterns: Vec<Regex>,
@@ -30,23 +36,23 @@ impl G1InputFilter {
     pub fn new() -> Self {
         Self {
             patterns: vec![
-                // 注入/越狱攻击模式
+                // Injection/jailbreak attack patterns
                 Regex::new(r"(?i)ignore\s+(all\s+)?(previous|above|prior)\s+(instructions|prompts|messages|directives|constraints)").unwrap(),
                 Regex::new(r"(?i)(forget|disregard|override|override)\s+(all\s+)?(previous|above|prior)\s+(instructions|prompts|rules|constraints)").unwrap(),
                 Regex::new(r"(?i)system\s+(prompt|instruction|message|directive)").unwrap(),
                 Regex::new(r"(?i)you\s+are\s+(now|not|no\s+longer)\s+").unwrap(),
                 Regex::new(r"(?i)(act|pretend|behave)\s+as\s+(if\s+you\s+are|a\s+different)").unwrap(),
-                // 命令注入
+                // Command injection
                 Regex::new(r"(?i)rm\s+(-rf|/)\b").unwrap(),
                 Regex::new(r"(?i)(sudo|exec(ute)?)\s+").unwrap(),
                 Regex::new(r"(?i)drop\s+table").unwrap(),
-                // DAN/角色扮演绕过
+                // DAN/roleplay bypass
                 Regex::new(r"(?i)\bDAN\b.*\bmode\b").unwrap(),
                 Regex::new(r"(?i)(jailbreak|jail-broken|jail\s*broken)").unwrap(),
                 Regex::new(r"(?i)(developer|dev)\s*mode").unwrap(),
                 Regex::new(r"(?i)(no\s+restrictions|no\s+limits|without\s+restrictions)").unwrap(),
                 Regex::new(r"(?i)(do\s+anything|unlimited|all-powerful|omnipotent)").unwrap(),
-                // 泄露/提取攻击
+                // Data extraction attacks
                 Regex::new(r"(?i)(reveal|show|display|print|output)\s+(your|the)\s+(system\s+)?(prompt|instructions|configuration|secrets)").unwrap(),
                 Regex::new(r"(?i)(what\s+is\s+your|tell\s+me\s+your)\s+(system\s+)?(prompt|instructions|purpose)").unwrap(),
                 Regex::new(r"(?i)(repeat|echo|recite)\s+(back\s+)?(the\s+)?(above|previous|first)\s+(text|line|sentence|paragraph)").unwrap(),
@@ -59,11 +65,11 @@ impl G1InputFilter {
 impl GovernancePlugin for G1InputFilter {
     fn metadata(&self) -> PluginMetadata {
         PluginMetadata {
-            name: "guardrail-g1".into(),
+            name: "g1-input-filter".into(),
             plugin_type: PluginType::Native,
-            version: "0.2.1".into(),
-            description: "G1 输入过滤器 — prompt注入/jailbreak检测".into(),
-            author: Some("VERIDACTUS Core".into()),
+            version: "1.0.0".into(),
+            description: "G1 Input Filter - Detects and blocks prompt injection, jailbreak attempts, and system prompt extraction attacks. Targets OWASP ASI01 (Agent Goal Hijack)".into(),
+            author: Some("VERIDACTUS Core Team".into()),
             supported_protocol_versions: crate::types::VersionRange {
                 min: "0.2.0".into(),
                 max: "0.2.1".into(),
@@ -79,7 +85,7 @@ impl GovernancePlugin for G1InputFilter {
         let body = ctx.body.as_deref().unwrap_or("");
         for pattern in &self.patterns {
             if pattern.is_match(body) {
-                // 记录安全事件
+                // Record security event
                 journal.append_event(JournalEventType::SafetyEvent(SafetyEvent {
                     trigger_type: SafetyTrigger::G1InputFilter,
                     severity: Severity::High,
@@ -88,7 +94,7 @@ impl GovernancePlugin for G1InputFilter {
                     asi_risk_id: Some(crate::types::OwaspAsiRisk::AgentGoalHijack),
                     timestamp: chrono::Utc::now().to_rfc3339(),
                 }));
-                return Err(format!("G1 输入过滤器阻断: 检测到注入模式"));
+                return Err("G1 Input Filter blocked: Prompt injection or jailbreak pattern detected".to_string());
             }
         }
         Ok(Action::Continue)
@@ -118,7 +124,9 @@ impl GovernancePlugin for G1InputFilter {
     }
 }
 
-// ==================== G2: 输出过滤器 ====================
+// ==================== G2: Output Filter ====================
+// Detects harmful content and PII leakage in LLM responses
+// Targets: OWASP ASI07 (Sensitive Data Exfiltration)
 
 pub struct G2OutputFilter {
     harmful_patterns: Vec<Regex>,
@@ -140,11 +148,11 @@ impl G2OutputFilter {
 impl GovernancePlugin for G2OutputFilter {
     fn metadata(&self) -> PluginMetadata {
         PluginMetadata {
-            name: "guardrail-g2".into(),
+            name: "g2-output-filter".into(),
             plugin_type: PluginType::Native,
-            version: "0.2.1".into(),
-            description: "G2 输出过滤器 — 有害内容/数据泄露检测".into(),
-            author: Some("VERIDACTUS Core".into()),
+            version: "1.0.0".into(),
+            description: "G2 Output Filter - Detects and blocks harmful content including hate speech, violence, and sensitive data leakage (PII). Targets OWASP ASI07 (Sensitive Data Exfiltration)".into(),
+            author: Some("VERIDACTUS Core Team".into()),
             supported_protocol_versions: crate::types::VersionRange {
                 min: "0.2.0".into(),
                 max: "0.2.1".into(),
@@ -270,11 +278,11 @@ impl G3SemanticGuard {
 impl GovernancePlugin for G3SemanticGuard {
     fn metadata(&self) -> PluginMetadata {
         PluginMetadata {
-            name: "guardrail-g3".into(),
+            name: "g3-semantic-guard".into(),
             plugin_type: PluginType::Native,
-            version: "0.2.1".into(),
-            description: "G3 语义守卫 — 意图验证、长度检查、注入模式检测".into(),
-            author: Some("VERIDACTUS Core".into()),
+            version: "1.0.0".into(),
+            description: "G3 Semantic Guard - Validates response factuality, consistency, and detects semantic drift. Targets OWASP ASI06 (Rogue Agents)".into(),
+            author: Some("VERIDACTUS Core Team".into()),
             supported_protocol_versions: crate::types::VersionRange {
                 min: "0.2.0".into(),
                 max: "0.2.1".into(),
@@ -453,11 +461,11 @@ impl G4MultiAgentDefense {
 impl GovernancePlugin for G4MultiAgentDefense {
     fn metadata(&self) -> PluginMetadata {
         PluginMetadata {
-            name: "guardrail-g4".into(),
+            name: "g4-multi-agent-defense".into(),
             plugin_type: PluginType::Native,
-            version: "0.2.1".into(),
-            description: "G4 多代理动态防御 — 红队攻击检测、多代理交叉验证".into(),
-            author: Some("VERIDACTUS Core".into()),
+            version: "1.0.0".into(),
+            description: "G4 Multi-Agent Defense - Detects red-team attacks, adversarial prompts, and performs cross-validation. Targets OWASP ASI01/ASI10".into(),
+            author: Some("VERIDACTUS Core Team".into()),
             supported_protocol_versions: crate::types::VersionRange {
                 min: "0.2.0".into(),
                 max: "0.2.1".into(),
