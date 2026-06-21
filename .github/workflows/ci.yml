@@ -209,6 +209,14 @@ jobs:
         with:
           buildkitd-flags: --debug
 
+      - name: Show Buildx version
+        run: |
+          echo "=== Docker Buildx Version ==="
+          docker buildx version
+          echo ""
+          echo "=== BuildKit Cache Status ==="
+          ls -la /tmp/buildkit-cache/ 2>/dev/null || echo "No local cache found"
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
