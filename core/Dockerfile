@@ -11,8 +11,22 @@ FROM rust:1.91-bullseye AS builder
 # Set working directory
 WORKDIR /build
 
-# Copy source code
-COPY . .
+# Copy dependency manifests first for better layer caching
+COPY Cargo.toml Cargo.lock ./
+
+# Create a dummy src directory and file to build dependencies
+RUN mkdir -p src && echo "fn main() {}" > src/main.rs
+
+# Build dependencies (this layer will be cached if Cargo.toml/Cargo.lock don't change)
+RUN cargo build --release --bin veridactus-core
+
+# Remove dummy source
+RUN rm -rf src
+
+# Copy actual source code
+COPY src/ ./src/
+COPY benches/ ./benches/
+COPY tests/ ./tests/
 
 # Build the final binary
 RUN cargo build --release --bin veridactus-core

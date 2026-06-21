@@ -8,17 +8,14 @@ on:
   schedule:
     - cron: '0 0 * * 0'  # Weekly security scan
 
-# 限制 GitHub Token 权限，提高安全性
 permissions:
   contents: read
 
 env:
   CARGO_TERM_COLOR: always
-  # Multi-platform build settings
   PLATFORMS: "linux/amd64,linux/arm64"
   DOCKER_REGISTRY: "veridactus"
-  # Cache settings
-  CACHE_VERSION: v1
+  CACHE_VERSION: v2
 
 jobs:
   # ==================== Rust 数据面 ====================
@@ -80,6 +77,14 @@ jobs:
         with:
           go-version: '1.21'
 
+      - name: Cache go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            control-plane/go.sum
+          key: ${{ runner.os }}-go-${{ hashFiles('control-plane/go.sum') }}
+
       - name: Build
         run: go build ./cmd/server/
 
@@ -109,94 +114,15 @@ jobs:
       - run: npm run build
       - run: npm test || true
 
-  # ==================== Docker 镜像构建 (PR 测试) - 仅单平台 ====================
-  docker-core:
-    name: Docker Build (Core)
+  # ==================== Docker 镜像构建与推送 (PR: 单平台测试 | main/develop: 多平台推送) ====================
+  docker-build:
+    name: Docker Build & Push
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build Core Docker image (single platform)
-        run: |
-          docker build -t veridactus-core-test:local ./core
-
-      - name: Run container health check
-        run: |
-          docker run -d --name veridactus-core-test veridactus-core-test:local
-          sleep 5
-          docker logs veridactus-core-test
-          docker stop veridactus-core-test
-          echo "✅ Core Docker image built and tested successfully"
-
-  docker-control-plane:
-    name: Docker Build (Control Plane)
-    runs-on: ubuntu-latest
-    needs: [go-control-plane]
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build Control Plane Docker image (single platform)
-        run: |
-          docker build -t veridactus-cp-test:local ./control-plane
-
-      - name: Run container health check
-        run: |
-          docker run -d --name veridactus-cp-test veridactus-cp-test:local
-          sleep 5
-          docker logs veridactus-cp-test
-          docker stop veridactus-cp-test
-          echo "✅ Control Plane Docker image built and tested successfully"
-
-  docker-ui:
-    name: Docker Build (UI)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/develop'))
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build UI Docker image (single platform)
-        run: |
-          docker build -t veridactus-ui-test:local ./veridactus-ui
-
-      - name: Run container health check
-        run: |
-          docker run -d --name veridactus-ui-test veridactus-ui-test:local
-          sleep 5
-          docker logs veridactus-ui-test
-          docker stop veridactus-ui-test
-          echo "✅ UI Docker image built and tested successfully"
-
-  # ==================== Python Worker Docker Build ====================
-  docker-python-worker:
-    name: Docker Build (Python Worker)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/develop'))
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build Python Worker Docker image (single platform)
-        run: |
-          docker build -t veridactus-python-worker-test:local ./python-worker
-
-      - name: Run container health check
-        run: |
-          docker run -d --name veridactus-python-worker-test veridactus-python-worker-test:local
-          sleep 5
-          docker logs veridactus-python-worker-test
-          docker stop veridactus-python-worker-test
-          echo "✅ Python Worker Docker image built and tested successfully"
-
-  # ==================== Docker 镜像推送 (main/develop) - 多平台 ====================
-  docker-push:
-    name: Docker Push (main/develop)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       packages: write
       contents: read
-    needs: [docker-core, docker-control-plane, docker-ui, docker-python-worker]
+    needs: [rust-core, go-control-plane, ui]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -206,133 +132,94 @@ jobs:
 
       - name: Set up Docker Buildx with cache support
         uses: docker/setup-buildx-action@v3
-        with:
-          buildkitd-flags: --debug
 
-      - name: Show Buildx version
-        run: |
-          echo "=== Docker Buildx Version ==="
-          docker buildx version
-          echo ""
-          echo "=== BuildKit Cache Status ==="
-          ls -la /tmp/buildkit-cache/ 2>/dev/null || echo "No local cache found"
-
+      # Only login to registries for push (main/develop branches)
       - name: Log in to Docker Hub
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/develop')
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Build and push Core image (multi-platform with cache)
-      - name: Build and push Core image
+      # Build and push Core image
+      - name: Build Core image (test only) or Build and push Core image
         uses: docker/build-push-action@v5
         with:
           context: ./core
-          platforms: ${{ env.PLATFORMS }}
-          tags: |
-            veridactus/veridactus-core:${{ github.ref_name }}
-            veridactus/veridactus-core:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}/veridactus-core:${{ github.sha }}
-          push: true
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || env.PLATFORMS }}
+          push: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
+          tags: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && format('veridactus/veridactus-core:{0}', github.ref_name) || '' }}
           cache-from: |
             type=gha,scope=core-${{ github.ref_name }}
             type=registry,ref=veridactus/veridactus-core:${{ github.ref_name }}
-          cache-to: type=gha,scope=core-${{ github.ref_name }},mode=max
+          cache-to: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && 'type=gha,scope=core-${{ github.ref_name }},mode=max' || '' }}
           labels: |
             org.opencontainers.image.title=VERIDACTUS Core
             org.opencontainers.image.description=Trusted AI Execution Governance - Rust Data Plane
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
-            org.opencontainers.image.version=${{ github.ref_name }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.created=${{ github.event.repository.created_at }}
-            org.opencontainers.image.url=https://github.com/${{ github.repository }}
 
-      # Build and push Control Plane image (multi-platform with cache)
-      - name: Build and push Control Plane image
+      # Build and push Control Plane image
+      - name: Build Control Plane image (test only) or Build and push Control Plane image
         uses: docker/build-push-action@v5
         with:
           context: ./control-plane
-          platforms: ${{ env.PLATFORMS }}
-          tags: |
-            veridactus/veridactus-cp:${{ github.ref_name }}
-            veridactus/veridactus-cp:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.sha }}
-          push: true
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || env.PLATFORMS }}
+          push: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
+          tags: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && format('veridactus/veridactus-cp:{0}', github.ref_name) || '' }}
           cache-from: |
             type=gha,scope=cp-${{ github.ref_name }}
             type=registry,ref=veridactus/veridactus-cp:${{ github.ref_name }}
-          cache-to: type=gha,scope=cp-${{ github.ref_name }},mode=max
+          cache-to: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && 'type=gha,scope=cp-${{ github.ref_name }},mode=max' || '' }}
           labels: |
             org.opencontainers.image.title=VERIDACTUS Control Plane
             org.opencontainers.image.description=Trusted AI Execution Governance - Go Control Plane
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
-            org.opencontainers.image.version=${{ github.ref_name }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.created=${{ github.event.repository.created_at }}
-            org.opencontainers.image.url=https://github.com/${{ github.repository }}
 
-      # Build and push UI image (multi-platform with cache)
-      - name: Build and push UI image
+      # Build and push UI image
+      - name: Build UI image (test only) or Build and push UI image
         uses: docker/build-push-action@v5
         with:
           context: ./veridactus-ui
-          platforms: ${{ env.PLATFORMS }}
-          tags: |
-            veridactus/veridactus-ui:${{ github.ref_name }}
-            veridactus/veridactus-ui:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.sha }}
-          push: true
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || env.PLATFORMS }}
+          push: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
+          tags: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && format('veridactus/veridactus-ui:{0}', github.ref_name) || '' }}
           cache-from: |
             type=gha,scope=ui-${{ github.ref_name }}
             type=registry,ref=veridactus/veridactus-ui:${{ github.ref_name }}
-          cache-to: type=gha,scope=ui-${{ github.ref_name }},mode=max
+          cache-to: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && 'type=gha,scope=ui-${{ github.ref_name }},mode=max' || '' }}
           labels: |
             org.opencontainers.image.title=VERIDACTUS UI
             org.opencontainers.image.description=Trusted AI Execution Governance - React Frontend
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
-            org.opencontainers.image.version=${{ github.ref_name }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.created=${{ github.event.repository.created_at }}
-            org.opencontainers.image.url=https://github.com/${{ github.repository }}
 
-      # Build and push Python Worker image (multi-platform with cache)
-      - name: Build and push Python Worker image
+      # Build and push Python Worker image
+      - name: Build Python Worker image (test only) or Build and push Python Worker image
         uses: docker/build-push-action@v5
         with:
           context: ./python-worker
-          platforms: ${{ env.PLATFORMS }}
-          tags: |
-            veridactus/veridactus-python-worker:${{ github.ref_name }}
-            veridactus/veridactus-python-worker:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.sha }}
-          push: true
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || env.PLATFORMS }}
+          push: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
+          tags: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && format('veridactus/veridactus-python-worker:{0}', github.ref_name) || '' }}
           cache-from: |
             type=gha,scope=python-worker-${{ github.ref_name }}
             type=registry,ref=veridactus/veridactus-python-worker:${{ github.ref_name }}
-          cache-to: type=gha,scope=python-worker-${{ github.ref_name }},mode=max
+          cache-to: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && 'type=gha,scope=python-worker-${{ github.ref_name }},mode=max' || '' }}
           labels: |
             org.opencontainers.image.title=VERIDACTUS Python Worker
             org.opencontainers.image.description=Trusted AI Execution Governance - Python Worker for PII Detection
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
-            org.opencontainers.image.version=${{ github.ref_name }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.created=${{ github.event.repository.created_at }}
-            org.opencontainers.image.url=https://github.com/${{ github.repository }}
 
   # ==================== E2E 冒烟测试 ====================
   e2e-smoke:
@@ -426,7 +313,6 @@ jobs:
           results_file: results.sarif
           results_format: sarif
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          # 禁用签名以避免令牌过期问题
           publish_results: false
 
       - name: Upload SARIF file to GitHub Security
@@ -456,9 +342,7 @@ jobs:
       - name: GitHub Dependency Review
         uses: actions/dependency-review-action@v4
         with:
-          # 只在严重漏洞时失败
           fail-on-severity: critical
-          # 允许的开源许可证
           allow-licenses: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, CC0-1.0, ISC, 0BSD
 
   # ==================== 代码扫描 ====================
