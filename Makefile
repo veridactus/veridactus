@@ -1,4 +1,4 @@
-.PHONY: all build check test e2e clean dev infra lint fmt help
+.PHONY: all build check test e2e clean dev infra lint fmt help deploy stop logs status
 
 # ==================== Default ====================
 all: build
@@ -17,6 +17,43 @@ build-cp: ## Build Go control plane
 
 build-ui: ## Build React frontend
 	cd veridactus-ui && npm ci && npm run build
+
+# ==================== Docker Deployment ====================
+deploy: ## Deploy all services with Docker Compose (one-click)
+	@echo "🚀 Starting VERIDACTUS deployment..."
+	@chmod +x deploy/quick-start.sh
+	@./deploy/quick-start.sh --init
+
+deploy-all: ## Deploy all services including optional components
+	@chmod +x deploy/quick-start.sh
+	@./deploy/quick-start.sh --all
+
+deploy-ollama: ## Deploy with local Ollama LLM
+	@chmod +x deploy/quick-start.sh
+	@./deploy/quick-start.sh --init --ollama
+
+deploy-worker: ## Deploy with Python Worker
+	@chmod +x deploy/quick-start.sh
+	@./deploy/quick-start.sh --init --worker
+
+stop: ## Stop all Docker services
+	@echo "🛑 Stopping VERIDACTUS services..."
+	docker compose -f deploy/docker-compose.yml down
+	@echo "✅ Services stopped"
+
+stop-clean: ## Stop services and remove volumes
+	@echo "🧹 Stopping services and cleaning volumes..."
+	docker compose -f deploy/docker-compose.yml down -v
+	@echo "✅ Services stopped and volumes removed"
+
+logs: ## View Docker logs
+	docker compose -f deploy/docker-compose.yml logs -f
+
+status: ## Show Docker service status
+	docker compose -f deploy/docker-compose.yml ps
+
+restart: ## Restart all services
+	docker compose -f deploy/docker-compose.yml restart
 
 # ==================== Check ====================
 check: fmt lint ## Format and lint all components
