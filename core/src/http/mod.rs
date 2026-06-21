@@ -7,7 +7,7 @@ pub mod error_handler;
 pub mod handlers;
 pub mod headers;
 pub mod helpers;
-pub mod regex_registry;
 pub mod openapi;
+pub mod regex_registry;
 pub mod server;
 pub mod streaming;

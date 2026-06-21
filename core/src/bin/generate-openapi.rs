@@ -14,9 +14,9 @@
 //! cargo run --bin generate-openapi -- --output ../docs/api/data-plane/
 //! ```
 
+use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
-use clap::Parser;
 use veridactus_core::http::openapi::VeridactusDataPlaneApi;
 
 #[derive(Debug, Parser)]
