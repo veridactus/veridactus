@@ -418,12 +418,22 @@ jobs:
           results_file: results.sarif
           results_format: sarif
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_results: true
+          # 禁用签名以避免令牌过期问题
+          publish_results: false
 
-      - name: Upload SARIF file
+      - name: Upload SARIF file to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
           sarif_file: results.sarif
+
+      - name: Upload Scorecard results as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 30
 
   # ==================== GitHub Dependency Review（官方依赖审查）====================
   dependency-review:
