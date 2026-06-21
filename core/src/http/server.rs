@@ -40,9 +40,9 @@ use crate::http::headers::{
 };
 use crate::observability::otel::OtelTracer;
 use crate::types::constraints::{
-    check_constraint_conflicts, AdaptiveState, BudgetStrategy, ConflictType,
-    ConstraintsApplied, DegradeAction, DegradeActionType, InstructionHierarchyMode,
-    PolicyEvaluation, PrivacyLevel, ReproducibilityMode,
+    check_constraint_conflicts, AdaptiveState, BudgetStrategy, ConflictType, ConstraintsApplied,
+    DegradeAction, DegradeActionType, InstructionHierarchyMode, PolicyEvaluation, PrivacyLevel,
+    ReproducibilityMode,
 };
 use crate::types::error::{ErrorObject, ErrorResponse, VeridactusErrorCode};
 use crate::types::journal::{ExecutionJournal, JournalEventType};
