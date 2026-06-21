@@ -229,17 +229,22 @@ jobs:
       - name: Create Core multi-platform manifest
         if: env.IS_PUSH == 'true'
         run: |
+          set -e
+          echo "Creating multi-platform manifest for veridactus-core:${{ github.ref_name }}"
           docker manifest create veridactus/veridactus-core:${{ github.ref_name }} \
             veridactus/veridactus-core:${{ github.ref_name }}-amd64 \
             veridactus/veridactus-core:${{ github.ref_name }}-arm64 \
             veridactus/veridactus-core:${{ github.ref_name }}-armv7
           docker manifest push veridactus/veridactus-core:${{ github.ref_name }}
+          docker manifest inspect veridactus/veridactus-core:${{ github.ref_name }}
           
           docker manifest create ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }} \
             ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-amd64 \
             ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-arm64 \
             ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-armv7
           docker manifest push ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}
+          docker manifest inspect ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}
+          echo "✅ Core manifest created successfully"
 
       # Build and push Control Plane image
       - name: Build Control Plane image (PR)
@@ -319,17 +324,22 @@ jobs:
       - name: Create Control Plane multi-platform manifest
         if: env.IS_PUSH == 'true'
         run: |
+          set -e
+          echo "Creating multi-platform manifest for veridactus-cp:${{ github.ref_name }}"
           docker manifest create veridactus/veridactus-cp:${{ github.ref_name }} \
             veridactus/veridactus-cp:${{ github.ref_name }}-amd64 \
             veridactus/veridactus-cp:${{ github.ref_name }}-arm64 \
             veridactus/veridactus-cp:${{ github.ref_name }}-armv7
           docker manifest push veridactus/veridactus-cp:${{ github.ref_name }}
+          docker manifest inspect veridactus/veridactus-cp:${{ github.ref_name }}
           
           docker manifest create ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }} \
             ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}-amd64 \
             ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}-arm64 \
             ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}-armv7
           docker manifest push ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}
+          docker manifest inspect ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}
+          echo "✅ Control Plane manifest created successfully"
 
       # Build and push UI image
       - name: Build UI image (PR)
@@ -409,17 +419,22 @@ jobs:
       - name: Create UI multi-platform manifest
         if: env.IS_PUSH == 'true'
         run: |
+          set -e
+          echo "Creating multi-platform manifest for veridactus-ui:${{ github.ref_name }}"
           docker manifest create veridactus/veridactus-ui:${{ github.ref_name }} \
             veridactus/veridactus-ui:${{ github.ref_name }}-amd64 \
             veridactus/veridactus-ui:${{ github.ref_name }}-arm64 \
             veridactus/veridactus-ui:${{ github.ref_name }}-armv7
           docker manifest push veridactus/veridactus-ui:${{ github.ref_name }}
+          docker manifest inspect veridactus/veridactus-ui:${{ github.ref_name }}
           
           docker manifest create ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }} \
             ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}-amd64 \
             ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}-arm64 \
             ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}-armv7
           docker manifest push ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}
+          docker manifest inspect ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}
+          echo "✅ UI manifest created successfully"
 
       # Build and push Python Worker image
       - name: Build Python Worker image (PR)
@@ -499,17 +514,22 @@ jobs:
       - name: Create Python Worker multi-platform manifest
         if: env.IS_PUSH == 'true'
         run: |
+          set -e
+          echo "Creating multi-platform manifest for veridactus-python-worker:${{ github.ref_name }}"
           docker manifest create veridactus/veridactus-python-worker:${{ github.ref_name }} \
             veridactus/veridactus-python-worker:${{ github.ref_name }}-amd64 \
             veridactus/veridactus-python-worker:${{ github.ref_name }}-arm64 \
             veridactus/veridactus-python-worker:${{ github.ref_name }}-armv7
           docker manifest push veridactus/veridactus-python-worker:${{ github.ref_name }}
+          docker manifest inspect veridactus/veridactus-python-worker:${{ github.ref_name }}
           
           docker manifest create ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }} \
             ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}-amd64 \
             ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}-arm64 \
             ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}-armv7
           docker manifest push ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}
+          docker manifest inspect ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}
+          echo "✅ Python Worker manifest created successfully"
 
   # ==================== E2E 冒烟测试 ====================
   e2e-smoke:
