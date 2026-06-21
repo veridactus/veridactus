@@ -5,12 +5,16 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly security scan
 
 env:
   CARGO_TERM_COLOR: always
   # Multi-platform build settings
   PLATFORMS: "linux/amd64,linux/arm64"
   DOCKER_REGISTRY: "veridactus"
+  # Cache settings
+  CACHE_VERSION: v1
 
 jobs:
   # ==================== Rust 数据面 ====================
@@ -187,15 +191,19 @@ jobs:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       packages: write
+      contents: read
     needs: [docker-core, docker-control-plane, docker-ui, docker-python-worker]
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Set up QEMU
+      - name: Set up QEMU for multi-platform builds
         uses: docker/setup-qemu-action@v3
 
-      - name: Set up Docker Buildx
+      - name: Set up Docker Buildx with cache support
         uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-flags: --debug
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -210,7 +218,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Build and push Core image (multi-platform)
+      # Build and push Core image (multi-platform with cache)
       - name: Build and push Core image
         uses: docker/build-push-action@v5
         with:
@@ -222,6 +230,10 @@ jobs:
             ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}/veridactus-core:${{ github.sha }}
           push: true
+          cache-from: |
+            type=gha,scope=core-${{ github.ref_name }}
+            type=registry,ref=veridactus/veridactus-core:${{ github.ref_name }}
+          cache-to: type=gha,scope=core-${{ github.ref_name }},mode=max
           labels: |
             org.opencontainers.image.title=VERIDACTUS Core
             org.opencontainers.image.description=Trusted AI Execution Governance - Rust Data Plane
@@ -230,8 +242,9 @@ jobs:
             org.opencontainers.image.version=${{ github.ref_name }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ github.event.repository.created_at }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
 
-      # Build and push Control Plane image (multi-platform)
+      # Build and push Control Plane image (multi-platform with cache)
       - name: Build and push Control Plane image
         uses: docker/build-push-action@v5
         with:
@@ -243,6 +256,10 @@ jobs:
             ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.sha }}
           push: true
+          cache-from: |
+            type=gha,scope=cp-${{ github.ref_name }}
+            type=registry,ref=veridactus/veridactus-cp:${{ github.ref_name }}
+          cache-to: type=gha,scope=cp-${{ github.ref_name }},mode=max
           labels: |
             org.opencontainers.image.title=VERIDACTUS Control Plane
             org.opencontainers.image.description=Trusted AI Execution Governance - Go Control Plane
@@ -251,8 +268,9 @@ jobs:
             org.opencontainers.image.version=${{ github.ref_name }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ github.event.repository.created_at }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
 
-      # Build and push UI image (multi-platform)
+      # Build and push UI image (multi-platform with cache)
       - name: Build and push UI image
         uses: docker/build-push-action@v5
         with:
@@ -264,6 +282,10 @@ jobs:
             ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.sha }}
           push: true
+          cache-from: |
+            type=gha,scope=ui-${{ github.ref_name }}
+            type=registry,ref=veridactus/veridactus-ui:${{ github.ref_name }}
+          cache-to: type=gha,scope=ui-${{ github.ref_name }},mode=max
           labels: |
             org.opencontainers.image.title=VERIDACTUS UI
             org.opencontainers.image.description=Trusted AI Execution Governance - React Frontend
@@ -272,8 +294,9 @@ jobs:
             org.opencontainers.image.version=${{ github.ref_name }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ github.event.repository.created_at }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
 
-      # Build and push Python Worker image (multi-platform)
+      # Build and push Python Worker image (multi-platform with cache)
       - name: Build and push Python Worker image
         uses: docker/build-push-action@v5
         with:
@@ -285,6 +308,10 @@ jobs:
             ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.sha }}
           push: true
+          cache-from: |
+            type=gha,scope=python-worker-${{ github.ref_name }}
+            type=registry,ref=veridactus/veridactus-python-worker:${{ github.ref_name }}
+          cache-to: type=gha,scope=python-worker-${{ github.ref_name }},mode=max
           labels: |
             org.opencontainers.image.title=VERIDACTUS Python Worker
             org.opencontainers.image.description=Trusted AI Execution Governance - Python Worker for PII Detection
@@ -293,6 +320,7 @@ jobs:
             org.opencontainers.image.version=${{ github.ref_name }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ github.event.repository.created_at }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
 
   # ==================== E2E 冒烟测试 ====================
   e2e-smoke:
@@ -365,3 +393,51 @@ jobs:
           echo "✓ Health checks: $(grep -c 'healthcheck:' deploy/docker-compose.yml)"
           echo "✓ Restart policies: $(grep -c 'restart:' deploy/docker-compose.yml)"
           echo "✅ Docker Compose configuration looks good"
+
+  # ==================== OpenSSF Scorecard 安全扫描 ====================
+  openssf-scorecard:
+    name: OpenSSF Scorecard
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run OpenSSF Scorecard
+        uses: ossf/scorecard-action@v2.3.1
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_results: true
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+
+  # ==================== 依赖安全检查 ====================
+  dependency-check:
+    name: Dependency Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run dependency check
+        uses: dependency-check/Dependency-Check_Action@v4.2.1
+        with:
+          project: "VERIDACTUS"
+          path: "."
+          format: "SARIF"
+          out: "reports"
+
+      - name: Upload dependency check report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: reports/
