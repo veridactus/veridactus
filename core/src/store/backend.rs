@@ -28,9 +28,10 @@ use tracing::{info, warn};
 
 use crate::store::{FileTraceStore, InMemoryTraceStore, PostgresTraceStore, TraceStore};
 
+use crate::store::traits::ObjectStore;
+
 #[cfg(feature = "s3")]
 use crate::store::S3ObjectStore;
-use crate::store::traits::ObjectStore;
 
 use crate::store::adapters::redis::{RedisBudgetStore, RedisCacheStore};
 use crate::store::traits::{BudgetStore, CacheStore};
