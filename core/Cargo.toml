@@ -72,7 +72,7 @@ dashmap = "5"
 redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
 
 # PostgreSQL client
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
 
 # AWS SDK for S3/MinIO support
 aws-sdk-s3 = { version = "1", optional = true }
