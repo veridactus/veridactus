@@ -102,8 +102,8 @@ pub async fn create_trace_store(backend: &StoreBackend) -> Arc<dyn TraceStore> {
 ///
 /// Returns None if Redis is not configured or connection fails.
 pub async fn create_cache_store() -> Option<Arc<dyn CacheStore>> {
-    let redis_host = std::env::var("VERIDACTUS_STORE_REDIS_HOST")
-        .unwrap_or_else(|_| "localhost".to_string());
+    let redis_host =
+        std::env::var("VERIDACTUS_STORE_REDIS_HOST").unwrap_or_else(|_| "localhost".to_string());
     let redis_port = std::env::var("VERIDACTUS_STORE_REDIS_PORT")
         .unwrap_or_else(|_| "6379".to_string())
         .parse()
@@ -112,20 +112,24 @@ pub async fn create_cache_store() -> Option<Arc<dyn CacheStore>> {
     let redis_url = format!("redis://{}:{}", redis_host, redis_port);
 
     match redis::Client::open(redis_url.as_str()) {
-        Ok(client) => {
-            match redis::aio::ConnectionManager::new(client).await {
-                Ok(conn) => {
-                    info!("Redis cache store connected: {}:{}", redis_host, redis_port);
-                    Some(Arc::new(RedisCacheStore::new(conn)))
-                }
-                Err(e) => {
-                    warn!("Redis connection failed: {}, using in-memory cache", e);
-                    None
-                }
+        Ok(client) => match redis::aio::ConnectionManager::new(client).await {
+            Ok(conn) => {
+                info!(
+                    "Redis cache store connected: {}:{}",
+                    redis_host, redis_port
+                );
+                Some(Arc::new(RedisCacheStore::new(conn)))
             }
-        }
+            Err(e) => {
+                warn!("Redis connection failed: {}, using in-memory cache", e);
+                None
+            }
+        },
         Err(e) => {
-            warn!("Redis client creation failed: {}, using in-memory cache", e);
+            warn!(
+                "Redis client creation failed: {}, using in-memory cache",
+                e
+            );
             None
         }
     }
@@ -135,8 +139,8 @@ pub async fn create_cache_store() -> Option<Arc<dyn CacheStore>> {
 ///
 /// Returns None if Redis is not configured or connection fails.
 pub async fn create_budget_store() -> Option<Arc<dyn BudgetStore>> {
-    let redis_host = std::env::var("VERIDACTUS_STORE_REDIS_HOST")
-        .unwrap_or_else(|_| "localhost".to_string());
+    let redis_host =
+        std::env::var("VERIDACTUS_STORE_REDIS_HOST").unwrap_or_else(|_| "localhost".to_string());
     let redis_port = std::env::var("VERIDACTUS_STORE_REDIS_PORT")
         .unwrap_or_else(|_| "6379".to_string())
         .parse()
@@ -145,20 +149,24 @@ pub async fn create_budget_store() -> Option<Arc<dyn BudgetStore>> {
     let redis_url = format!("redis://{}:{}", redis_host, redis_port);
 
     match redis::Client::open(redis_url.as_str()) {
-        Ok(client) => {
-            match redis::aio::ConnectionManager::new(client).await {
-                Ok(conn) => {
-                    info!("Redis budget store connected: {}:{}", redis_host, redis_port);
-                    Some(Arc::new(RedisBudgetStore::new(conn)))
-                }
-                Err(e) => {
-                    warn!("Redis connection failed: {}, budget tracking disabled", e);
-                    None
-                }
+        Ok(client) => match redis::aio::ConnectionManager::new(client).await {
+            Ok(conn) => {
+                info!(
+                    "Redis budget store connected: {}:{}",
+                    redis_host, redis_port
+                );
+                Some(Arc::new(RedisBudgetStore::new(conn)))
             }
-        }
+            Err(e) => {
+                warn!("Redis connection failed: {}, budget tracking disabled", e);
+                None
+            }
+        },
         Err(e) => {
-            warn!("Redis client creation failed: {}, budget tracking disabled", e);
+            warn!(
+                "Redis client creation failed: {}, budget tracking disabled",
+                e
+            );
             None
         }
     }
