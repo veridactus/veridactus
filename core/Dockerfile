@@ -6,10 +6,7 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Builder
 # -----------------------------------------------------------------------------
-FROM rust:1.77-alpine AS builder
-
-# Install build dependencies
-RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static
+FROM rust:1.77-bullseye AS builder
 
 # Set working directory
 WORKDIR /build
@@ -18,15 +15,18 @@ WORKDIR /build
 COPY . .
 
 # Build the final binary
-RUN cargo build --release --target x86_64-unknown-linux-musl --bin veridactus-core
+RUN cargo build --release --bin veridactus-core
 
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime
 # -----------------------------------------------------------------------------
-FROM alpine:3.19 AS runtime
+FROM debian:bullseye-slim AS runtime
 
 # Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
 
 # Add labels for OCI image spec
 LABEL org.opencontainers.image.title="VERIDACTUS Core Data Plane" \
@@ -37,14 +37,14 @@ LABEL org.opencontainers.image.title="VERIDACTUS Core Data Plane" \
       org.opencontainers.image.vendor="VERIDACTUS Authors"
 
 # Create non-root user for security
-RUN addgroup -g 1000 veridactus && \
-    adduser -u 1000 -G veridactus -s /bin/sh -D veridactus
+RUN groupadd -r veridactus --gid=1000 && \
+    useradd -r -g veridactus --uid=1000 veridactus
 
 # Set working directory
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /build/target/x86_64-unknown-linux-musl/release/veridactus-core /app/
+COPY --from=builder /build/target/release/veridactus-core /app/
 
 # Copy configuration (if exists)
 RUN if [ -f /build/veridactus.toml ]; then cp /build/veridactus.toml /app/; fi
