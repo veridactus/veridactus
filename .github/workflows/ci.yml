@@ -118,7 +118,6 @@ jobs:
             ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-${{ github.sha }}
             ghcr.io/${{ github.repository }}/veridactus-core:pr-${{ github.event.pull_request.number || 'test' }}
           load: true
-          no-cache-filters: core
           provenance: false
           sbom: false
 
@@ -237,7 +236,6 @@ jobs:
           push: true
           tags: ${{ steps.meta-core.outputs.tags }}
           labels: ${{ steps.meta-core.outputs.labels }}
-          no-cache-filters: core
           provenance: false
           sbom: false
 
