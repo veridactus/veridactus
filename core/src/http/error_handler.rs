@@ -70,8 +70,8 @@ mod tests {
     #[test]
     fn test_error_response_building() {
         let trace_id = Uuid::new_v4();
-        let journal = ExecutionJournal::new(trace_id, "test-tenant");
-        let validator = AuditTokenValidator::new(vec![]);
+        let _journal = ExecutionJournal::new(trace_id, "test-tenant");
+        let _validator = AuditTokenValidator::new(vec![]);
 
         // 无审计令牌时的最小响应
         let error_code = VeridactusErrorCode::BudgetExceeded;

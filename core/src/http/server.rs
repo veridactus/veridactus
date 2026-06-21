@@ -39,7 +39,7 @@ use crate::http::headers::{
     parse_veridactus_headers, VeridactusRequestHeaders, VeridactusResponseHeaders,
 };
 use crate::observability::otel::OtelTracer;
-use crate::store::{InMemoryTraceStore, TraceStore};
+use crate::store::InMemoryTraceStore;
 use crate::types::constraints::{
     check_constraint_conflicts, ActivePrevention, AdaptiveState, BudgetStrategy, ConflictType,
     ConstraintsApplied, DegradeAction, DegradeActionType, InstructionHierarchyMode,
@@ -959,7 +959,7 @@ async fn handle_chat_completion(
                     if let Ok(baseline_id) = uuid::Uuid::parse_str(baseline_ref) {
                         trace.parent_id = Some(baseline_id);
                         // 检查基线是否存在
-                        if let Some(baseline) = state.trace_store.get(&baseline_id).await {
+                        if let Some(_baseline) = state.trace_store.get(&baseline_id).await {
                             info!("基线 Trace 找到: {}", baseline_ref);
                             journal.append_event(JournalEventType::PluginDecision {
                                 plugin_name: "action:drift-test".to_string(),

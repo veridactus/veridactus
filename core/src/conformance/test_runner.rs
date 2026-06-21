@@ -273,7 +273,7 @@ fn run_constraint_tests(
 ) {
     use crate::types::conflicts::ConflictDetector;
 
-    let conflicts = ConflictDetector::detect_all(
+    let _conflicts = ConflictDetector::detect_all(
         Some(&crate::types::PrivacyLevel::HashOnly),
         None,
         None,
