@@ -40,7 +40,9 @@ pub mod queue;
 pub mod traits;
 
 pub use adapters::*;
-pub use backend::{create_budget_store, create_cache_store, create_object_store, create_trace_store, StoreBackend};
+pub use backend::{
+    create_budget_store, create_cache_store, create_object_store, create_trace_store, StoreBackend,
+};
 pub use facade::StoreManager;
 pub use queue::AsyncWriteQueue;
 pub use traits::*;
