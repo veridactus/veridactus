@@ -6,7 +6,7 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Builder
 # -----------------------------------------------------------------------------
-FROM rust:1.77-bullseye AS builder
+FROM rust:1.80-bullseye AS builder
 
 # Set working directory
 WORKDIR /build
