@@ -13,7 +13,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  PLATFORMS: "linux/amd64,linux/arm64"
+  PLATFORMS: "linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le"
   DOCKER_REGISTRY: "veridactus"
   CACHE_VERSION: v2
 
