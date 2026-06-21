@@ -68,22 +68,25 @@ mod s3_impl {
         }
 
         async fn list(&self, bucket: &str, prefix: &str) -> Vec<String> {
-            self.client
+            let output = match self
+                .client
                 .list_objects_v2()
                 .bucket(bucket)
                 .prefix(prefix)
                 .send()
                 .await
-                .ok()
-                .map(|output| {
-                    output
-                        .contents()
-                        .iter()
-                        .flatten()
-                        .filter_map(|obj| obj.key().map(|k| k.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default()
+            {
+                Ok(o) => o,
+                Err(_) => return Vec::new(),
+            };
+            
+            let mut keys = Vec::new();
+            for obj in output.contents() {
+                if let Some(key) = obj.key() {
+                    keys.push(key.to_string());
+                }
+            }
+            keys
         }
     }
 }

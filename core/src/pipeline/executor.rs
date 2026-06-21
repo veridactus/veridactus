@@ -9,8 +9,7 @@ use tracing::info;
 
 use crate::pipeline::config::{ExecutionPlan, Placement};
 use crate::plugin::{
-    AsyncContext, GovernancePlugin, PluginRegistry, RequestContext, ResponseContext,
-    StreamChunkContext,
+    AsyncContext, PluginRegistry, RequestContext, ResponseContext, StreamChunkContext,
 };
 use crate::types::journal::ExecutionJournal;
 use crate::types::Action;

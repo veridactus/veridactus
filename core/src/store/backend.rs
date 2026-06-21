@@ -173,24 +173,20 @@ pub async fn create_object_store() -> Option<Arc<dyn ObjectStore>> {
     let bucket = std::env::var("VERIDACTUS_STORE_S3_BUCKET").ok()?;
     let access_key = std::env::var("VERIDACTUS_STORE_S3_ACCESS_KEY").ok()?;
     let secret_key = std::env::var("VERIDACTUS_STORE_S3_SECRET_KEY").ok()?;
-    let region = std::env::var("VERIDACTUS_STORE_S3_REGION")
-        .unwrap_or_else(|_| "us-east-1".to_string());
+    let region =
+        std::env::var("VERIDACTUS_STORE_S3_REGION").unwrap_or_else(|_| "us-east-1".to_string());
 
-    info!("Initializing S3/MinIO object store: endpoint={}, bucket={}", endpoint, bucket);
+    info!(
+        "Initializing S3/MinIO object store: endpoint={}, bucket={}",
+        endpoint, bucket
+    );
 
     // Configure AWS SDK for MinIO/S3
     let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-    
+
     let s3_config = aws_sdk_s3::config::Builder::from(&config)
         .endpoint_url(&endpoint)
-        .region(aws_sdk_s3::primitives::Region::new(region))
-        .credentials(aws_sdk_s3::config::Credentials::new(
-            &access_key,
-            &secret_key,
-            None,
-            None,
-            "env",
-        ))
+        .region(aws_sdk_s3::config::Region::new(region))
         .force_path_style(true) // Required for MinIO
         .build();
 
