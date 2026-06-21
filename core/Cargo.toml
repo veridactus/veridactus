@@ -74,8 +74,13 @@ redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
 # PostgreSQL client
 sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
 
+# AWS SDK for S3/MinIO support
+aws-sdk-s3 = { version = "1", optional = true }
+aws-config = { version = "1", optional = true }
+
 [features]
-default = []
+default = ["s3"]
+s3 = ["aws-sdk-s3", "aws-config"]
 
 [dev-dependencies]
 tempfile = "3"

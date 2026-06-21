@@ -2,21 +2,37 @@
 # VERIDACTUS Docker Compose - Application Stack
 # Production-ready deployment with all components
 #
-# Usage:
-#   docker-compose -f deploy/docker-compose.yml up -d
-#   docker-compose -f deploy/docker-compose.yml down
+# Project: VERIDACTUS - Trusted AI Execution Governance
+# License: Apache-2.0
+# Source: https://github.com/veridactus/veridactus
 #
-# Environment variables (set in .env or shell):
-#   VERIDACTUS_ADMIN_KEY     - Admin API key (required)
-#   VERIDACTUS_UPSTREAM_URL - LLM upstream URL
-#   VERIDACTUS_UPSTREAM_KEY - LLM API key
-#   POSTGRES_PASSWORD        - PostgreSQL password
+# Usage:
+#   # Start all services
+#   docker compose -f deploy/docker-compose.yml up -d
+#
+#   # Start with MinIO initialization (first run)
+#   docker compose -f deploy/docker-compose.yml --profile init up -d
+#
+#   # Start with local Ollama LLM
+#   docker compose -f deploy/docker-compose.yml --profile ollama up -d
+#
+#   # Start with Python Worker
+#   docker compose -f deploy/docker-compose.yml --profile worker up -d
+#
+#   # Stop all services
+#   docker compose -f deploy/docker-compose.yml down
+#
+#   # Stop and remove volumes (clean slate)
+#   docker compose -f deploy/docker-compose.yml down -v
+#
+# Environment variables (create .env file in project root):
+#   See .env.example for full list
 # =============================================================================
 
 services:
   # ==================== VERIDACTUS Core (Rust Data Plane) ====================
   veridactus-core:
-    image: veridactus/veridactus-core:latest
+    image: veridactus/veridactus-core:main
     container_name: veridactus-core
     restart: unless-stopped
     ports:
@@ -40,6 +56,7 @@ services:
       - VERIDACTUS_STORE_S3_ACCESS_KEY=${MINIO_ROOT_USER:-veridactus}
       - VERIDACTUS_STORE_S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-veridactus123}
       - VERIDACTUS_STORE_S3_REGION=${MINIO_REGION:-us-east-1}
+      - TZ=${TIMEZONE:-UTC}
     depends_on:
       redis:
         condition: service_healthy
@@ -54,15 +71,23 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     networks:
       - veridactus-network
     volumes:
       - veridactus-core-logs:/app/logs
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
   # ==================== VERIDACTUS Control Plane (Go) ====================
   veridactus-cp:
-    image: veridactus/veridactus-cp:latest
+    image: veridactus/veridactus-cp:main
     container_name: veridactus-cp
     restart: unless-stopped
     ports:
@@ -72,6 +97,7 @@ services:
       - VERIDACTUS_CP_DB_PATH=/app/veridactus.db
       - VERIDACTUS_CP_ADMIN_KEY=${VERIDACTUS_ADMIN_KEY}
       - VERIDACTUS_CP_CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
+      - TZ=${TIMEZONE:-UTC}
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,15 +106,23 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     networks:
       - veridactus-network
     volumes:
       - veridactus-cp-data:/app
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
 
   # ==================== VERIDACTUS Frontend (React/Nginx) ====================
   veridactus-ui:
-    image: veridactus/veridactus-ui:latest
+    image: veridactus/veridactus-ui:main
     container_name: veridactus-ui
     restart: unless-stopped
     ports:
@@ -96,16 +130,26 @@ services:
     environment:
       - VITE_API_URL=http://localhost:8081
       - VITE_WS_URL=ws://localhost:8080
+      - TZ=${TIMEZONE:-UTC}
     depends_on:
-      - veridactus-cp
+      veridactus-cp:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     networks:
       - veridactus-network
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
 
   # ==================== Infrastructure Services ====================
 
@@ -121,10 +165,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 5s
     networks:
       - veridactus-network
     volumes:
       - redis-data:/data
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
 
   postgres:
     image: postgres:16-alpine
@@ -136,15 +189,26 @@ services:
       - POSTGRES_DB=veridactus
       - POSTGRES_USER=veridactus
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-veridactus}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF8 --lc-collate=C --lc-ctype=C
+      - TZ=${TIMEZONE:-UTC}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U veridactus -d veridactus"]
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 10s
     networks:
       - veridactus-network
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
   minio:
     image: minio/minio:latest
@@ -156,16 +220,55 @@ services:
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-veridactus}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-veridactus123}
+      - MINIO_REGION=${MINIO_REGION:-us-east-1}
+      - TZ=${TIMEZONE:-UTC}
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 10s
     networks:
       - veridactus-network
     volumes:
       - minio-data:/data
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # ==================== MinIO Bucket Initialization ====================
+  minio-init:
+    image: minio/mc:latest
+    container_name: veridactus-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc config host add minio http://minio:9000 \$MINIO_ROOT_USER \$MINIO_ROOT_PASSWORD;
+      mc mb --ignore-existing minio/veridactus;
+      mc mb --ignore-existing minio/veridactus-traces;
+      mc mb --ignore-existing minio/veridactus-backups;
+      mc policy set public minio/veridactus;
+      echo 'MinIO buckets initialized successfully';
+      exit 0;
+      "
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-veridactus}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-veridactus123}
+      - TZ=${TIMEZONE:-UTC}
+    networks:
+      - veridactus-network
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - init
 
   # ==================== Optional: Ollama (Local LLM) ====================
   ollama:
@@ -174,29 +277,48 @@ services:
     restart: unless-stopped
     ports:
       - "11434:11434"
+    environment:
+      - TZ=${TIMEZONE:-UTC}
     volumes:
       - ollama-data:/root/.ollama
     networks:
       - veridactus-network
+    security_opt:
+      - no-new-privileges:true
     profiles:
       - ollama
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
 
-  # ==================== Optional: Python Worker (PI Detection) ====================
+  # ==================== Optional: Python Worker (PII Detection) ====================
   python-worker:
-    image: veridactus/veridactus-python-worker:latest
+    image: veridactus/veridactus-python-worker:main
     container_name: veridactus-python-worker
     restart: unless-stopped
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - WORKER_LOG_LEVEL=info
+      - WORKER_LOG_LEVEL=${WORKER_LOG_LEVEL:-info}
+      - TZ=${TIMEZONE:-UTC}
     depends_on:
       redis:
         condition: service_healthy
     networks:
       - veridactus-network
+    security_opt:
+      - no-new-privileges:true
     profiles:
       - worker
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
 # =============================================================================
 # Networks
@@ -205,6 +327,9 @@ networks:
   veridactus-network:
     driver: bridge
     name: veridactus-network
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
 # =============================================================================
 # Volumes
@@ -212,13 +337,28 @@ networks:
 volumes:
   redis-data:
     name: veridactus-redis-data
+    driver: local
   postgres-data:
     name: veridactus-postgres-data
+    driver: local
   minio-data:
     name: veridactus-minio-data
+    driver: local
   ollama-data:
     name: veridactus-ollama-data
+    driver: local
   veridactus-cp-data:
     name: veridactus-cp-data
+    driver: local
   veridactus-core-logs:
     name: veridactus-core-logs
+    driver: local
+
+# =============================================================================
+# Extension Fields (Open Source Best Practices)
+# =============================================================================
+x-license: Apache-2.0
+x-project-url: https://github.com/veridactus/veridactus
+x-documentation-url: https://veridactus.github.io/veridactus/
+x-support-url: https://github.com/veridactus/veridactus/issues
+x-security-contact: security@veridactus.dev

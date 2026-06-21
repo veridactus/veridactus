@@ -70,9 +70,17 @@ VERIDACTUS_UPSTREAM_KEY=your-llm-api-key
 VERIDACTUS_CONTROL_PLANE_URL=http://localhost:8081
 
 # Storage
+VERIDACTUS_STORE_BACKEND=postgres
 POSTGRES_PASSWORD=your-postgres-password
 MINIO_ROOT_USER=veridactus
 MINIO_ROOT_PASSWORD=your-minio-password
+
+# S3/MinIO Configuration (for large object storage)
+VERIDACTUS_STORE_S3_ENDPOINT=http://minio:9000
+VERIDACTUS_STORE_S3_BUCKET=veridactus-traces
+VERIDACTUS_STORE_S3_ACCESS_KEY=veridactus
+VERIDACTUS_STORE_S3_SECRET_KEY=your-minio-password
+VERIDACTUS_STORE_S3_REGION=us-east-1
 
 # CORS
 CORS_ORIGINS=http://localhost:3000,http://localhost:8080
@@ -326,6 +334,12 @@ spec:
 | `VERIDACTUS_STORE_POSTGRES_DB` | `veridactus` | Database name |
 | `VERIDACTUS_STORE_POSTGRES_USER` | `veridactus` | Database user |
 | `VERIDACTUS_STORE_POSTGRES_PASSWORD` | - | Database password |
+| `VERIDACTUS_STORE_BACKEND` | `memory` | Storage backend: memory/file/postgres |
+| `VERIDACTUS_STORE_S3_ENDPOINT` | - | S3/MinIO endpoint (e.g., http://minio:9000) |
+| `VERIDACTUS_STORE_S3_BUCKET` | - | S3 bucket name |
+| `VERIDACTUS_STORE_S3_ACCESS_KEY` | - | S3 access key |
+| `VERIDACTUS_STORE_S3_SECRET_KEY` | - | S3 secret key |
+| `VERIDACTUS_STORE_S3_REGION` | `us-east-1` | S3 region |
 
 #### veridactus-cp
 

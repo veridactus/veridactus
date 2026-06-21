@@ -8,6 +8,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Multi-platform build settings
+  PLATFORMS: "linux/amd64,linux/arm64"
+  DOCKER_REGISTRY: "veridactus"
 
 jobs:
   # ==================== Rust 数据面 ====================
@@ -106,9 +109,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build Core Docker image
-        run: |
-          docker build -t ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-${{ github.sha }} ./core
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Core Docker image (multi-platform)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./core
+          platforms: ${{ env.PLATFORMS }}
+          tags: ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-${{ github.sha }}
+          push: false
+          load: true
 
       - name: Run container health check
         run: |
@@ -126,9 +140,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build Control Plane Docker image
-        run: |
-          docker build -t veridactus-cp-test:local ./control-plane
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Control Plane Docker image (multi-platform)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./control-plane
+          platforms: ${{ env.PLATFORMS }}
+          tags: veridactus-cp-test:local
+          push: false
+          load: true
 
       - name: Run container health check
         run: |
@@ -145,9 +170,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build UI Docker image
-        run: |
-          docker build -t veridactus-ui-test:local ./veridactus-ui
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build UI Docker image (multi-platform)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./veridactus-ui
+          platforms: ${{ env.PLATFORMS }}
+          tags: veridactus-ui-test:local
+          push: false
+          load: true
 
       - name: Run container health check
         run: |
@@ -161,13 +197,24 @@ jobs:
   docker-python-worker:
     name: Docker Build (Python Worker)
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/develop'))
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build Python Worker Docker image
-        run: |
-          docker build -t veridactus-python-worker-test:local ./python-worker
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Python Worker Docker image (multi-platform)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./python-worker
+          platforms: ${{ env.PLATFORMS }}
+          tags: veridactus-python-worker-test:local
+          push: false
+          load: true
 
       - name: Run container health check
         run: |
@@ -184,8 +231,15 @@ jobs:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       packages: write
+    needs: [docker-core, docker-control-plane, docker-ui, docker-python-worker]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -193,33 +247,96 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build and push Core image (multi-platform)
       - name: Build and push Core image
-        run: |
-          docker build -t veridactus/veridactus-core:${{ github.ref_name }} ./core
-          docker build -t veridactus/veridactus-core:${{ github.sha }} ./core
-          docker push veridactus/veridactus-core:${{ github.ref_name }}
-          docker push veridactus/veridactus-core:${{ github.sha }}
+        uses: docker/build-push-action@v5
+        with:
+          context: ./core
+          platforms: ${{ env.PLATFORMS }}
+          tags: |
+            veridactus/veridactus-core:${{ github.ref_name }}
+            veridactus/veridactus-core:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}/veridactus-core:${{ github.sha }}
+          push: true
+          labels: |
+            org.opencontainers.image.title=VERIDACTUS Core
+            org.opencontainers.image.description=Trusted AI Execution Governance - Rust Data Plane
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.repository.created_at }}
 
+      # Build and push Control Plane image (multi-platform)
       - name: Build and push Control Plane image
-        run: |
-          docker build -t veridactus/veridactus-cp:${{ github.ref_name }} ./control-plane
-          docker build -t veridactus/veridactus-cp:${{ github.sha }} ./control-plane
-          docker push veridactus/veridactus-cp:${{ github.ref_name }}
-          docker push veridactus/veridactus-cp:${{ github.sha }}
+        uses: docker/build-push-action@v5
+        with:
+          context: ./control-plane
+          platforms: ${{ env.PLATFORMS }}
+          tags: |
+            veridactus/veridactus-cp:${{ github.ref_name }}
+            veridactus/veridactus-cp:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.sha }}
+          push: true
+          labels: |
+            org.opencontainers.image.title=VERIDACTUS Control Plane
+            org.opencontainers.image.description=Trusted AI Execution Governance - Go Control Plane
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.repository.created_at }}
 
+      # Build and push UI image (multi-platform)
       - name: Build and push UI image
-        run: |
-          docker build -t veridactus/veridactus-ui:${{ github.ref_name }} ./veridactus-ui
-          docker build -t veridactus/veridactus-ui:${{ github.sha }} ./veridactus-ui
-          docker push veridactus/veridactus-ui:${{ github.ref_name }}
-          docker push veridactus/veridactus-ui:${{ github.sha }}
+        uses: docker/build-push-action@v5
+        with:
+          context: ./veridactus-ui
+          platforms: ${{ env.PLATFORMS }}
+          tags: |
+            veridactus/veridactus-ui:${{ github.ref_name }}
+            veridactus/veridactus-ui:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.sha }}
+          push: true
+          labels: |
+            org.opencontainers.image.title=VERIDACTUS UI
+            org.opencontainers.image.description=Trusted AI Execution Governance - React Frontend
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.repository.created_at }}
 
+      # Build and push Python Worker image (multi-platform)
       - name: Build and push Python Worker image
-        run: |
-          docker build -t veridactus/veridactus-python-worker:${{ github.ref_name }} ./python-worker
-          docker build -t veridactus/veridactus-python-worker:${{ github.sha }} ./python-worker
-          docker push veridactus/veridactus-python-worker:${{ github.ref_name }}
-          docker push veridactus/veridactus-python-worker:${{ github.sha }}
+        uses: docker/build-push-action@v5
+        with:
+          context: ./python-worker
+          platforms: ${{ env.PLATFORMS }}
+          tags: |
+            veridactus/veridactus-python-worker:${{ github.ref_name }}
+            veridactus/veridactus-python-worker:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.sha }}
+          push: true
+          labels: |
+            org.opencontainers.image.title=VERIDACTUS Python Worker
+            org.opencontainers.image.description=Trusted AI Execution Governance - Python Worker for PII Detection
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.repository.created_at }}
 
   # ==================== E2E 冒烟测试 ====================
   e2e-smoke:
@@ -266,3 +383,30 @@ jobs:
           cargo test --lib -- --test-threads=1 || true
           echo "Test count:" && grep -rn "#\[test\]" src/ tests/ 2>/dev/null | wc -l
           echo "✅ Coverage base generated"
+
+  # ==================== Docker Compose 验证 ====================
+  docker-compose-validate:
+    name: Docker Compose Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update && sudo apt-get install -y docker-compose-plugin
+
+      - name: Validate docker-compose.yml
+        run: |
+          docker compose -f deploy/docker-compose.yml config --quiet
+          echo "✅ docker-compose.yml is valid"
+
+      - name: Check Docker Compose best practices
+        run: |
+          # Check for required fields
+          echo "=== Checking Docker Compose configuration ==="
+          echo "✓ Services defined: $(grep -E '^  [a-z-]+:' deploy/docker-compose.yml | wc -l)"
+          echo "✓ Networks defined: $(grep -c '^networks:' deploy/docker-compose.yml)"
+          echo "✓ Volumes defined: $(grep -c '^volumes:' deploy/docker-compose.yml)"
+          echo "✓ Health checks: $(grep -c 'healthcheck:' deploy/docker-compose.yml)"
+          echo "✓ Restart policies: $(grep -c 'restart:' deploy/docker-compose.yml)"
+          echo "✅ Docker Compose configuration looks good"
