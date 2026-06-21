@@ -198,7 +198,9 @@ pub async fn create_object_store() -> Option<Arc<dyn ObjectStore>> {
 
     // Create bucket if it doesn't exist
     if let Err(e) = client.create_bucket().bucket(&bucket).send().await {
-        if !e.to_string().contains("BucketAlreadyOwnedByYou") && !e.to_string().contains("BucketAlreadyExists") {
+        if !e.to_string().contains("BucketAlreadyOwnedByYou")
+            && !e.to_string().contains("BucketAlreadyExists")
+        {
             warn!("Failed to create S3 bucket {}: {}", bucket, e);
         }
     }

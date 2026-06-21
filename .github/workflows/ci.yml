@@ -349,7 +349,7 @@ jobs:
 
       - name: Install Docker Compose
         run: |
-          sudo apt-get update && sudo apt-get install -y docker-compose-plugin
+          sudo apt-get update && sudo apt-get install -y docker-compose-v2
 
       - name: Validate docker-compose.yml
         run: |
