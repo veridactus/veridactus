@@ -8,6 +8,10 @@ on:
   schedule:
     - cron: '0 0 * * 0'  # Weekly security scan
 
+# 限制 GitHub Token 权限，提高安全性
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   # Multi-platform build settings
