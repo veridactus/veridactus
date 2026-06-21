@@ -18,7 +18,8 @@ COPY Cargo.toml Cargo.lock ./
 RUN mkdir -p src && echo "fn main() {}" > src/main.rs
 
 # Build dependencies (this layer will be cached if Cargo.toml/Cargo.lock don't change)
-RUN cargo build --release --bin veridactus-core
+# --ignore-bench: Skip bench targets since we don't have the benches directory yet
+RUN cargo build --release --bin veridactus-core --ignore-bench
 
 # Remove dummy source
 RUN rm -rf src
