@@ -47,10 +47,21 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings 2>&1 || true
 
       - name: Build release
-        run: cargo build --release --lib 2>&1 | tail -30
+        run: |
+          # Retry cargo build up to 3 times due to crates.io network issues
+          for i in 1 2 3; do
+            cargo build --release --lib 2>&1 | tail -30 && break
+            echo "Retry $i/3 after cargo build failure..."
+            sleep 5
+          done
 
       - name: Build binaries
-        run: cargo build --release --bin veridactus-core 2>&1 | tail -30
+        run: |
+          for i in 1 2 3; do
+            cargo build --release --bin veridactus-core 2>&1 | tail -30 && break
+            echo "Retry $i/3 after cargo build failure..."
+            sleep 5
+          done
 
       - name: Unit tests
         run: cargo test --lib
@@ -221,10 +232,20 @@ jobs:
         with:
           go-version: '1.21'
 
-      - name: Build
+      - name: Build Rust Core
+        working-directory: core
         run: |
-          cd core && cargo build --release --bin veridactus-core && cd ..
-          cd control-plane && go build -o /tmp/cp ./cmd/server/ && cd ..
+          # Retry cargo build up to 3 times due to crates.io network issues
+          for i in 1 2 3; do
+            cargo build --release --bin veridactus-core && break
+            echo "Retry $i/3 after cargo build failure..."
+            sleep 5
+          done
+
+      - name: Build Go Control Plane
+        working-directory: control-plane
+        run: |
+          go build -o /tmp/cp ./cmd/server/
 
       - name: Smoke test (start + health)
         run: |
