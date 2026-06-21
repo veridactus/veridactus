@@ -30,7 +30,6 @@ use crate::store::{FileTraceStore, InMemoryTraceStore, PostgresTraceStore, Trace
 
 #[cfg(feature = "s3")]
 use crate::store::S3ObjectStore;
-#[cfg(feature = "s3")]
 use crate::store::traits::ObjectStore;
 
 use crate::store::adapters::redis::{RedisBudgetStore, RedisCacheStore};
@@ -114,10 +113,7 @@ pub async fn create_cache_store() -> Option<Arc<dyn CacheStore>> {
     match redis::Client::open(redis_url.as_str()) {
         Ok(client) => match redis::aio::ConnectionManager::new(client).await {
             Ok(conn) => {
-                info!(
-                    "Redis cache store connected: {}:{}",
-                    redis_host, redis_port
-                );
+                info!("Redis cache store connected: {}:{}", redis_host, redis_port);
                 Some(Arc::new(RedisCacheStore::new(conn)))
             }
             Err(e) => {
@@ -126,10 +122,7 @@ pub async fn create_cache_store() -> Option<Arc<dyn CacheStore>> {
             }
         },
         Err(e) => {
-            warn!(
-                "Redis client creation failed: {}, using in-memory cache",
-                e
-            );
+            warn!("Redis client creation failed: {}, using in-memory cache", e);
             None
         }
     }

@@ -79,7 +79,7 @@ mod s3_impl {
                 Ok(o) => o,
                 Err(_) => return Vec::new(),
             };
-            
+
             let mut keys = Vec::new();
             for obj in output.contents() {
                 if let Some(key) = obj.key() {
