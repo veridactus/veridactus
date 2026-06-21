@@ -421,23 +421,40 @@ jobs:
         with:
           sarif_file: results.sarif
 
-  # ==================== 依赖安全检查 ====================
-  dependency-check:
-    name: Dependency Check
+  # ==================== GitHub Dependency Review（官方依赖审查）====================
+  dependency-review:
+    name: Dependency Review
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run dependency check
-        uses: dependency-check/Dependency-Check_Action@v4.2.1
+      - name: GitHub Dependency Review
+        uses: actions/dependency-review-action@v4
         with:
-          project: "VERIDACTUS"
-          path: "."
-          format: "SARIF"
-          out: "reports"
+          # 只检查许可证冲突，不阻止构建
+          fail-on-severity: none
+          # 允许的开源许可证
+          allow-licenses: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, CC0-1.0
 
-      - name: Upload dependency check report
-        uses: actions/upload-artifact@v4
+  # ==================== 代码扫描 ====================
+  code-scanning:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init-action@v3
         with:
-          name: dependency-check-report
-          path: reports/
+          languages: rust, go, typescript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze-action@v3
+        with:
+          category: "/language:rust,go,typescript"
