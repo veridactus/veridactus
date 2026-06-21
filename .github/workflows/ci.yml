@@ -166,27 +166,80 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
 
-      - name: Build and push Core image (main/develop)
+      - name: Build and push Core image - linux/amd64
         if: env.IS_PUSH == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./core
-          platforms: ${{ env.PLATFORMS }}
+          platforms: linux/amd64
           push: true
           tags: |
-            veridactus/veridactus-core:${{ github.ref_name }}
-            veridactus/veridactus-core:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}/veridactus-core:${{ github.sha }}
+            veridactus/veridactus-core:${{ github.ref_name }}-amd64
+            ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-amd64
           cache-from: |
-            type=gha,scope=core-${{ github.ref_name }}
-            type=registry,ref=veridactus/veridactus-core:${{ github.ref_name }}
-          cache-to: type=gha,scope=core-${{ github.ref_name }},mode=max
+            type=gha,scope=core-${{ github.ref_name }}-amd64
+            type=registry,ref=veridactus/veridactus-core:${{ github.ref_name }}-amd64
+          cache-to: type=gha,scope=core-${{ github.ref_name }}-amd64,mode=max
           labels: |
             org.opencontainers.image.title=VERIDACTUS Core
             org.opencontainers.image.description=Trusted AI Execution Governance - Rust Data Plane
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push Core image - linux/arm64
+        if: env.IS_PUSH == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./core
+          platforms: linux/arm64
+          push: true
+          tags: |
+            veridactus/veridactus-core:${{ github.ref_name }}-arm64
+            ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-arm64
+          cache-from: |
+            type=gha,scope=core-${{ github.ref_name }}-arm64
+            type=registry,ref=veridactus/veridactus-core:${{ github.ref_name }}-arm64
+          cache-to: type=gha,scope=core-${{ github.ref_name }}-arm64,mode=max
+          labels: |
+            org.opencontainers.image.title=VERIDACTUS Core
+            org.opencontainers.image.description=Trusted AI Execution Governance - Rust Data Plane
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push Core image - linux/arm/v7
+        if: env.IS_PUSH == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./core
+          platforms: linux/arm/v7
+          push: true
+          tags: |
+            veridactus/veridactus-core:${{ github.ref_name }}-armv7
+            ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-armv7
+          cache-from: |
+            type=gha,scope=core-${{ github.ref_name }}-armv7
+            type=registry,ref=veridactus/veridactus-core:${{ github.ref_name }}-armv7
+          cache-to: type=gha,scope=core-${{ github.ref_name }}-armv7,mode=max
+          labels: |
+            org.opencontainers.image.title=VERIDACTUS Core
+            org.opencontainers.image.description=Trusted AI Execution Governance - Rust Data Plane
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Create Core multi-platform manifest
+        if: env.IS_PUSH == 'true'
+        run: |
+          docker manifest create veridactus/veridactus-core:${{ github.ref_name }} \
+            veridactus/veridactus-core:${{ github.ref_name }}-amd64 \
+            veridactus/veridactus-core:${{ github.ref_name }}-arm64 \
+            veridactus/veridactus-core:${{ github.ref_name }}-armv7
+          docker manifest push veridactus/veridactus-core:${{ github.ref_name }}
+          
+          docker manifest create ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }} \
+            ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-amd64 \
+            ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-arm64 \
+            ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}-armv7
+          docker manifest push ghcr.io/${{ github.repository }}/veridactus-core:${{ github.ref_name }}
 
       # Build and push Control Plane image
       - name: Build Control Plane image (PR)
@@ -203,27 +256,80 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
 
-      - name: Build and push Control Plane image (main/develop)
+      - name: Build and push Control Plane image - linux/amd64
         if: env.IS_PUSH == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./control-plane
-          platforms: ${{ env.PLATFORMS }}
+          platforms: linux/amd64
           push: true
           tags: |
-            veridactus/veridactus-cp:${{ github.ref_name }}
-            veridactus/veridactus-cp:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.sha }}
+            veridactus/veridactus-cp:${{ github.ref_name }}-amd64
+            ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}-amd64
           cache-from: |
-            type=gha,scope=cp-${{ github.ref_name }}
-            type=registry,ref=veridactus/veridactus-cp:${{ github.ref_name }}
-          cache-to: type=gha,scope=cp-${{ github.ref_name }},mode=max
+            type=gha,scope=cp-${{ github.ref_name }}-amd64
+            type=registry,ref=veridactus/veridactus-cp:${{ github.ref_name }}-amd64
+          cache-to: type=gha,scope=cp-${{ github.ref_name }}-amd64,mode=max
           labels: |
             org.opencontainers.image.title=VERIDACTUS Control Plane
             org.opencontainers.image.description=Trusted AI Execution Governance - Go Control Plane
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push Control Plane image - linux/arm64
+        if: env.IS_PUSH == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./control-plane
+          platforms: linux/arm64
+          push: true
+          tags: |
+            veridactus/veridactus-cp:${{ github.ref_name }}-arm64
+            ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}-arm64
+          cache-from: |
+            type=gha,scope=cp-${{ github.ref_name }}-arm64
+            type=registry,ref=veridactus/veridactus-cp:${{ github.ref_name }}-arm64
+          cache-to: type=gha,scope=cp-${{ github.ref_name }}-arm64,mode=max
+          labels: |
+            org.opencontainers.image.title=VERIDACTUS Control Plane
+            org.opencontainers.image.description=Trusted AI Execution Governance - Go Control Plane
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push Control Plane image - linux/arm/v7
+        if: env.IS_PUSH == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./control-plane
+          platforms: linux/arm/v7
+          push: true
+          tags: |
+            veridactus/veridactus-cp:${{ github.ref_name }}-armv7
+            ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}-armv7
+          cache-from: |
+            type=gha,scope=cp-${{ github.ref_name }}-armv7
+            type=registry,ref=veridactus/veridactus-cp:${{ github.ref_name }}-armv7
+          cache-to: type=gha,scope=cp-${{ github.ref_name }}-armv7,mode=max
+          labels: |
+            org.opencontainers.image.title=VERIDACTUS Control Plane
+            org.opencontainers.image.description=Trusted AI Execution Governance - Go Control Plane
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Create Control Plane multi-platform manifest
+        if: env.IS_PUSH == 'true'
+        run: |
+          docker manifest create veridactus/veridactus-cp:${{ github.ref_name }} \
+            veridactus/veridactus-cp:${{ github.ref_name }}-amd64 \
+            veridactus/veridactus-cp:${{ github.ref_name }}-arm64 \
+            veridactus/veridactus-cp:${{ github.ref_name }}-armv7
+          docker manifest push veridactus/veridactus-cp:${{ github.ref_name }}
+          
+          docker manifest create ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }} \
+            ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}-amd64 \
+            ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}-arm64 \
+            ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}-armv7
+          docker manifest push ghcr.io/${{ github.repository }}/veridactus-cp:${{ github.ref_name }}
 
       # Build and push UI image
       - name: Build UI image (PR)
@@ -240,27 +346,80 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
 
-      - name: Build and push UI image (main/develop)
+      - name: Build and push UI image - linux/amd64
         if: env.IS_PUSH == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./veridactus-ui
-          platforms: ${{ env.PLATFORMS }}
+          platforms: linux/amd64
           push: true
           tags: |
-            veridactus/veridactus-ui:${{ github.ref_name }}
-            veridactus/veridactus-ui:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.sha }}
+            veridactus/veridactus-ui:${{ github.ref_name }}-amd64
+            ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}-amd64
           cache-from: |
-            type=gha,scope=ui-${{ github.ref_name }}
-            type=registry,ref=veridactus/veridactus-ui:${{ github.ref_name }}
-          cache-to: type=gha,scope=ui-${{ github.ref_name }},mode=max
+            type=gha,scope=ui-${{ github.ref_name }}-amd64
+            type=registry,ref=veridactus/veridactus-ui:${{ github.ref_name }}-amd64
+          cache-to: type=gha,scope=ui-${{ github.ref_name }}-amd64,mode=max
           labels: |
             org.opencontainers.image.title=VERIDACTUS UI
             org.opencontainers.image.description=Trusted AI Execution Governance - React Frontend
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push UI image - linux/arm64
+        if: env.IS_PUSH == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./veridactus-ui
+          platforms: linux/arm64
+          push: true
+          tags: |
+            veridactus/veridactus-ui:${{ github.ref_name }}-arm64
+            ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}-arm64
+          cache-from: |
+            type=gha,scope=ui-${{ github.ref_name }}-arm64
+            type=registry,ref=veridactus/veridactus-ui:${{ github.ref_name }}-arm64
+          cache-to: type=gha,scope=ui-${{ github.ref_name }}-arm64,mode=max
+          labels: |
+            org.opencontainers.image.title=VERIDACTUS UI
+            org.opencontainers.image.description=Trusted AI Execution Governance - React Frontend
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push UI image - linux/arm/v7
+        if: env.IS_PUSH == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./veridactus-ui
+          platforms: linux/arm/v7
+          push: true
+          tags: |
+            veridactus/veridactus-ui:${{ github.ref_name }}-armv7
+            ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}-armv7
+          cache-from: |
+            type=gha,scope=ui-${{ github.ref_name }}-armv7
+            type=registry,ref=veridactus/veridactus-ui:${{ github.ref_name }}-armv7
+          cache-to: type=gha,scope=ui-${{ github.ref_name }}-armv7,mode=max
+          labels: |
+            org.opencontainers.image.title=VERIDACTUS UI
+            org.opencontainers.image.description=Trusted AI Execution Governance - React Frontend
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Create UI multi-platform manifest
+        if: env.IS_PUSH == 'true'
+        run: |
+          docker manifest create veridactus/veridactus-ui:${{ github.ref_name }} \
+            veridactus/veridactus-ui:${{ github.ref_name }}-amd64 \
+            veridactus/veridactus-ui:${{ github.ref_name }}-arm64 \
+            veridactus/veridactus-ui:${{ github.ref_name }}-armv7
+          docker manifest push veridactus/veridactus-ui:${{ github.ref_name }}
+          
+          docker manifest create ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }} \
+            ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}-amd64 \
+            ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}-arm64 \
+            ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}-armv7
+          docker manifest push ghcr.io/${{ github.repository }}/veridactus-ui:${{ github.ref_name }}
 
       # Build and push Python Worker image
       - name: Build Python Worker image (PR)
@@ -277,27 +436,80 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
 
-      - name: Build and push Python Worker image (main/develop)
+      - name: Build and push Python Worker image - linux/amd64
         if: env.IS_PUSH == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./python-worker
-          platforms: ${{ env.PLATFORMS }}
+          platforms: linux/amd64
           push: true
           tags: |
-            veridactus/veridactus-python-worker:${{ github.ref_name }}
-            veridactus/veridactus-python-worker:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.sha }}
+            veridactus/veridactus-python-worker:${{ github.ref_name }}-amd64
+            ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}-amd64
           cache-from: |
-            type=gha,scope=python-worker-${{ github.ref_name }}
-            type=registry,ref=veridactus/veridactus-python-worker:${{ github.ref_name }}
-          cache-to: type=gha,scope=python-worker-${{ github.ref_name }},mode=max
+            type=gha,scope=python-worker-${{ github.ref_name }}-amd64
+            type=registry,ref=veridactus/veridactus-python-worker:${{ github.ref_name }}-amd64
+          cache-to: type=gha,scope=python-worker-${{ github.ref_name }}-amd64,mode=max
           labels: |
             org.opencontainers.image.title=VERIDACTUS Python Worker
             org.opencontainers.image.description=Trusted AI Execution Governance - Python Worker for PII Detection
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push Python Worker image - linux/arm64
+        if: env.IS_PUSH == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./python-worker
+          platforms: linux/arm64
+          push: true
+          tags: |
+            veridactus/veridactus-python-worker:${{ github.ref_name }}-arm64
+            ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}-arm64
+          cache-from: |
+            type=gha,scope=python-worker-${{ github.ref_name }}-arm64
+            type=registry,ref=veridactus/veridactus-python-worker:${{ github.ref_name }}-arm64
+          cache-to: type=gha,scope=python-worker-${{ github.ref_name }}-arm64,mode=max
+          labels: |
+            org.opencontainers.image.title=VERIDACTUS Python Worker
+            org.opencontainers.image.description=Trusted AI Execution Governance - Python Worker for PII Detection
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push Python Worker image - linux/arm/v7
+        if: env.IS_PUSH == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./python-worker
+          platforms: linux/arm/v7
+          push: true
+          tags: |
+            veridactus/veridactus-python-worker:${{ github.ref_name }}-armv7
+            ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}-armv7
+          cache-from: |
+            type=gha,scope=python-worker-${{ github.ref_name }}-armv7
+            type=registry,ref=veridactus/veridactus-python-worker:${{ github.ref_name }}-armv7
+          cache-to: type=gha,scope=python-worker-${{ github.ref_name }}-armv7,mode=max
+          labels: |
+            org.opencontainers.image.title=VERIDACTUS Python Worker
+            org.opencontainers.image.description=Trusted AI Execution Governance - Python Worker for PII Detection
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Create Python Worker multi-platform manifest
+        if: env.IS_PUSH == 'true'
+        run: |
+          docker manifest create veridactus/veridactus-python-worker:${{ github.ref_name }} \
+            veridactus/veridactus-python-worker:${{ github.ref_name }}-amd64 \
+            veridactus/veridactus-python-worker:${{ github.ref_name }}-arm64 \
+            veridactus/veridactus-python-worker:${{ github.ref_name }}-armv7
+          docker manifest push veridactus/veridactus-python-worker:${{ github.ref_name }}
+          
+          docker manifest create ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }} \
+            ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}-amd64 \
+            ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}-arm64 \
+            ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}-armv7
+          docker manifest push ghcr.io/${{ github.repository }}/veridactus-python-worker:${{ github.ref_name }}
 
   # ==================== E2E 冒烟测试 ====================
   e2e-smoke:
