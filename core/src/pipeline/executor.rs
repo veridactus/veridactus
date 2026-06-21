@@ -3,7 +3,6 @@
 //! 严格遵循 AI.md §6.4 插件并行执行优化。
 //! 按阶段执行插件，支持并行和串行混合调度。
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::info;
 
@@ -249,6 +248,7 @@ impl PipelineResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugin::GovernancePlugin;
     use crate::plugin::PluginMetadata;
     use crate::types::{Action, VersionRange};
     use async_trait::async_trait;

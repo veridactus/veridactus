@@ -39,9 +39,8 @@ use crate::http::headers::{
     parse_veridactus_headers, VeridactusRequestHeaders, VeridactusResponseHeaders,
 };
 use crate::observability::otel::OtelTracer;
-use crate::store::InMemoryTraceStore;
 use crate::types::constraints::{
-    check_constraint_conflicts, ActivePrevention, AdaptiveState, BudgetStrategy, ConflictType,
+    check_constraint_conflicts, AdaptiveState, BudgetStrategy, ConflictType,
     ConstraintsApplied, DegradeAction, DegradeActionType, InstructionHierarchyMode,
     PolicyEvaluation, PrivacyLevel, ReproducibilityMode,
 };
@@ -3721,7 +3720,7 @@ async fn forward_to_upstream_streaming(
 
 // ==================== 重放端点（§9.4 Deterministic Replay Engine）====================
 
-use crate::replay::{ReplayBranch, ReplayEngine, ReplayMode, ReplayResult};
+use crate::replay::{ReplayEngine, ReplayResult};
 use crate::verify::verifier::verify_trace;
 
 /// 重放 Trace

@@ -149,7 +149,6 @@ mod tests {
     use crate::types::journal::ExecutionJournal;
     use crate::types::{Action, VersionRange};
     use async_trait::async_trait;
-    use uuid::Uuid;
 
     macro_rules! make_plugin {
         ($name:ident, $plugin_name:expr) => {

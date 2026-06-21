@@ -672,7 +672,6 @@ pub enum IssueSeverity {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::proof::Proofs;
     use crate::types::trace::{Input, Output};
 
     #[test]

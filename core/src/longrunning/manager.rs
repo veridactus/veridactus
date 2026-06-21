@@ -166,7 +166,6 @@ fn aggregate_hashes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::Uuid;
 
     #[test]
     fn test_segment_creation() {
