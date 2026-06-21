@@ -425,6 +425,7 @@ jobs:
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
     permissions:
       contents: read
     steps:
@@ -433,7 +434,7 @@ jobs:
       - name: GitHub Dependency Review
         uses: actions/dependency-review-action@v4
         with:
-          # 不因安全问题阻止构建，仅报告
+          # 只在严重漏洞时失败
           fail-on-severity: critical
           # 允许的开源许可证
           allow-licenses: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, CC0-1.0, ISC, 0BSD
