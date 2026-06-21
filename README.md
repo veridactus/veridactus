@@ -128,10 +128,33 @@ veridactus/
 ## Documentation
 
 - [Protocol Specification v0.2.1](veridactus/docs/specification/v0.2.1/)
-- [Contributing Guide](veridactus/CONTRIBUTING.md)
+- [Architecture Guide](docs/architecture/ARCHITECTURE.md)
+- [Plugin System Guide](docs/architecture/PLUGIN_SYSTEM.md)
+- [Deployment Guide](docs/deployment/DEPLOYMENT.md)
+- [API Overview](docs/api/OVERVIEW.md)
+- [Contributing Guide](CONTRIBUTING.md)
 - [Security Policy](SECURITY.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Changelog](veridactus/CHANGELOG.md)
+
+## Docker Images
+
+All images are published to Docker Hub under the `veridactus` organization:
+
+| Image | Description | Tags |
+|-------|-------------|------|
+| `veridactus/veridactus-core` | Rust data plane (AI proxy gateway) | `latest`, `main-*`, `develop-*` |
+| `veridactus/veridactus-cp` | Go control plane (configuration management) | `latest`, `main-*`, `develop-*` |
+| `veridactus/veridactus-ui` | React frontend (admin dashboard) | `latest`, `main-*`, `develop-*` |
+| `veridactus/veridactus-python-worker` | Python worker (enhanced PII detection) | `latest`, `main-*`, `develop-*` |
+
+### Quick Deployment
+
+```bash
+# Pull and run with Docker Compose
+curl -O https://raw.githubusercontent.com/veridactus/veridactus/main/deploy/docker-compose.yml
+docker-compose up -d
+```
 
 ## License
 

@@ -3,9 +3,9 @@
 replicaCount: 2
 
 image:
-  repository: ghcr.io/veridactus/veridactus-core
+  repository: veridactus/veridactus-core
   pullPolicy: IfNotPresent
-  tag: "0.2.1"
+  tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""

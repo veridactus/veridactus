@@ -1,0 +1,423 @@
+# VERIDACTUS Architecture
+
+This document provides a comprehensive overview of the VERIDACTUS system architecture, design decisions, and component interactions.
+
+## Table of Contents
+
+1. [System Overview](#system-overview)
+2. [Component Architecture](#component-architecture)
+3. [Data Flow](#data-flow)
+4. [Configuration System](#configuration-system)
+5. [Security Model](#security-model)
+6. [Storage Architecture](#storage-architecture)
+
+---
+
+## System Overview
+
+VERIDACTUS implements a **microservices architecture** with four primary components:
+
+### Components
+
+| Component | Technology | Port | Responsibility |
+|-----------|------------|------|----------------|
+| **veridactus-core** | Rust + Axum | 8080 | AI proxy gateway, plugin execution, trace signing |
+| **veridactus-cp** | Go + SQLite | 8081 | Configuration management, CRUD operations |
+| **veridactus-ui** | React + Vite | 3000 | Admin dashboard, pipeline designer |
+| **veridactus-python-worker** | Python + FastAPI | 8002 | Enhanced computation (optional) |
+
+### Design Principles
+
+1. **Separation of Concerns**: Control plane handles configuration; data plane handles execution
+2. **Fail-Safe Defaults**: Plugins degrade gracefully when external services fail
+3. **Cryptographic Audit**: All traces are cryptographically signed for tamper evidence
+4. **Dynamic Configuration**: Pipeline changes take effect without restart
+
+---
+
+## Component Architecture
+
+### Data Plane (veridactus-core)
+
+The data plane is implemented in Rust for high performance and memory safety.
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Data Plane Architecture                        │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  HTTP Request
+       │
+       ▼
+┌─────────────────┐
+│   Axum Router   │
+│  /v1/chat/*    │
+│  /v1/traces/*  │
+│  /health       │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      Request Processing Pipeline                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐ │
+│  │  Auth       │ → │  Idempotency│ → │  Budget     │ → │  DSL        │ │
+│  │  Validation │   │  Guard      │   │  Check      │   │  Compiler   │ │
+│  └─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘ │
+│         │                                                      │         │
+│         │              ┌──────────────────────────────────────┘         │
+│         │              │                                                │
+│         ▼              ▼                                                │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                    Pipeline Executor                             │   │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐       │   │
+│  │  │ Pre-Req  │→ │Streaming │→ │Post-Rsp  │→ │ Async    │       │   │
+│  │  │ (Serial) │  │(Parallel)│  │(Serial)  │  │(Parallel)│       │   │
+│  │  └──────────┘  └──────────┘  └──────────┘  └──────────┘       │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│         │                                                              │
+│         ▼                                                              │
+│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐                   │
+│  │  Upstream  │ → │  Response   │ → │  Trace      │                   │
+│  │  LLM Proxy │   │  Scanner    │   │  Signer     │                   │
+│  └─────────────┘   └─────────────┘   └─────────────┘                   │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Control Plane (veridactus-cp)
+
+The control plane is implemented in Go for simplicity and SQLite for persistence.
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Control Plane Architecture                       │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  Admin Dashboard
+       │
+       │ REST API (X-Admin-Key auth)
+       ▼
+┌─────────────────┐
+│   HTTP Router   │
+│  /api/v1/*     │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Service Layer                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐            │
+│  │ Pipeline  │  │  Model    │  │  Plugin   │  │   API     │            │
+│  │ Service   │  │  Service  │  │  Service  │  │   Key     │            │
+│  │           │  │           │  │           │  │  Service  │            │
+│  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘            │
+│        │              │              │              │                   │
+│        └──────────────┴──────────────┴──────────────┘                   │
+│                              │                                          │
+│                              ▼                                          │
+│                     ┌────────────────┐                                  │
+│                     │   Store Layer  │                                  │
+│                     │   (SQLite)    │                                  │
+│                     └────────────────┘                                  │
+└─────────────────────────────────────────────────────────────────────────┘
+         │
+         │ Push/Poll Config
+         ▼
+┌─────────────────┐
+│  Config Sync    │
+│  Service        │
+└─────────────────┘
+```
+
+### Frontend (veridactus-ui)
+
+The frontend is a React SPA with:
+
+- **Dashboard**: Real-time metrics and trace overview
+- **Pipeline Designer**: Visual drag-and-drop pipeline editor
+- **Plugin Market**: Browse and install plugins
+- **API Key Management**: Create and rotate keys
+- **Audit Center**: View security events and traces
+
+---
+
+## Data Flow
+
+### Request Processing Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        Request Processing Flow                            │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  Client Request
+       │
+       ├─ HTTP Headers (VERIDACTUS-*)
+       │   • VERIDACTUS-Budget-Limit
+       │   • VERIDACTUS-Privacy-Level
+       │   • VERIDACTUS-Guardrails
+       │   • VERIDACTUS-Action
+       │
+       └─ Request Body (JSON)
+           • model
+           • messages
+           • veridactus_dsl (optional)
+               • intents
+               • constraints
+               • preferences
+
+       │
+       ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Phase 1: Request Preprocessing                                            │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  1. Auth Validation                                                       │
+│     • Extract API key from Authorization header                          │
+│     • Validate key exists and is active                                  │
+│     • Check tenant permissions                                           │
+│                                                                          │
+│  2. Idempotency Check                                                    │
+│     • Extract X-Idempotency-Key header                                   │
+│     • Check Redis for existing response                                  │
+│     • Return cached response if found                                    │
+│                                                                          │
+│  3. Budget Check (Pre-Request Plugins)                                   │
+│     • Check daily/request budget limits                                 │
+│     • Determine strategy (hard_stop/degrade/adaptive)                   │
+│                                                                          │
+│  4. Privacy Processing                                                   │
+│     • Detect PII in input messages                                      │
+│     • Apply configured privacy level                                    │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Phase 2: Upstream Proxy                                                  │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  5. Model Routing                                                        │
+│     • Select upstream model based on routing rules                      │
+│     • Apply API key for upstream                                        │
+│     • Transform request to upstream format                              │
+│                                                                          │
+│  6. Streaming Proxy                                                      │
+│     • Forward request to upstream                                       │
+│     • Stream response back to client                                    │
+│     • Execute streaming plugins in real-time                            │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Phase 3: Response Processing                                             │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  7. Output Scanning                                                      │
+│     • G2 Content filtering                                              │
+│     • PII detection in response                                         │
+│     • Safety event generation                                           │
+│                                                                          │
+│  8. Trace Finalization                                                   │
+│     • Create trace record with all metadata                            │
+│     • Compute L0 cryptographic signature                               │
+│     • Store trace in configured backend                                │
+│                                                                          │
+│  9. Async Processing (Background)                                       │
+│     • Submit tasks to Redis Stream                                      │
+│     • Python worker consumes and processes                             │
+│     • Update trace with results                                         │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+       │
+       ▼
+  Client Response
+       │
+       ├─ HTTP Response Headers
+       │   • VERIDACTUS-Trace-Id
+       │   • VERIDACTUS-Proof-Levels
+       │   • VERIDACTUS-Cost-Consumed
+       │   • VERIDACTUS-Version
+       │
+       └─ Response Body (JSON)
+           • id
+           • choices
+           • usage
+           • (streamed tokens)
+```
+
+### Configuration Synchronization Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                   Configuration Synchronization Flow                     │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  Control Plane                    Data Plane
+       │                                │
+       │  Admin updates config          │
+       │  via REST API                  │
+       │                                │
+       │  ┌───────────────┐             │
+       │  │   CRUD Ops    │             │
+       │  │   + Version   │             │
+       │  │   Increment   │             │
+       │  └───────┬───────┘             │
+       │          │                     │
+       │          ▼                     │
+       │  ┌───────────────┐             │
+       │  │    SQLite     │             │
+       │  │  (Persistent) │             │
+       │  └───────────────┘             │
+       │                                │
+       │         ┌─────────────────────┼─────────────────┐
+       │         │                     │                 │
+       │         │ Push                │ Poll            │ Pull
+       │         │                     │                 │
+       │         ▼                     │                 ▼
+       │  ┌───────────────┐    ┌───────────────┐  ┌───────────────┐
+       │  │ POST /sync    │    │  GET /poll    │  │ Config Store  │
+       │  │ (immediate)   │    │  (long poll)  │  │ (in-memory)   │
+       │  └───────────────┘    └───────────────┘  └───────────────┘
+       │                                │
+       │                                ▼
+       │                      ┌───────────────────┐
+       │                      │  Apply Changes     │
+       │                      │  Update Pipeline   │
+       │                      │  Executor          │
+       │                      └───────────────────┘
+       │                                │
+       ▼                                ▼
+```
+
+---
+
+## Configuration System
+
+### Three-Layer Constraint Hierarchy
+
+VERIDACTUS implements a hierarchical constraint configuration system:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    Configuration Hierarchy                               │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  Layer 1: HTTP Request Headers (Most Flexible)
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  VERIDACTUS-Budget-Limit: 0.10                                      │
+  │  VERIDACTUS-Budget-Strategy: hard_stop                              │
+  │  VERIDACTUS-Privacy-Level: masked                                   │
+  │  VERIDACTUS-Guardrails: G1,G2,G3                                   │
+  │  VERIDACTUS-Instruction-Hierarchy: strict                          │
+  │  VERIDACTUS-Compliance-Profile: EU_AI_ACT_GPAI                      │
+  │  VERIDACTUS-Action: save-baseline                                   │
+  └─────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼ (Overridden by)
+  Layer 2: Request Body DSL
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  {                                                                     │
+  │    "model": "glm-5.1",                                               │
+  │    "veridactus_dsl": {                                               │
+  │      "intents": { "budget_outcome": "cost_effective" },              │
+  │      "constraints": {                                                │
+  │        "budget": { "limit_usd": 0.05, "strategy": "hard_stop" },   │
+  │        "privacy": { "level": "masked" },                            │
+  │        "guardrails": { "levels": ["G1", "G2"], "strictness": "high" }│
+  │      }                                                               │
+  │    }                                                                 │
+  │  }                                                                   │
+  └─────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼ (Overridden by)
+  Layer 3: Pipeline Preset (Admin Configured)
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  Pipeline "production-default"                                       │
+  │  ┌──────────────────────────────────────────────────────────────┐  │
+  │  │  Stage: pre_request                                           │  │
+  │  │  ├─ BudgetGuardPlugin: { limit_usd: 0.10, strategy: "hard" }  │  │
+  │  │  ├─ PiiDetectorPlugin: { action: "mask" }                    │  │
+  │  │  └─ AuthValidatorPlugin: {}                                    │  │
+  │  └──────────────────────────────────────────────────────────────┘  │
+  └─────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼ (Overridden by)
+  Layer 4: System Defaults
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  budget: { limit_usd: 1.0, strategy: "degrade" }                     │
+  │  privacy: { level: "raw" }                                          │
+  │  guardrails: { enabled: ["G1"] }                                    │
+  └─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Security Model
+
+### Authentication
+
+| Component | Method | Description |
+|-----------|--------|-------------|
+| **Data Plane** | API Key | Bearer token in Authorization header |
+| **Control Plane** | Admin Key | X-Admin-Key header |
+| **Python Worker** | None | Internal service only |
+
+### Authorization
+
+- **Tenant Isolation**: API keys are scoped to tenants
+- **Role-Based Access**: Admin keys have full access; API keys are limited to trace operations
+- **Capability Negotiation**: Client/server negotiate supported capabilities
+
+### Privacy Levels
+
+| Level | Description | PII Handling |
+|-------|-------------|--------------|
+| `raw` | No privacy processing | Pass-through |
+| `masked` | Mask PII in storage | Replace with `[REDACTED]` |
+| `hash_only` | Store only hashes | SHA-256 of PII |
+| `tee_private` | TEE-protected storage | Hardware isolation |
+
+---
+
+## Storage Architecture
+
+### Supported Backends
+
+| Backend | Use Case | Configuration |
+|---------|----------|---------------|
+| **In-Memory** | Development | Default |
+| **Redis** | Caching/Idempotency | `VERIDACTUS_STORE_REDIS_*` |
+| **PostgreSQL** | Trace persistence | `VERIDACTUS_STORE_POSTGRES_*` |
+| **S3/MinIO** | Large blob storage | `VERIDACTUS_STORE_S3_*` |
+
+### Trace Storage Schema
+
+```sql
+CREATE TABLE traces (
+    trace_id       TEXT PRIMARY KEY,
+    tenant_id      TEXT NOT NULL,
+    model          TEXT NOT NULL,
+    request_hash   TEXT NOT NULL,
+    response_hash  TEXT NOT NULL,
+    state          TEXT NOT NULL,
+    signature      TEXT,
+    cost_usd       REAL,
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    metadata       JSONB
+);
+
+CREATE INDEX idx_traces_tenant ON traces(tenant_id);
+CREATE INDEX idx_traces_created ON traces(created_at DESC);
+```
+
+---
+
+## Next Steps
+
+- [Plugin System](PLUGIN_SYSTEM.md) - Learn how to develop plugins
+- [Deployment Guide](../deployment/DEPLOYMENT.md) - Deploy VERIDACTUS
+- [API Reference](../api/OVERVIEW.md) - API documentation

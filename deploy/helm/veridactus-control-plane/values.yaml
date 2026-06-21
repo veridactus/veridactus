@@ -3,9 +3,9 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/veridactus/veridactus-control-plane
+  repository: veridactus/veridactus-cp
   pullPolicy: IfNotPresent
-  tag: "0.2.1"
+  tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""

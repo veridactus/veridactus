@@ -157,6 +157,26 @@ jobs:
           docker stop veridactus-ui-test
           echo "✅ UI Docker image built and tested successfully"
 
+  # ==================== Python Worker Docker Build ====================
+  docker-python-worker:
+    name: Docker Build (Python Worker)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'))
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Python Worker Docker image
+        run: |
+          docker build -t veridactus-python-worker-test:local ./python-worker
+
+      - name: Run container health check
+        run: |
+          docker run -d --name veridactus-python-worker-test veridactus-python-worker-test:local
+          sleep 5
+          docker logs veridactus-python-worker-test
+          docker stop veridactus-python-worker-test
+          echo "✅ Python Worker Docker image built and tested successfully"
+
   # ==================== Docker 镜像推送 (main/develop) ====================
   docker-push:
     name: Docker Push (main/develop)
@@ -193,6 +213,13 @@ jobs:
           docker build -t veridactus/veridactus-ui:${{ github.sha }} ./veridactus-ui
           docker push veridactus/veridactus-ui:${{ github.ref_name }}
           docker push veridactus/veridactus-ui:${{ github.sha }}
+
+      - name: Build and push Python Worker image
+        run: |
+          docker build -t veridactus/veridactus-python-worker:${{ github.ref_name }} ./python-worker
+          docker build -t veridactus/veridactus-python-worker:${{ github.sha }} ./python-worker
+          docker push veridactus/veridactus-python-worker:${{ github.ref_name }}
+          docker push veridactus/veridactus-python-worker:${{ github.sha }}
 
   # ==================== E2E 冒烟测试 ====================
   e2e-smoke:

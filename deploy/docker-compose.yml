@@ -16,7 +16,7 @@
 services:
   # ==================== VERIDACTUS Core (Rust Data Plane) ====================
   veridactus-core:
-    image: ghcr.io/veridactus/veridactus-core:latest
+    image: veridactus/veridactus-core:latest
     container_name: veridactus-core
     restart: unless-stopped
     ports:
@@ -62,7 +62,7 @@ services:
 
   # ==================== VERIDACTUS Control Plane (Go) ====================
   veridactus-cp:
-    image: ghcr.io/veridactus/veridactus-cp:latest
+    image: veridactus/veridactus-cp:latest
     container_name: veridactus-cp
     restart: unless-stopped
     ports:
@@ -88,7 +88,7 @@ services:
 
   # ==================== VERIDACTUS Frontend (React/Nginx) ====================
   veridactus-ui:
-    image: ghcr.io/veridactus/veridactus-ui:latest
+    image: veridactus/veridactus-ui:latest
     container_name: veridactus-ui
     restart: unless-stopped
     ports:
@@ -183,7 +183,7 @@ services:
 
   # ==================== Optional: Python Worker (PI Detection) ====================
   python-worker:
-    image: ghcr.io/veridactus/python-worker:latest
+    image: veridactus/veridactus-python-worker:latest
     container_name: veridactus-python-worker
     restart: unless-stopped
     environment:
