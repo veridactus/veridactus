@@ -80,7 +80,7 @@ impl GovernancePlugin for BudgetGuardPlugin {
         } else {
             self.config.limit_usd
         };
-        let strategy = if let Some(ref cfg) = ctx.plugin_config {
+        let _strategy = if let Some(ref cfg) = ctx.plugin_config {
             cfg.get("strategy")
                 .and_then(|v| v.as_str())
                 .unwrap_or(&self.config.strategy)

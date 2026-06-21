@@ -2499,7 +2499,7 @@ fn build_state_transitions(
     _journal: &ExecutionJournal,
     total_tokens: u64,
     failure_stage: Option<ExecutionState>,
-    failure_reason: Option<&str>,
+    _failure_reason: Option<&str>,
 ) -> Vec<StateTransition> {
     let mut recorder = StateTransitionRecorder::new();
     let _now = chrono::Utc::now();

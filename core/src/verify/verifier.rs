@@ -239,7 +239,7 @@ fn simulate_tee_verification(proof: &ProofChainEntry) -> bool {
 }
 
 /// 验证 Merkle 路径
-fn verify_merkle_paths(merkle_root: &str, paths: &[String]) -> bool {
+fn verify_merkle_paths(_merkle_root: &str, paths: &[String]) -> bool {
     // 简化的 Merkle 路径验证
     // 实际实现需要：
     // 1. 获取每个样本的哈希

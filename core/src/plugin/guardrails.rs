@@ -183,7 +183,7 @@ impl GovernancePlugin for G2OutputFilter {
     async fn on_response(
         &self,
         ctx: &mut ResponseContext,
-        journal: &mut ExecutionJournal,
+        _journal: &mut ExecutionJournal,
     ) -> Result<Action, String> {
         for pattern in &self.harmful_patterns {
             if pattern.is_match(&ctx.response) {
@@ -309,7 +309,7 @@ impl GovernancePlugin for G3SemanticGuard {
         ctx: &mut StreamChunkContext,
         journal: &mut ExecutionJournal,
     ) -> Result<Action, String> {
-        if let Err(e) = self.check_response_length(&ctx.chunk) {
+        if let Err(_e) = self.check_response_length(&ctx.chunk) {
             journal.append_event(JournalEventType::SafetyEvent(SafetyEvent {
                 trigger_type: SafetyTrigger::G3SemanticGuard,
                 severity: Severity::Medium,
@@ -327,7 +327,7 @@ impl GovernancePlugin for G3SemanticGuard {
         ctx: &mut ResponseContext,
         journal: &mut ExecutionJournal,
     ) -> Result<Action, String> {
-        if let Err(e) = self.check_response_length(&ctx.response) {
+        if let Err(_e) = self.check_response_length(&ctx.response) {
             journal.append_event(JournalEventType::SafetyEvent(SafetyEvent {
                 trigger_type: SafetyTrigger::G3SemanticGuard,
                 severity: Severity::Medium,

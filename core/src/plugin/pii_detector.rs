@@ -103,7 +103,7 @@ impl PIIDetectorPlugin {
         let chars: Vec<char> = content.chars().collect();
         let char_count = chars.len();
         let mut result_chars: Vec<char> = chars.clone();
-        let offset: isize = 0;
+        let _offset: isize = 0;
 
         for (_, pii_str, byte_start) in findings {
             let pii_chars: Vec<char> = pii_str.chars().collect();
@@ -148,7 +148,7 @@ impl PIIDetectorPlugin {
             .unwrap_or(0)
     }
 
-    fn create_safety_event(&self, pii_type: &PIIType, content_hash: String) -> SafetyEvent {
+    fn create_safety_event(&self, _pii_type: &PIIType, content_hash: String) -> SafetyEvent {
         SafetyEvent {
             trigger_type: SafetyTrigger::G2OutputFilter,
             severity: Severity::High,

@@ -128,7 +128,7 @@ impl ConflictDetector {
         privacy: Option<&PrivacyLevel>,
         reproducibility: Option<&ReproducibilityMode>,
         budget_strategy: Option<&BudgetStrategy>,
-        instruction_mode: Option<&InstructionHierarchyMode>,
+        _instruction_mode: Option<&InstructionHierarchyMode>,
         is_replay: bool,
     ) -> ConflictResult {
         let mut all_conflicts = Vec::new();
