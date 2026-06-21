@@ -433,10 +433,10 @@ jobs:
       - name: GitHub Dependency Review
         uses: actions/dependency-review-action@v4
         with:
-          # 只检查许可证冲突，不阻止构建
-          fail-on-severity: none
+          # 不因安全问题阻止构建，仅报告
+          fail-on-severity: critical
           # 允许的开源许可证
-          allow-licenses: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, CC0-1.0
+          allow-licenses: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, CC0-1.0, ISC, 0BSD
 
   # ==================== 代码扫描 ====================
   code-scanning:
@@ -450,11 +450,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init-action@v3
+        uses: github/codeql-action/init@v3
         with:
-          languages: rust, go, typescript
+          languages: rust, go, javascript
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze-action@v3
-        with:
-          category: "/language:rust,go,typescript"
+        uses: github/codeql-action/analyze@v3
