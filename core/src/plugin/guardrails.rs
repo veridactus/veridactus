@@ -94,7 +94,10 @@ impl GovernancePlugin for G1InputFilter {
                     asi_risk_id: Some(crate::types::OwaspAsiRisk::AgentGoalHijack),
                     timestamp: chrono::Utc::now().to_rfc3339(),
                 }));
-                return Err("G1 Input Filter blocked: Prompt injection or jailbreak pattern detected".to_string());
+                return Err(
+                    "G1 Input Filter blocked: Prompt injection or jailbreak pattern detected"
+                        .to_string(),
+                );
             }
         }
         Ok(Action::Continue)
