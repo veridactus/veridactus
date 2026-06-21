@@ -11,9 +11,9 @@
 //! - `openapi/data-plane-v0.2.1.json` - JSON格式规范
 //! - `openapi/data-plane-v0.2.1.yaml` - YAML格式规范
 
-use utoipa::OpenApi;
-use utoipa::openapi::security::SecurityRequirement;
 use serde::{Deserialize, Serialize};
+use utoipa::openapi::security::SecurityRequirement;
+use utoipa::OpenApi;
 
 /// 聊天完成请求
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
