@@ -261,24 +261,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Docker Compose
-        run: |
-          sudo apt-get update && sudo apt-get install -y docker-compose-v2
-
       - name: Validate docker-compose.yml
         run: |
           docker compose -f deploy/docker-compose.yml config --quiet
           echo "✅ docker-compose.yml is valid"
-
-      - name: Check Docker Compose best practices
-        run: |
-          echo "=== Checking Docker Compose configuration ==="
-          echo "✓ Services defined: $(grep -E '^  [a-z-]+:' deploy/docker-compose.yml | wc -l)"
-          echo "✓ Networks defined: $(grep -c '^networks:' deploy/docker-compose.yml)"
-          echo "✓ Volumes defined: $(grep -c '^volumes:' deploy/docker-compose.yml)"
-          echo "✓ Health checks: $(grep -c 'healthcheck:' deploy/docker-compose.yml)"
-          echo "✓ Restart policies: $(grep -c 'restart:' deploy/docker-compose.yml)"
-          echo "✅ Docker Compose configuration looks good"
 
   # ==================== OpenSSF Scorecard 安全扫描 ====================
   openssf-scorecard:
