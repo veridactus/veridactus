@@ -15,7 +15,7 @@ env:
   CARGO_TERM_COLOR: always
   PLATFORMS: "linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le"
   DOCKER_REGISTRY: "veridactus"
-  CACHE_VERSION: v2
+  CACHE_VERSION: v3  # Increment to invalidate all caches
 
 jobs:
   # ==================== Rust 数据面 ====================
@@ -31,14 +31,24 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - name: Cache cargo
+      - name: Cache cargo registry and git
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            core/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('core/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('core/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: core/target
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('core/Cargo.lock') }}-${{ hashFiles('core/src/**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-${{ hashFiles('core/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-target-
 
       - name: Check formatting
         run: cargo fmt --all --check
@@ -167,6 +177,8 @@ jobs:
 
       - name: Set up Docker Buildx with cache support
         uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-flags: '--debug'
 
       # Login to registries only for push
       - name: Log in to Docker Hub
@@ -192,7 +204,10 @@ jobs:
           context: ${{ matrix.component.context }}
           platforms: linux/amd64
           push: false
-          cache-from: type=gha,scope=${{ matrix.component.scope }}-${{ github.ref_name }}
+          cache-from: |
+            type=gha,scope=${{ matrix.component.scope }}-${{ github.ref_name }}
+            type=gha,scope=${{ matrix.component.scope }}-main
+          cache-to: type=gha,scope=${{ matrix.component.scope }}-${{ github.ref_name }},mode=max
           labels: |
             org.opencontainers.image.title=VERIDACTUS ${{ matrix.component.name }}
             org.opencontainers.image.description=Trusted AI Execution Governance - ${{ matrix.component.description }}
