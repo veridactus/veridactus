@@ -1,6 +1,7 @@
 # =============================================================================
 # VERIDACTUS Core (Rust Data Plane) Dockerfile
 # Multi-stage build for minimal production image
+# Optimized for multi-architecture builds with enhanced caching
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -11,26 +12,39 @@ FROM rust:1.91-bullseye AS builder
 # Set working directory
 WORKDIR /build
 
+# Set environment variables for caching
+ENV CARGO_HOME=/cargo
+ENV PATH=/cargo/bin:$PATH
+
+# Create directories for cargo cache
+RUN mkdir -p /cargo/registry /cargo/git
+
 # Copy dependency manifests first for better layer caching
 COPY Cargo.toml Cargo.lock ./
 
 # Create dummy source files to satisfy Cargo.toml requirements
 RUN mkdir -p src && echo "fn main() {}" > src/main.rs && \
-    mkdir -p benches && echo "fn main() {}" > benches/journal_bench.rs
+    mkdir -p benches && echo "fn main() {}" > benches/journal_bench.rs && \
+    mkdir -p tests && echo "fn main() {}" > tests/integration_test.rs
 
-# Build dependencies (this layer will be cached if Cargo.toml/Cargo.lock don't change)
-RUN cargo build --release --bin veridactus-core
+# Build dependencies with cache mount (this layer will be cached if Cargo.toml/Cargo.lock don't change)
+# Using --mount to cache cargo registry and git dependencies
+RUN --mount=type=cache,target=/cargo/registry \
+    --mount=type=cache,target=/cargo/git \
+    cargo build --release --bin veridactus-core
 
-# Remove dummy source
-RUN rm -rf src benches
+# Remove dummy source files
+RUN rm -rf src benches tests
 
 # Copy actual source code
 COPY src/ ./src/
 COPY benches/ ./benches/
 COPY tests/ ./tests/
 
-# Build the final binary
-RUN cargo build --release --bin veridactus-core
+# Build the final binary with cache mount
+RUN --mount=type=cache,target=/cargo/registry \
+    --mount=type=cache,target=/cargo/git \
+    cargo build --release --bin veridactus-core
 
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime

@@ -11,11 +11,22 @@ FROM python:3.11-slim AS builder
 # Set working directory
 WORKDIR /app
 
+# Install build dependencies for compiling native extensions
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    make \
+    cmake \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy dependency files
 COPY requirements.txt .
 
-# Install dependencies
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Upgrade pip and install dependencies
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir --user -r requirements.txt
 
 # Copy source code
 COPY . .
