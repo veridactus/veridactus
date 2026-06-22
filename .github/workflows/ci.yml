@@ -32,7 +32,7 @@ jobs:
           components: clippy, rustfmt
 
       - name: Cache cargo registry and git
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -42,7 +42,7 @@ jobs:
             ${{ runner.os }}-cargo-registry-
 
       - name: Cache build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: core/target
           key: ${{ runner.os }}-cargo-target-${{ hashFiles('core/Cargo.lock') }}-${{ hashFiles('core/src/**/*.rs') }}
@@ -99,7 +99,7 @@ jobs:
           go-version: '1.21'
 
       - name: Cache go modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/go/pkg/mod
