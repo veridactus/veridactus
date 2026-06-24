@@ -66,7 +66,7 @@ rand = "0.8"
 clap = { version = "4", features = ["derive"] }
 
 # Concurrent hashmap for LongRunningTraceManager
-dashmap = "5"
+dashmap = "6"
 
 # Redis async client for M05 Async Dispatcher
 redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
