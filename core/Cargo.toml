@@ -85,7 +85,7 @@ s3 = ["aws-sdk-s3", "aws-config"]
 [dev-dependencies]
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
-testcontainers = "0.23"
+testcontainers = "0.27"
 
 [[bench]]
 name = "journal_bench"
