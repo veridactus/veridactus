@@ -32,7 +32,7 @@ chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
 
 # Schema validation
-jsonschema = "0.18"
+jsonschema = "0.46"
 
 # Logging
 tracing = "0.1"
