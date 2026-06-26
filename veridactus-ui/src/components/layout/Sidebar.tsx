@@ -1,17 +1,25 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, GitBranch, Activity, Key, Settings, Shield, Boxes, Globe, Sun, Moon, Cpu, MessageCircle, Database, Eye, Palette, Menu, X } from 'lucide-react';
+import { LayoutDashboard, GitBranch, Activity, Key, Settings, Shield, Boxes, Globe, Sun, Moon, Cpu, MessageCircle, Database, Eye, Palette, Menu, X, User, Building, LogOut, ChevronRight } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { useThemeStore } from '../../store';
-import { getUserPlan } from '../../auth/AuthGuard';
+import { getUserPlan, getToken, clearToken } from '../../auth/AuthGuard';
+
+function parseUser() {
+  try { const raw = localStorage.getItem('veridactus_user'); if (!raw) return null; const u = JSON.parse(raw); const plan = getUserPlan(); return { id: u.id, email: u.email, display_name: u.display_name || u.email, plan: plan || u.plan || 'personal' }; } catch { return null; }
+}
 
 export default function Sidebar() {
   const { t, locale, setLocale } = useI18n();
   const { theme, toggleTheme } = useThemeStore();
+  const navigate = useNavigate();
   const plan = getUserPlan();
   const isEnterprise = plan === 'enterprise';
   const [mobileOpen, setMobileOpen] = useState(false);
+  const user = parseUser();
+  const token = getToken();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const baseItems = [
     { to: '/chat', icon: MessageCircle, label: 'Chat 沙箱', id: 'chat' },
@@ -68,6 +76,48 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      {/* User Section — 整合用户信息到侧边栏（替代右上角浮层）*/}
+      {user && token && (
+        <div className="px-3 pb-3">
+          <div className="flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer transition-colors hover:bg-[var(--bg-glass)]" onClick={() => setUserMenuOpen(!userMenuOpen)}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+              style={{ background: isEnterprise ? 'linear-gradient(135deg, #6c5ce7, #00d4aa)' : 'linear-gradient(135deg, #6c5ce7, #a29bfe)' }}>
+              {(user.display_name || user.email)[0].toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-[var(--text-primary)] truncate">{user.display_name}</div>
+              <div className="text-[10px] text-[var(--text-tertiary)] flex items-center gap-1">
+                {isEnterprise ? <Building size={9} /> : <User size={9} />}
+                {isEnterprise ? 'Enterprise' : 'Personal'}
+              </div>
+            </div>
+            <ChevronRight size={12} className="text-[var(--text-tertiary)] transition-transform" style={{ transform: userMenuOpen ? 'rotate(90deg)' : '' }} />
+          </div>
+
+          <AnimatePresence>
+            {userMenuOpen && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden mt-1">
+                <div className="py-1 px-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                  <div className="py-2 px-2 border-b border-[rgba(255,255,255,0.04)] mb-1">
+                    <div className="text-[11px] font-semibold text-[var(--text-primary)]">{user.display_name}</div>
+                    <div className="text-[10px] text-[var(--text-tertiary)] mt-0.5">{user.email}</div>
+                  </div>
+                  <button onClick={() => { setUserMenuOpen(false); navigate('/settings'); }}
+                    className="w-full flex items-center gap-2 py-2 px-2 rounded-lg text-[12px] text-[var(--text-secondary)] hover:bg-[var(--bg-glass)] hover:text-[var(--text-primary)] transition-colors">
+                    <Settings size={13} /> 账户设置
+                  </button>
+                  <button onClick={() => { clearToken(); navigate('/login', { replace: true }); }}
+                    className="w-full flex items-center gap-2 py-2 px-2 rounded-lg text-[12px] text-[#ff7675] hover:bg-[rgba(255,118,117,0.06)] transition-colors">
+                    <LogOut size={13} /> 退出登录
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       <div className="sidebar-footer">
         <div className="flex flex-col gap-1.5">

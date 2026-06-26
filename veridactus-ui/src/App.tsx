@@ -5,7 +5,6 @@ import { I18nProvider } from './i18n';
 import { useThemeStore } from './store';
 import AuthGuard from './auth/AuthGuard';
 import Sidebar from './components/layout/Sidebar';
-import UserHeader from './components/layout/UserHeader';
 import BottomStatusBar from './components/layout/BottomStatusBar';
 import DataFlowBackground from './components/viz/DataFlowBackground';
 import { useMetricsStream } from './hooks/useMetricsStream';
@@ -61,7 +60,6 @@ function AppLayout() {
     <div className="flex h-screen overflow-hidden bg-[var(--bg-primary)]" style={{ transition: 'background 0.3s ease' }}>
       <DataFlowBackground />
       <Sidebar />
-      <UserHeader />
       <main className="main-content">
         <div className="content-area">
           <Suspense fallback={<LoadingScreen />}>
