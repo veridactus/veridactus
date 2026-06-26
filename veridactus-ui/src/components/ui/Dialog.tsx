@@ -96,23 +96,20 @@ export function ConfirmDialog({
   title?: string; message: string; confirmText?: string; cancelText?: string; danger?: boolean;
 }) {
   return (
-    <Dialog open={open} onClose={onClose} title={title}>
+    <Dialog open={open} onClose={onClose} title={title} actions={(
+      <>
+        <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">
+          {cancelText}
+        </button>
+        <button
+          onClick={() => { onConfirm(); onClose(); }}
+          className={danger ? 'text-sm px-4 py-2 rounded-btn bg-[var(--color-error)] text-white font-semibold hover:opacity-90 transition-opacity' : 'btn-primary text-sm px-4 py-2'}
+        >
+          {confirmText}
+        </button>
+      </>
+    )}>
       <p>{message}</p>
-      {{
-        actions: (
-          <>
-            <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">
-              {cancelText}
-            </button>
-            <button
-              onClick={() => { onConfirm(); onClose(); }}
-              className={danger ? 'text-sm px-4 py-2 rounded-btn bg-[var(--color-error)] text-white font-semibold hover:opacity-90 transition-opacity' : 'btn-primary text-sm px-4 py-2'}
-            >
-              {confirmText}
-            </button>
-          </>
-        ),
-      }.actions}
     </Dialog>
   );
 }
@@ -122,15 +119,10 @@ export function AlertDialog({
   open, onClose, title = '提示', message,
 }: { open: boolean; onClose: () => void; title?: string; message: string }) {
   return (
-    <Dialog open={open} onClose={onClose} title={title}>
+    <Dialog open={open} onClose={onClose} title={title} actions={(
+      <button onClick={onClose} className="btn-primary text-sm px-4 py-2">确定</button>
+    )}>
       <p>{message}</p>
-      {{
-        actions: (
-          <button onClick={onClose} className="btn-primary text-sm px-4 py-2">
-            确定
-          </button>
-        ),
-      }.actions}
     </Dialog>
   );
 }
@@ -151,7 +143,12 @@ export function PromptDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={title}>
+    <Dialog open={open} onClose={onClose} title={title} actions={(
+      <>
+        <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">取消</button>
+        <button onClick={handleSubmit} className="btn-primary text-sm px-4 py-2">{submitText}</button>
+      </>
+    )}>
       <input
         ref={inputRef}
         type="text"
@@ -161,14 +158,6 @@ export function PromptDialog({
         className="input-field w-full"
         autoFocus
       />
-      {{
-        actions: (
-          <>
-            <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">取消</button>
-            <button onClick={handleSubmit} className="btn-primary text-sm px-4 py-2">{submitText}</button>
-          </>
-        ),
-      }.actions}
     </Dialog>
   );
 }

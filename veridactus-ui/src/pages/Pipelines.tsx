@@ -354,145 +354,62 @@ export default function Pipelines() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      style={{ position: 'relative', zIndex: 1 }}
-    >
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative z-[1]">
       {/* Background decoration */}
-      <div style={{
-        position: 'absolute', top: -100, right: -100, width: 400, height: 400,
-        borderRadius: '50%', background: 'radial-gradient(circle, rgba(108,92,231,0.1) 0%, transparent 70%)',
-        pointerEvents: 'none',
-      }} />
-      <div style={{
-        position: 'absolute', bottom: -50, left: -50, width: 300, height: 300,
-        borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,212,170,0.08) 0%, transparent 70%)',
-        pointerEvents: 'none',
-      }} />
+      <div className="absolute -top-[100px] -right-[100px] w-[400px] h-[400px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(108,92,231,0.1) 0%, transparent 70%)' }} />
+      <div className="absolute -bottom-[50px] -left-[50px] w-[300px] h-[300px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(0,212,170,0.08) 0%, transparent 70%)' }} />
 
       {/* Header */}
-      <motion.div
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}
-      >
+      <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex justify-between items-center mb-8">
         <div>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+          <h1 className="text-3xl font-bold text-[var(--text-primary)] tracking-tight">
             治理流水线
-            <span style={{
-              marginLeft: 12, fontSize: 14, fontWeight: 600, padding: '4px 12px',
-              background: 'rgba(108,92,231,0.1)', color: '#6c5ce7', borderRadius: 20,
-              verticalAlign: 'middle',
-            }}>
-              v0.2.1
-            </span>
+            <span className="ml-3 text-sm font-semibold py-1 px-3 rounded-badge align-middle text-[#6c5ce7]" style={{ background: 'rgba(108,92,231,0.1)' }}>v0.2.1</span>
           </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginTop: 6 }}>
-            设计、部署和管理你的 AI 治理流水线
-          </p>
+          <p className="text-sm text-[var(--text-secondary)] mt-1.5">设计、部署和管理你的 AI 治理流水线</p>
         </div>
-
-        <motion.button
-          className="btn-primary"
-          onClick={handleCreate}
-          disabled={creating}
-          whileHover={{ scale: 1.02, boxShadow: '0 0 40px rgba(108,92,231,0.5)' }}
-          whileTap={{ scale: 0.98 }}
-          style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '12px 24px' }}
-        >
-          {creating ? (
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-            >
-              <Loader2 size={18} />
-            </motion.div>
-          ) : (
-            <Plus size={18} />
-          )}
+        <motion.button className="btn-primary flex gap-2.5 items-center py-3 px-6" onClick={handleCreate} disabled={creating}
+          whileHover={{ scale: 1.02, boxShadow: '0 0 40px rgba(108,92,231,0.5)' }} whileTap={{ scale: 0.98 }}>
+          {creating ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}><Loader2 size={18} /></motion.div> : <Plus size={18} />}
           {creating ? '创建中...' : '新建流水线'}
         </motion.button>
       </motion.div>
 
       {/* Quick stats */}
-      <motion.div
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.1 }}
-        style={{ display: 'flex', gap: 16, marginBottom: 32 }}
-      >
-        <GlassCard style={{ flex: 1, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 14,
-            background: 'linear-gradient(135deg, rgba(108,92,231,0.2) 0%, rgba(162,155,254,0.2) 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <GitBranch size={24} style={{ color: '#6c5ce7' }} />
-          </div>
-          <div>
-            <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 2, fontWeight: 600, letterSpacing: '0.05em' }}>TOTAL PIPELINES</p>
-            <p style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>{pipelines.length}</p>
-          </div>
-        </GlassCard>
-
-        <GlassCard style={{ flex: 1, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 14,
-            background: 'linear-gradient(135deg, rgba(0,212,170,0.2) 0%, rgba(0,212,170,0.1) 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <CheckCircle size={24} style={{ color: '#00d4aa' }} />
-          </div>
-          <div>
-            <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 2, fontWeight: 600, letterSpacing: '0.05em' }}>ACTIVE</p>
-            <p style={{ fontSize: 28, fontWeight: 700, color: '#00d4aa' }}>{pipelines.length}</p>
-          </div>
-        </GlassCard>
-
-        <GlassCard style={{ flex: 1, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 14,
-            background: 'linear-gradient(135deg, rgba(253,203,110,0.2) 0%, rgba(253,203,110,0.1) 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Shield size={24} style={{ color: '#fdcb6e' }} />
-          </div>
-          <div>
-            <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 2, fontWeight: 600, letterSpacing: '0.05em' }}>PLUGINS ACTIVE</p>
-            <p style={{ fontSize: 28, fontWeight: 700, color: '#fdcb6e' }}>
-              {pipelines.reduce((acc: number, p: Pipeline) => acc + (p.stages?.reduce((a: number, s: any) => a + (s.plugins?.length || 0), 0) || 0), 0)}
-            </p>
-          </div>
-        </GlassCard>
+      <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}
+        className="flex gap-4 mb-8">
+        {[
+          [() => <GitBranch size={24} color="#6c5ce7" />, 'TOTAL PIPELINES', pipelines.length, 'var(--text-primary)'],
+          [() => <CheckCircle size={24} color="#00d4aa" />, 'ACTIVE', pipelines.length, '#00d4aa'],
+          [() => <Shield size={24} color="#fdcb6e" />, 'PLUGINS ACTIVE', pipelines.reduce((acc: number, p: Pipeline) => acc + (p.stages?.reduce((a: number, s: any) => a + (s.plugins?.length || 0), 0) || 0), 0), '#fdcb6e'],
+        ].map(([icon, label, value, valColor], i) => (
+          <GlassCard key={i} className="flex-1 flex items-center gap-4 py-5 px-6">
+            <div className="w-[52px] h-[52px] rounded-2xl flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${valColor}33, ${valColor}1a)` }}>
+              {(icon as () => JSX.Element)()}
+            </div>
+            <div>
+              <p className="text-xs text-[var(--text-tertiary)] font-semibold tracking-wider mb-0.5">{label as string}</p>
+              <p className="text-3xl font-bold" style={{ color: valColor as string }}>{value as number}</p>
+            </div>
+          </GlassCard>
+        ))}
       </motion.div>
 
       {/* Pipeline list */}
       {loading ? (
-        <GlassCard style={{ textAlign: 'center', padding: 80 }}>
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-            style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}
-          >
-            <Loader2 size={48} style={{ color: '#6c5ce7', opacity: 0.5 }} />
+        <GlassCard className="text-center py-20">
+          <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }} className="flex justify-center mb-4">
+            <Loader2 size={48} className="text-[#6c5ce7] opacity-50" />
           </motion.div>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 15 }}>加载中...</p>
+          <p className="text-sm text-[var(--text-secondary)]">加载中...</p>
         </GlassCard>
       ) : pipelines.length === 0 ? (
-        <GlassCard style={{ textAlign: 'center', padding: 80 }}>
-          <motion.div
-            animate={{ y: [0, -10, 0] }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-          >
-            <GitBranch size={64} style={{ opacity: 0.2, margin: '0 auto 20px', display: 'block', color: '#6c5ce7' }} />
+        <GlassCard className="text-center py-20">
+          <motion.div animate={{ y: [0, -10, 0] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}>
+            <GitBranch size={64} className="block mx-auto mb-5 text-[#6c5ce7] opacity-20" />
           </motion.div>
-          <h3 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8, color: 'var(--text-primary)' }}>
-            还没有流水线
-          </h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24, maxWidth: 400, margin: '0 auto 24px' }}>
-            创建你的第一个 AI 治理流水线，设计同步和异步治理流程，保护你的 LLM 应用
-          </p>
+          <h3 className="text-2xl font-bold mb-2 text-[var(--text-primary)]">还没有流水线</h3>
+          <p className="text-sm text-[var(--text-secondary)] mb-6 max-w-[400px] mx-auto">创建你的第一个 AI 治理流水线，设计同步和异步治理流程，保护你的 LLM 应用</p>
           <motion.button
             className="btn-primary"
             onClick={handleCreate}

@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { LayoutDashboard, GitBranch, Activity, Puzzle, Key, Settings, Shield, Boxes, Globe, Sun, Moon, Cpu, MessageCircle, Database, Eye, FileText, Palette, Building } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { LayoutDashboard, GitBranch, Activity, Key, Settings, Shield, Boxes, Globe, Sun, Moon, Cpu, MessageCircle, Database, Eye, Palette, Menu, X } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { useThemeStore } from '../../store';
 import { getUserPlan } from '../../auth/AuthGuard';
@@ -10,6 +11,7 @@ export default function Sidebar() {
   const { theme, toggleTheme } = useThemeStore();
   const plan = getUserPlan();
   const isEnterprise = plan === 'enterprise';
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const baseItems = [
     { to: '/chat', icon: MessageCircle, label: 'Chat 沙箱', id: 'chat' },
@@ -37,71 +39,88 @@ export default function Sidebar() {
 
   const navItems = [...baseItems, ...(isEnterprise ? enterpriseItems : personalItems)];
 
-  return (
-    <aside className="sidebar" style={{ backdropFilter: 'blur(20px)' }}>
+  const sidebarContent = (
+    <>
       <div className="sidebar-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: 'linear-gradient(135deg, #6c5ce7, #00d4aa)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }}>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-btn flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #6c5ce7, #00d4aa)' }}>
             <Boxes size={20} color="white" />
           </div>
           <div>
-            <h1 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>{t('app.title')}</h1>
-            <p style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 1 }}>{t('app.subtitle')}</p>
+            <h1 className="text-base font-bold text-[var(--text-primary)] tracking-tight">{t('app.title')}</h1>
+            <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">{t('app.subtitle')}</p>
           </div>
         </div>
       </div>
 
       <nav className="sidebar-nav">
         {navItems.map((item: any, idx: number) => {
-          if (item.type === 'divider') {
-            return <div key={`div-${idx}`} style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '8px 16px' }} />;
-          }
+          if (item.type === 'divider') return <div key={`div-${idx}`} className="h-px mx-4 my-2" style={{ background: 'rgba(255,255,255,0.06)' }} />;
           const Icon = item.icon;
           return (
-            <NavLink key={item.id} to={item.to as string} className={({ isActive }: any) => `nav-item ${isActive ? 'active' : ''}`}>
-              {({ isActive }: any) => (
-                <>
-                  {isActive && (
-                    <motion.div layoutId="nav-active-glow" style={{
-                      position: 'absolute', left: 0, width: 4, height: '60%', top: '20%',
-                      background: 'linear-gradient(180deg, #6c5ce7, #00d4aa)',
-                      borderRadius: '0 4px 4px 0',
-                      boxShadow: '0 0 12px rgba(108,92,231,0.6)',
-                    }} />
-                  )}
-                  <Icon size={18} />
-                  <span style={{ fontSize: 13, flex: 1 }}>{item.label}</span>
-                </>
-              )}
+            <NavLink key={item.id} to={item.to as string} onClick={() => setMobileOpen(false)} className={({ isActive }: any) => `nav-item ${isActive ? 'active' : ''}`}>
+              {({ isActive }: any) => (<>
+                {isActive && <motion.div layoutId="nav-active-glow" className="absolute left-0 w-1 h-[60%] top-[20%] rounded-r" style={{ background: 'linear-gradient(180deg, #6c5ce7, #00d4aa)', boxShadow: '0 0 12px rgba(108,92,231,0.6)' }} />}
+                <Icon size={18} />
+                <span className="text-[13px] flex-1">{item.label}</span>
+              </>)}
             </NavLink>
           );
         })}
       </nav>
 
       <div className="sidebar-footer">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => setLocale(locale === 'zh' ? 'en' : 'zh')}
-              className="btn-secondary" style={{ flex: 1, padding: '6px 8px', fontSize: 11, justifyContent: 'center' }}>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex gap-1.5">
+            <button onClick={() => setLocale(locale === 'zh' ? 'en' : 'zh')} className="btn-secondary flex-1 py-1.5 px-2 text-[11px] justify-center">
               <Globe size={12} /> {t('app.switch_lang')}
             </button>
-            <button onClick={toggleTheme}
-              className="btn-secondary" style={{ width: 32, padding: '6px', justifyContent: 'center' }}
-              title={theme === 'dark' ? t('app.light_mode') : t('app.dark_mode')}>
+            <button onClick={toggleTheme} className="btn-secondary w-8 py-1.5 justify-center" title={theme === 'dark' ? t('app.light_mode') : t('app.dark_mode')}>
               {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
             </button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', opacity: 0.6 }}>
+          <div className="flex items-center gap-1.5 justify-center opacity-60">
             <Shield size={10} color="#00d4aa" />
-            <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{t('app.protocol')}</span>
+            <span className="text-[9px] text-[var(--text-tertiary)]">{t('app.protocol')}</span>
           </div>
         </div>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile hamburger */}
+      <button onClick={() => setMobileOpen(true)} className="lg:hidden fixed top-4 left-4 z-[100] p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-default)] text-[var(--text-primary)]">
+        <Menu size={20} />
+      </button>
+
+      {/* Mobile overlay */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="lg:hidden fixed inset-0 z-[90]" style={{ background: 'rgba(0,0,0,0.5)' }}
+            onClick={() => setMobileOpen(false)} />
+        )}
+      </AnimatePresence>
+
+      {/* Desktop sidebar */}
+      <aside className="sidebar hidden lg:flex" style={{ backdropFilter: 'blur(20px)' }}>
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile sidebar */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <motion.aside initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }} transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="sidebar flex lg:hidden fixed left-0 top-0 bottom-0 z-[95]" style={{ backdropFilter: 'blur(20px)' }}>
+            <button onClick={() => setMobileOpen(false)} className="absolute top-4 right-4 p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+              <X size={18} />
+            </button>
+            {sidebarContent}
+          </motion.aside>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
