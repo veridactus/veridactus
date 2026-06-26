@@ -14,7 +14,8 @@ postgresql:
   enabled: true
   auth:
     username: veridactus
-    password: veridactus-prod-pwd
+    # ⚠️ 生产部署必须通过 --set postgresql.auth.password=xxx 或外部 Secret 设置
+    password: ""
     database: veridactus
   primary:
     persistence:
@@ -32,7 +33,8 @@ redis:
   enabled: true
   architecture: standalone
   auth:
-    enabled: false
+    enabled: true
+    # ⚠️ 生产部署必须通过 --set redis.auth.password=xxx 设置密码
   master:
     persistence:
       size: 10Gi
@@ -46,7 +48,8 @@ clickhouse:
   enabled: false
   auth:
     username: veridactus
-    password: veridactus-ch-pwd
+    # ⚠️ 生产部署必须通过 --set clickhouse.auth.password=xxx 设置密码
+    password: ""
   shards: 1
   replicaCount: 1
   persistence:

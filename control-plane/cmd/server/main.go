@@ -29,7 +29,7 @@ func main() {
 	jwtSecret := getEnv("JWT_SECRET", "")
 	adminKey := getEnv("VERIDACTUS_ADMIN_KEY", "")
 	port := getEnv("PORT", "8081")
-	corsOrigin := getEnv("CORS_ORIGINS", "*")
+	corsOrigin := getEnv("CORS_ORIGINS", "") // 默认仅允许同源，生产设置具体域名
 
 	// PostgreSQL 为生产默认后端，未配置时给出明确错误
 	if storeBackend == "postgres" {
@@ -42,7 +42,11 @@ func main() {
 	// 初始化 JWT
 	auth.InitJWT(jwtSecret)
 	if jwtSecret == "" {
-		log.Println("WARN: JWT_SECRET not set, using random key (tokens invalid on restart)")
+		if getEnv("VERIDACTUS_ENV", "") == "development" {
+			log.Println("WARN: JWT_SECRET not set, using random key (tokens invalid on restart)")
+		} else {
+			log.Fatalln("FATAL: JWT_SECRET must be set for non-development environments")
+		}
 	}
 
 	// 初始化 Casbin RBAC 引擎
