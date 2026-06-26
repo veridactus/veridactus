@@ -24,6 +24,19 @@
   --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
   --shadow-card-hover: 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(108, 92, 231, 0.3);
   --sidebar-width: 260px;
+
+  /* Design Tokens — Spacing (4px Grid) */
+  --sp-1: 4px;   --sp-2: 8px;   --sp-3: 12px;  --sp-4: 16px;
+  --sp-5: 20px;  --sp-6: 24px;  --sp-7: 28px;  --sp-8: 32px;
+  --sp-10: 40px; --sp-12: 48px;
+
+  /* Design Tokens — Typography */
+  --text-xs: 11px;   --text-sm: 13px;   --text-base: 14px;
+  --text-lg: 16px;   --text-xl: 20px;   --text-2xl: 24px;
+  --text-3xl: 28px;
+
+  /* Design Tokens — Radius */
+  --r-btn: 10px;  --r-card: 16px;  --r-input: 10px;  --r-badge: 20px;
 }
 
 [data-theme="light"] {
