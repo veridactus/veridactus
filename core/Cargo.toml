@@ -48,6 +48,9 @@ futures = "0.3"
 futures-util = "0.3"
 pin-project = "1"
 
+# WASM runtime engine (社区插件沙箱)
+wasmtime = { version = "24", optional = true }
+
 # Async trait support
 async-trait = "0.1"
 
@@ -77,9 +80,14 @@ sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chro
 # AWS SDK for S3/MinIO support
 aws-sdk-s3 = { version = "1", optional = true }
 aws-config = { version = "1", optional = true }
+clickhouse = "0.15.1"
+opentelemetry = { version = "0.32.0", features = ["trace"] }
+tracing-opentelemetry = "0.33.0"
+opentelemetry_sdk = { version = "0.32.1", features = ["trace"] }
 
 [features]
-default = ["s3"]
+default = ["s3", "wasm-runtime"]
+wasm-runtime = ["wasmtime"]
 s3 = ["aws-sdk-s3", "aws-config"]
 
 [dev-dependencies]

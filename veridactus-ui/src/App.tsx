@@ -3,7 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { I18nProvider } from './i18n';
 import { useThemeStore } from './store';
+import AuthGuard from './auth/AuthGuard';
 import Sidebar from './components/layout/Sidebar';
+import UserHeader from './components/layout/UserHeader';
 import BottomStatusBar from './components/layout/BottomStatusBar';
 import DataFlowBackground from './components/viz/DataFlowBackground';
 import { useMetricsStream } from './hooks/useMetricsStream';
@@ -17,6 +19,21 @@ const Plugins = lazy(() => import('./pages/Plugins'));
 const ApiKeys = lazy(() => import('./pages/ApiKeys'));
 const Models = lazy(() => import('./pages/Models'));
 const Settings = lazy(() => import('./pages/Settings'));
+
+// Phase 3: 新引擎
+const LoginPage = lazy(() => import('./auth/LoginPage'));
+const PhoneBind = lazy(() => import('./auth/PhoneBind'));
+const ChatPage = lazy(() => import('./engines/chat/ChatPage'));
+const VaultPage = lazy(() => import('./engines/vault/VaultPage'));
+const VaultDetail = lazy(() => import('./engines/vault/VaultDetail'));
+
+// Phase 4: 企业级
+const AuditorCommandCenter = lazy(() => import('./engines/vault/AuditCenter'));
+const BrandSettings = lazy(() => import('./admin/BrandSettings'));
+const ComplianceReport = lazy(() => import('./pages/ComplianceReport'));
+const PluginMarket = lazy(() => import('./pages/PluginMarket'));
+const OnboardingPage = lazy(() => import('./auth/OnboardingPage'));
+const PlaygroundPage = lazy(() => import('./engines/devhub/PlaygroundPage'));
 
 function LoadingScreen() {
   return (
@@ -39,9 +56,11 @@ function AppLayout() {
   }, [theme]);
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-primary)', transition: 'background 0.3s ease' }}>
+    <AuthGuard>
+    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg-primary)', transition: 'background 0.3s ease', overflow: 'hidden' }}>
       <DataFlowBackground />
       <Sidebar />
+      <UserHeader />
       <main className="main-content">
         <div className="content-area">
           <Suspense fallback={<LoadingScreen />}>
@@ -56,13 +75,24 @@ function AppLayout() {
               <Route path="/api-keys" element={<ApiKeys />} />
               <Route path="/models" element={<Models />} />
               <Route path="/settings" element={<Settings />} />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              {/* Phase 3: 新引擎 */}
+              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/vault" element={<VaultPage />} />
+              <Route path="/vault/:traceId" element={<VaultDetail />} />
+              {/* Phase 4: 企业级 */}
+              <Route path="/playground" element={<PlaygroundPage />} />
+              <Route path="/audit-center" element={<AuditorCommandCenter />} />
+              <Route path="/brand" element={<BrandSettings />} />
+              <Route path="/compliance" element={<ComplianceReport />} />
+              <Route path="/plugins/market" element={<PluginMarket />} />
+              <Route path="*" element={<Navigate to="/chat" replace />} />
             </Routes>
           </Suspense>
         </div>
       </main>
       <BottomStatusBar />
     </div>
+    </AuthGuard>
   );
 }
 
@@ -70,7 +100,12 @@ export default function App() {
   return (
     <BrowserRouter>
       <I18nProvider>
-        <AppLayout />
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/bind-phone" element={<PhoneBind />} />
+          <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="/*" element={<AppLayout />} />
+        </Routes>
       </I18nProvider>
     </BrowserRouter>
   );

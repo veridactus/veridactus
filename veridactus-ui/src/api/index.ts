@@ -257,3 +257,26 @@ export async function getRealtimeMetrics(): Promise<RealTimeMetrics> {
   const data = await fetchJSON('/v1/metrics/realtime');
   return data;
 }
+
+// ==================== 系统设置 API ====================
+
+/** 获取系统设置（从 localStorage 和远程合并） */
+export async function getSystemSettings(): Promise<Record<string, string>> {
+  try {
+    const data = await fetchJSON('/api/v1/settings', true);
+    return data.settings || {};
+  } catch {
+    // 控制面不可用时返回空对象，前端用 localStorage
+    return {};
+  }
+}
+
+/** 同步系统设置到控制面 */
+export async function updateSystemSettings(settings: Record<string, string>): Promise<boolean> {
+  try {
+    await cpFetch('/api/v1/settings', 'POST', { settings });
+    return true;
+  } catch {
+    return false;
+  }
+}

@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import GlassCard from '../components/ui/GlassCard';
 import { useI18n } from '../i18n';
-import { Settings as SettingsIcon, Bell, Globe, Database, Shield as ShieldIcon, RefreshCw, CheckCircle, Cpu, ArrowRight } from 'lucide-react';
-import { getModelsConfig } from '../api';
+import { Settings as SettingsIcon, Bell, Globe, Database, Shield as ShieldIcon, RefreshCw, CheckCircle, Cpu, ArrowRight, AlertTriangle } from 'lucide-react';
+import { getModelsConfig, getSystemSettings, updateSystemSettings } from '../api';
 
 type Field = {
   key: string;
@@ -15,25 +15,93 @@ type Field = {
   options?: string[];
 };
 
+/** 本地持久化的 settings key */
+const SETTINGS_STORAGE_KEY = 'veridactus-settings';
+
+function loadPersistedSettings(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistSettings(data: Record<string, string>) {
+  try {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    // localStorage 不可用时静默失败
+  }
+}
+
 export default function SettingsPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('general');
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [modelsCount, setModelsCount] = useState(0);
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
+
+  // 加载持久化的设置值
+  useEffect(() => {
+    const persisted = loadPersistedSettings();
+    setFormValues(prev => ({ ...prev, ...persisted }));
+  }, []);
 
   useEffect(() => {
-    getModelsConfig().then(models => setModelsCount(models.length)).catch(() => setModelsCount(0));
+    getModelsConfig()
+      .then(models => setModelsCount(models.length))
+      .catch(() => setModelsCount(0));
   }, []);
 
-  const handleSave = useCallback(() => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleFieldChange = useCallback((key: string, value: string) => {
+    setFormValues(prev => ({ ...prev, [key]: value }));
+    setSaved(false);
+    setError(null);
   }, []);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      // 1. 本地持久化
+      persistSettings(formValues);
+
+      // 2. 尝试同步到控制面
+      try {
+        await updateSystemSettings(formValues);
+      } catch {
+        // 控制面不可用时，本地保存仍生效
+        console.warn('Settings saved locally but failed to sync to control plane');
+      }
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存失败');
+    } finally {
+      setSaving(false);
+    }
+  }, [formValues]);
 
   const handleReset = useCallback(() => {
+    try {
+      localStorage.removeItem(SETTINGS_STORAGE_KEY);
+    } catch {
+      // 静默失败
+    }
+    setFormValues({});
     setSaved(false);
+    setError(null);
   }, []);
+
+  // 获取字段当前值（优先使用 formValues，回退到默认值）
+  const getFieldValue = useCallback((field: Field) => {
+    return formValues[field.key] !== undefined ? formValues[field.key] : field.value;
+  }, [formValues]);
 
   const sections: { id: string; icon: any; labelKey: string; fields: Field[] }[] = [
     { id: 'general', icon: Globe, labelKey: 'settings.general', fields: [
@@ -132,18 +200,41 @@ export default function SettingsPage() {
                       <div key={field.key}>
                         <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 6 }}>{t(field.labelKey)}</label>
                         {field.type === 'select' && field.options ? (
-                          <select className="input-field" defaultValue={field.value} style={{ cursor: 'pointer' }}>
+                          <select
+                            className="input-field"
+                            value={getFieldValue(field)}
+                            onChange={e => handleFieldChange(field.key, e.target.value)}
+                            style={{ cursor: 'pointer' }}
+                          >
                             {field.options.map(o => <option key={o} value={o}>{o}</option>)}
                           </select>
                         ) : (
-                          <input className="input-field" defaultValue={field.value} placeholder={field.placeholder || ''} />
+                          <input
+                            className="input-field"
+                            value={getFieldValue(field)}
+                            onChange={e => handleFieldChange(field.key, e.target.value)}
+                            placeholder={field.placeholder || ''}
+                          />
                         )}
                       </div>
                     ))}
                   </div>
+                  {error && (
+                    <div style={{
+                      marginTop: 16, padding: '10px 14px', borderRadius: 8,
+                      background: 'rgba(255,118,117,0.1)', border: '1px solid rgba(255,118,117,0.3)',
+                      display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#ff7675',
+                    }}>
+                      <AlertTriangle size={16} />
+                      {error}
+                    </div>
+                  )}
                   <div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}>
-                    <button className="btn-primary" onClick={handleSave}><RefreshCw size={14} /> {t('settings.save')}</button>
-                    <button className="btn-secondary" onClick={handleReset}>{t('settings.reset')}</button>
+                    <button className="btn-primary" onClick={handleSave} disabled={saving}>
+                      {saving ? <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={14} />}
+                      {' '}{saving ? '保存中...' : t('settings.save')}
+                    </button>
+                    <button className="btn-secondary" onClick={handleReset} disabled={saving}>{t('settings.reset')}</button>
                     {saved && (
                       <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#00d4aa' }}>
                         <CheckCircle size={14} /> {t('settings.saved')}

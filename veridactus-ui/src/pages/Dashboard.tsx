@@ -18,7 +18,9 @@ export default function Dashboard() {
   const [recentTraces, setRecentTraces] = useState<TraceSummary[]>([]);
 
   useEffect(() => {
-    getTracesFromDataPlane().then(traces => setRecentTraces(traces.slice(-5).reverse())).catch(() => {});
+    getTracesFromDataPlane()
+      .then(traces => setRecentTraces(traces.slice(-5).reverse()))
+      .catch(err => console.warn('Failed to load traces for dashboard:', err));
   }, []);
 
   const allOk = services.dataPlane && services.controlPlane;

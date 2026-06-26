@@ -29,7 +29,7 @@ export default function Models() {
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
-    upstream_url: 'http://192.168.31.176:11434',
+    upstream_url: '',
     upstream_model: '',
     is_default: false,
     supported_versions: '0.1,0.2',
@@ -37,7 +37,7 @@ export default function Models() {
     api_key: '',
     api_key_header: '',
     use_proxy: false,
-    proxy_url: 'http://127.0.0.1:7897',
+    proxy_url: '',
   });
 
   const loadModels = async () => {
@@ -118,7 +118,7 @@ export default function Models() {
   const resetForm = () => {
     setFormData({
       name: '',
-      upstream_url: 'http://192.168.31.176:11434',
+      upstream_url: '',
       upstream_model: '',
       is_default: false,
       supported_versions: '0.1,0.2',
@@ -126,7 +126,7 @@ export default function Models() {
       api_key: '',
       api_key_header: '',
       use_proxy: false,
-      proxy_url: 'http://127.0.0.1:7897',
+      proxy_url: '',
     });
   };
 
@@ -145,7 +145,7 @@ export default function Models() {
       api_key: model.api_key || '',
       api_key_header: model.api_key_header || '',
       use_proxy: model.use_proxy || false,
-      proxy_url: model.proxy_url || 'http://127.0.0.1:7897',
+      proxy_url: model.proxy_url || '',
     });
   };
 
@@ -261,7 +261,7 @@ export default function Models() {
                       className="input-field"
                       value={editingModel.proxy_url}
                       onChange={e => setEditingModel({ ...editingModel, proxy_url: e.target.value })}
-                      placeholder="http://127.0.0.1:7897"
+                      placeholder=""
                       disabled={!editingModel.use_proxy}
                     />
                   </div>
@@ -401,7 +401,7 @@ export default function Models() {
                   className="input-field"
                   value={formData.proxy_url}
                   onChange={e => setFormData({ ...formData, proxy_url: e.target.value })}
-                  placeholder="http://127.0.0.1:7897"
+                  placeholder=""
                   disabled={!formData.use_proxy}
                 />
               </div>

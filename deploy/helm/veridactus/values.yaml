@@ -1,0 +1,298 @@
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║           VERIDACTUS Helm Chart — 统一部署配置                       ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+
+# ── 全局设置 ──
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+  environment: production  # production | staging | development
+
+# ── PostgreSQL (Bitnami) ──
+postgresql:
+  enabled: true
+  auth:
+    username: veridactus
+    password: veridactus-prod-pwd
+    database: veridactus
+  primary:
+    persistence:
+      size: 50Gi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 2
+        memory: 4Gi
+
+# ── Redis (Bitnami) ──
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+# ── ClickHouse (Bitnami) ──
+clickhouse:
+  enabled: false
+  auth:
+    username: veridactus
+    password: veridactus-ch-pwd
+  shards: 1
+  replicaCount: 1
+  persistence:
+    size: 100Gi
+
+# ── MinIO (Bitnami) ──
+minio:
+  enabled: false
+  auth:
+    rootUser: veridactus
+    rootPassword: veridactus-minio-pwd
+  defaultBuckets: "veridactus, veridactus-traces, veridactus-backups"
+  persistence:
+    size: 100Gi
+
+# ── Grafana ──
+grafana:
+  enabled: false
+  adminPassword: veridactus-grafana
+  persistence:
+    size: 10Gi
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          url: http://veridactus-core:8080/v1/metrics/realtime
+        - name: ClickHouse
+          type: grafana-clickhouse-datasource
+          url: http://clickhouse:8123
+
+# ═══════════════════════════════════════════════════════════════════════
+# VERIDACTUS Control Plane (Go)
+# ═══════════════════════════════════════════════════════════════════════
+controlPlane:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: veridactus/veridactus-cp
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8081
+    targetPort: 8081
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - host: api.veridactus.io
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: veridactus-api-tls
+        hosts:
+          - api.veridactus.io
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  env:
+    STORE_BACKEND: postgres
+    PG_HOST: "{{ .Release.Name }}-postgresql"
+    PG_PORT: "5432"
+    PG_USER: veridactus
+    PG_DB_NAME: veridactus
+    PG_SSLMODE: disable
+    REDIS_HOST: "{{ .Release.Name }}-redis-master"
+    REDIS_PORT: "6379"
+    PORT: "8081"
+    VERIDACTUS_ENV: production
+    VERIDACTUS_KMS_TYPE: env
+    VERIDACTUS_PAYMENT_PROVIDER: alipay
+    DATA_PLANE_URL: http://{{ .Release.Name }}-veridactus-core:8080
+    CORS_ORIGINS: "*"
+  secrets:
+    JWT_SECRET: ""
+    VERIDACTUS_ADMIN_KEY: ""
+    VERIDACTUS_MASTER_KEY: ""
+    PG_PASSWORD: ""
+
+# ═══════════════════════════════════════════════════════════════════════
+# VERIDACTUS Core Data Plane (Rust)
+# ═══════════════════════════════════════════════════════════════════════
+coreDataPlane:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: veridactus/veridactus-core
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - host: proxy.veridactus.io
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: veridactus-proxy-tls
+        hosts:
+          - proxy.veridactus.io
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2
+      memory: 2Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+  env:
+    PORT: "8080"
+    REDIS_URL: redis://{{ .Release.Name }}-redis-master:6379
+    CONTROL_PLANE_URL: http://{{ .Release.Name }}-veridactus-cp:8081
+    VERIDACTUS_STORE_S3_ENDPOINT: http://{{ .Release.Name }}-minio:9000
+    VERIDACTUS_STORE_S3_BUCKET: veridactus-traces
+    CLICKHOUSE_URL: http://{{ .Release.Name }}-clickhouse:8123
+    CLICKHOUSE_DB: veridactus
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    RUST_LOG: info
+  secrets:
+    JWT_SECRET: ""
+    VERIDACTUS_ADMIN_KEY: ""
+    VERIDACTUS_STORE_S3_ACCESS_KEY: ""
+    VERIDACTUS_STORE_S3_SECRET_KEY: ""
+
+# ═══════════════════════════════════════════════════════════════════════
+# VERIDACTUS UI (React)
+# ═══════════════════════════════════════════════════════════════════════
+ui:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: veridactus/veridactus-ui
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - host: app.veridactus.io
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: veridactus-app-tls
+        hosts:
+          - app.veridactus.io
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ═══════════════════════════════════════════════════════════════════════
+# Python Worker
+# ═══════════════════════════════════════════════════════════════════════
+pythonWorker:
+  enabled: false
+  replicaCount: 2
+  image:
+    repository: veridactus/veridactus-python-worker
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+  env:
+    REDIS_HOST: "{{ .Release.Name }}-redis-master"
+    REDIS_PORT: "6379"
+    CONTROL_PLANE_URL: http://{{ .Release.Name }}-veridactus-cp:8081
+
+# ═══════════════════════════════════════════════════════════════════════
+# Jaeger (分布式追踪)
+# ═══════════════════════════════════════════════════════════════════════
+jaeger:
+  enabled: false
+  allInOne:
+    enabled: true
+  storage:
+    type: badger
+  ingress:
+    enabled: true
+    hosts:
+      - jaeger.veridactus.io
+
+# ═══════════════════════════════════════════════════════════════════════
+# RBAC
+# ═══════════════════════════════════════════════════════════════════════
+serviceAccount:
+  create: true
+  name: veridactus
+  annotations: {}
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# ═══════════════════════════════════════════════════════════════════════
+# 监控
+# ═══════════════════════════════════════════════════════════════════════
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+  prometheusRule:
+    enabled: false

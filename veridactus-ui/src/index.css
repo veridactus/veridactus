@@ -177,12 +177,17 @@ code, pre, .mono {
 .main-content {
   margin-left: var(--sidebar-width);
   flex: 1;
-  min-height: 100vh;
-  overflow-y: auto;
+  min-height: 0; /* critical: allow flex children to shrink/scroll */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .content-area {
   padding: 28px 32px;
   max-width: 1600px;
+  flex: 1;
+  min-height: 0; /* critical: allow children with height:100% to work */
+  overflow-y: auto;
   padding-bottom: 60px;
 }
 

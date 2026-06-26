@@ -1,0 +1,69 @@
+// VERIDACTUS Trace Callback Service
+// 数据面执行完 LLM 请求后，异步将 Trace 回传到控制面
+syntax = "proto3";
+
+package veridactus.v1;
+
+option go_package = "github.com/veridactus/proto/gen/veridactus/v1;veridactusv1";
+
+// TraceCallbackService Trace 回调服务
+// Rust 数据面在 LLM 执行完成后，将完整 Trace 回传到控制面存储
+service TraceCallbackService {
+  // SubmitTrace 提交 Trace 记录
+  rpc SubmitTrace(SubmitTraceRequest) returns (SubmitTraceResponse);
+  
+  // SubmitTraceStream 批量提交 Trace（客户端流式）
+  rpc SubmitTraceStream(stream SubmitTraceRequest) returns (SubmitTraceSummary);
+}
+
+message SubmitTraceRequest {
+  // Trace ID
+  string trace_id = 1;
+  // 租户/工作空间 ID
+  string workspace_id = 2;
+  // 组织 ID
+  string org_id = 3;
+  // 模型名称
+  string model = 4;
+  // 执行状态：SUCCESS/FAILED/BLOCKED/STREAMING
+  string execution_state = 5;
+  // 完整 Trace JSON（含 Journal、所有事件、签名）
+  string trace_json = 6;
+  // L0 审计签名（SHA-256 hex）
+  string l0_signature = 7;
+  // L2A Merkle Root（可选）
+  string l2a_merkle_root = 8;
+  // L2B ZK 证明对象 URL（可选，指向 MinIO）
+  string l2b_proof_url = 9;
+  // Token 消耗
+  int64 tokens_input = 10;
+  int64 tokens_output = 11;
+  // 成本（微美元）
+  int64 cost_usd_micro = 12;
+  // 安全状态：safe/warning/blocked
+  string safety_status = 13;
+  // 合规 Profile（如 "GDPR", "HIPAA"）
+  string compliance_profile = 14;
+  // 创建时间（RFC 3339）
+  string created_at = 15;
+  // 完成时间（RFC 3339）
+  string completed_at = 16;
+}
+
+message SubmitTraceResponse {
+  // 是否成功
+  bool success = 1;
+  // Trace 存储 ID
+  string stored_id = 2;
+  // 是否触发告警
+  bool alert_triggered = 3;
+}
+
+message SubmitTraceSummary {
+  // 处理的总数
+  int32 total_count = 1;
+  // 成功数
+  int32 success_count = 2;
+  // 失败数
+  int32 failed_count = 3;
+}

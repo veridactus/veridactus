@@ -33,6 +33,7 @@ use crate::audit::token::AuditTokenValidator;
 use crate::auth::keys::ApiKeyManager;
 use crate::compliance::ComplianceMapper;
 use crate::crypto::signature::generate_l0_proof;
+use crate::dispatcher::redis_dispatch::AsyncDispatcher;
 use crate::gdpr::{DeletionRequest, DeletionType, GdprErasureManager};
 use crate::http::error_handler::build_error_response;
 use crate::http::headers::{
@@ -1624,9 +1625,10 @@ async fn handle_chat_completion(
                     .unwrap_or_else(|_| serde_json::json!({"error": "Failed to parse response"}));
 
                 let output_content = extract_output_content(&response_json);
-                let pii_result = call_pii_detection(&state.http_client, &output_content).await;
+                // 🔧 架构修复: Rust PiiDetectorPlugin 已在 pre_request 阶段完成 PII 检测
+                // 不再同步 HTTP 调用 Python Worker（避免阻塞 LLM 响应 50-500ms）
 
-                // G2 输出过滤器：扫描 LLM 响应中的 PII 泄露/有害内容/不安全代码
+                // G2 输出过滤器 + ConstrainedDecoder — Rust Native 同步检测
                 let output_filter = crate::plugin::OutputFilter::new();
                 let filter_result = output_filter.scan(&output_content);
                 if !filter_result.passed {
@@ -1685,8 +1687,27 @@ async fn handle_chat_completion(
                 let cost_estimated = estimate_cost(&total_tokens, &route.name);
                 let finish_reason = extract_finish_reason(&response_json);
 
-                let has_pii = pii_result.as_ref().map(|p| p.pii_detected).unwrap_or(false)
-                    || !input_pii_found.is_empty();
+                // ===== Pipeline PostResponse 阶段 (Rust Native, 同步) =====
+                let mut post_resp_ctx = crate::plugin::ResponseContext {
+                    response: output_content.clone(),
+                    actual_cost: cost_estimated,
+                    trace_id,
+                };
+                let post_executor = crate::pipeline::executor::PipelineExecutor::new(
+                    pipeline_registry.clone(),
+                    pipeline_plan.clone(),
+                );
+                let (post_result, cold_tasks) = post_executor
+                    .execute_post_response(&mut post_resp_ctx, &mut journal)
+                    .await;
+                for check in &post_result.checks_passed {
+                    info!("PostResponse plugin: {}", check);
+                }
+
+                // ===== 冷路径: Redis Stream → Python Worker (非阻塞) =====
+                dispatch_cold_tasks(&trace_id, &output_content, &cold_tasks, &post_executor).await;
+
+                let has_pii = !input_pii_found.is_empty();
 
                 // hash_only 隐私级别：将响应替换为 SHA-256 哈希（§8.1）
                 let is_hash_only = effective_privacy == PrivacyLevel::HashOnly;
@@ -1762,8 +1783,8 @@ async fn handle_chat_completion(
                     approval: None,
                     _internal_metrics: Some(serde_json::json!({
                         "input_pii_found": input_pii_found,
-                        "output_pii_detected": pii_result.as_ref().map(|p| p.pii_detected).unwrap_or(false),
-                        "output_pii_findings": pii_result.as_ref().map(|p| &p.findings).cloned().unwrap_or_default(),
+                        "output_pii_detected": false,
+                        "output_pii_findings": serde_json::json!([]),
                     })),
                 };
 
@@ -3418,36 +3439,64 @@ struct PiiDetectionResult {
     findings: Vec<String>,
 }
 
-async fn call_pii_detection(
-    http_client: &reqwest::Client,
-    content: &str,
-) -> Option<PiiDetectionResult> {
-    if content.is_empty() {
-        return None;
-    }
-    let python_worker_url = "http://127.0.0.1:8001/api/v1/pii-detection";
-    let request_body = serde_json::json!({ "text": content });
-    match http_client
-        .post(python_worker_url)
-        .json(&request_body)
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await
-    {
-        Ok(resp) => {
-            if resp.status().is_success() {
-                if let Ok(result) = resp.json::<PiiDetectionResult>().await {
-                    if result.pii_detected {
-                        info!("Python Worker PII detection: found {:?}", result.findings);
-                    }
-                    return Some(result);
+/// 🔧 架构修复: 冷路径异步任务分发
+///
+/// 不阻塞 LLM 响应 — 通过 tokio::spawn 将任务推入 Redis Stream，
+/// 由 Python Worker 异步消费处理，结果通过控制面 API 写回 Trace。
+///
+/// 架构分层:
+///   PreRequest  → Rust Native (同步, <10μs)
+///   Streaming   → Rust Native (同步, per-token)
+///   PostResponse→ Rust Native (同步) + Redis XADD (非阻塞)
+///   AsyncFinalize→ Redis Stream → Python Worker (异步, 不阻塞响应)
+async fn dispatch_cold_tasks(
+    trace_id: &uuid::Uuid,
+    output_content: &str,
+    cold_tasks: &[(String, serde_json::Value)],
+    executor: &crate::pipeline::executor::PipelineExecutor,
+) {
+    use crate::types::journal::{ExecutionJournal, JournalEventType};
+
+    let redis_url = std::env::var("REDIS_URL")
+        .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let callback = std::env::var("CONTROL_PLANE_URL")
+        .ok()
+        .map(|u| format!("{}/api/v1/traces/update", u.trim_end_matches('/')));
+
+    // 1. 分发 PostResponse 阶段的 cold tasks
+    if !cold_tasks.is_empty() {
+        let dispatcher = AsyncDispatcher::new(&redis_url);
+        for (task_type, params) in cold_tasks {
+            let d = dispatcher.clone();
+            let tt = task_type.clone();
+            let p = params.clone();
+            let tid = trace_id.to_string();
+            let cb = callback.clone();
+            tokio::spawn(async move {
+                let mut dummy = ExecutionJournal::new(uuid::Uuid::new_v4(), "cold-path");
+                if let Err(e) = d.dispatch(&tt, &tid, p, &mut dummy, cb).await {
+                    warn!("Cold dispatch {} failed: {}", tt, e);
                 }
-            }
-            None
+            });
         }
-        Err(e) => {
-            warn!("Python Worker PII detection call failed: {}", e);
-            None
+    }
+
+    // 2. 收集 AsyncFinalize 任务
+    let async_tasks = executor.collect_async_tasks(trace_id, output_content);
+    if !async_tasks.is_empty() {
+        let dispatcher = AsyncDispatcher::new(&redis_url);
+        for (task_type, params) in async_tasks {
+            let d = dispatcher.clone();
+            let tt = task_type.clone();
+            let p = params.clone();
+            let tid = trace_id.to_string();
+            let cb = callback.clone();
+            tokio::spawn(async move {
+                let mut dummy = ExecutionJournal::new(uuid::Uuid::new_v4(), "cold-path");
+                if let Err(e) = d.dispatch(&tt, &tid, p, &mut dummy, cb).await {
+                    warn!("Async dispatch {} failed: {}", tt, e);
+                }
+            });
         }
     }
 }

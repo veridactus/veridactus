@@ -34,10 +34,15 @@ pub enum PluginType {
     /// Native Rust 插件（编译进核心，<10μs）
     #[serde(rename = "native")]
     Native,
-    /// Wasm 沙箱插件（50-200μs）
+    /// Wasm 沙箱插件（50-200μs, wasmtime 引擎）
     #[serde(rename = "wasm")]
     Wasm,
-    /// External gRPC 插件（5-500ms）
+    /// Sidecar HTTP 插件（5-500ms, Python/外部服务）
+    /// 通过 HTTP REST 调用外部服务的 /plugin/execute 端点
+    /// 单个 Sidecar 进程可托管多个插件
+    #[serde(rename = "sidecar")]
+    Sidecar,
+    /// gRPC 插件（5-500ms, 已废弃 — 使用 Sidecar 替代）
     #[serde(rename = "grpc")]
     Grpc,
 }

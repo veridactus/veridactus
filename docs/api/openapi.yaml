@@ -1,0 +1,245 @@
+openapi: "3.1.0"
+info:
+  title: VERIDACTUS Control Plane API
+  version: "0.3.0"
+  description: |
+    VERIDACTUS — Trusted AI Execution Governance Infrastructure.
+    Multi-tenant control plane with Org/Workspace/User isolation,
+    Virtual Key management, wallet & billing, and enterprise SSO.
+  contact:
+    email: tsc@veridactus.ai
+  license:
+    name: Apache 2.0
+servers:
+  - url: https://api.veridactus.ai
+    description: Production
+  - url: http://localhost:8081
+    description: Local development
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+    AdminKey:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+
+paths:
+  /api/v1/health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  version: { type: string }
+                  phase: { type: string }
+
+  /api/v1/auth/register:
+    post:
+      summary: Email/password registration
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                display_name: { type: string }
+      responses:
+        '201':
+          description: User registered with auto-created Org + Workspace
+
+  /api/v1/auth/login:
+    post:
+      summary: Email/password login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: JWT access token returned
+
+  /api/v1/auth/login/github:
+    get:
+      summary: GitHub OAuth login URL
+      responses:
+        '200':
+          description: Redirect URL for GitHub OAuth
+
+  /api/v1/auth/phone/send:
+    post:
+      summary: Send SMS verification code
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: { type: string }
+
+  /api/v1/auth/phone/verify:
+    post:
+      summary: Verify SMS code
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string }
+                code: { type: string }
+
+  /api/v1/orgs:
+    get:
+      summary: List organizations
+      security: [{ AdminKey: [] }, { BearerAuth: [] }]
+      responses:
+        '200':
+          description: Organization list
+
+  /api/v1/workspaces:
+    get:
+      summary: List workspaces
+      security: [{ AdminKey: [] }, { BearerAuth: [] }]
+      responses:
+        '200':
+          description: Workspace list
+
+  /api/v1/virtual-keys:
+    get:
+      summary: List virtual keys
+      security: [{ AdminKey: [] }, { BearerAuth: [] }]
+    post:
+      summary: Create virtual key (BYOK or Platform)
+      security: [{ AdminKey: [] }, { BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type]
+              properties:
+                name: { type: string }
+                type: { enum: [byok, platform] }
+                provider_key: { type: string }
+                allowed_models: { type: array, items: { type: string } }
+
+  /api/v1/wallets:
+    get:
+      summary: Get workspace wallet balance
+      security: [{ AdminKey: [] }, { BearerAuth: [] }]
+
+  /api/v1/billing/checkout:
+    post:
+      summary: Create Stripe checkout session
+      security: [{ AdminKey: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount_usd]
+              properties:
+                amount_usd: { type: number }
+
+  /api/v1/billing/webhook:
+    post:
+      summary: Stripe webhook endpoint
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+
+  /api/v1/platform/pool:
+    get:
+      summary: List platform LLM pool
+      security: [{ AdminKey: [] }]
+    post:
+      summary: Add platform master key
+      security: [{ AdminKey: [] }]
+
+  /api/v1/platform/models:
+    get:
+      summary: List available platform models
+      security: [{ AdminKey: [] }]
+
+  /api/v1/pipelines:
+    get:
+      summary: List governance pipelines
+      security: [{ AdminKey: [] }, { BearerAuth: [] }]
+    post:
+      summary: Create governance pipeline
+      security: [{ AdminKey: [] }, { BearerAuth: [] }]
+
+  /api/v1/audit/events:
+    get:
+      summary: Get audit events
+      security: [{ AdminKey: [] }]
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [today, 7d, 30d]
+
+  /api/v1/compliance/reports:
+    post:
+      summary: Generate compliance report (async)
+      security: [{ AdminKey: [] }]
+
+  /api/v1/brand:
+    get:
+      summary: Get brand settings
+      security: [{ AdminKey: [] }]
+    put:
+      summary: Update brand settings
+      security: [{ AdminKey: [] }]
+
+  /api/v1/enterprise/sso:
+    get:
+      summary: Get SSO configuration
+      security: [{ AdminKey: [] }]
+    put:
+      summary: Update SSO configuration
+      security: [{ AdminKey: [] }]
+
+  /internal/resolve-key:
+    post:
+      summary: Resolve virtual key (internal DP→CP)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [virtual_key_hash]
+              properties:
+                virtual_key_hash: { type: string }
+                model: { type: string }
+
+  /api/v1/config/poll:
+    get:
+      summary: Configuration long-poll (internal DP→CP)
+      responses:
+        '200':
+          description: Config version data
+        '304':
+          description: No changes

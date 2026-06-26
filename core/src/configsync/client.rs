@@ -203,7 +203,10 @@ impl ConfigPullClient {
                 }
             }
             "plugin" | "storage" => {
-                info!("收到 {} 配置更新", payload.change_type);
+                info!("收到 {} 配置更新 (data={})", payload.change_type,
+                    serde_json::to_string(&payload.data).unwrap_or_default().chars().take(100).collect::<String>());
+                // 🔧 Phase 2.5: plugin/storage config 更新记录
+                // 后续 Phase 3 实现动态 Sidecar/Wasm 插件热加载
             }
             _ => {
                 warn!("未知配置变更类型: {}", payload.change_type);
@@ -239,13 +242,14 @@ impl ConfigPullClient {
                             r#type: match p.ptype.as_str() {
                                 "native" => PluginType::Native,
                                 "wasm" => PluginType::Wasm,
+                                "sidecar" => PluginType::Sidecar,
                                 "grpc" => PluginType::Grpc,
                                 _ => PluginType::Native,
                             },
                             config: serde_json::from_str(&p.config).unwrap_or_default(),
-                            depends_on: vec![],
-                            endpoint: None,
-                            required_capabilities: vec![],
+                            depends_on: p.depends_on.clone(),
+                            endpoint: p.endpoint.clone(),
+                            required_capabilities: p.capabilities.clone(),
                         })
                         .collect(),
                     on_version_mismatch: crate::pipeline::config::VersionMismatchPolicy::Skip,
@@ -308,7 +312,14 @@ struct StageData {
 struct PluginData {
     pub name: String,
     #[serde(rename = "type")]
-    pub ptype: String,
+    pub ptype: String,       // "native" | "sidecar" | "wasm" | "grpc"
     pub config: String,
+    #[serde(default)]
+    pub endpoint: Option<String>,  // 🔧 Sidecar/Wasm 端点 URL
+    #[serde(default)]
+    pub depends_on: Vec<String>,   // 🔧 依赖的插件名
+    #[serde(default)]
+    pub capabilities: Vec<String>,  // 所需能力
+    #[serde(default)]
     pub enabled: Option<bool>,
 }

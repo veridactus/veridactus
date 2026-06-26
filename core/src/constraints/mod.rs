@@ -5,7 +5,9 @@
 //! - 动态约束评估（流式预算预占）
 //! - 约束违反处理
 
-use crate::types::constraints::{BudgetStrategy, ConstraintsApplied, PrivacyLevel};
+use crate::types::constraints::{
+    ActivePrevention, BudgetStrategy, ConstraintsApplied, InstructionHierarchyMode, PrivacyLevel,
+};
 use crate::types::trace::Trace;
 use tracing::{info, warn};
 
@@ -32,21 +34,36 @@ impl Default for ConstraintEvaluationResult {
 }
 
 /// 约束评估器
+///
+/// 从 Trace 中提取所有约束应用快照，并对其执行标准检查。
+/// 修复：原先 get_constraints() 始终返回 None，导致
+/// check_instruction_hierarchy / check_guardrails / check_active_prevention
+/// 三个方法永远无法获取约束数据。
 pub struct ConstraintEvaluator {
+    /// 完整的约束快照引用（修复：之前丢失了此引用）
+    constraints: Option<ConstraintsApplied>,
     budget_limit: Option<f64>,
     budget_actual: Option<f64>,
     budget_strategy: Option<BudgetStrategy>,
     privacy_level: Option<PrivacyLevel>,
+    guardrails_active: Option<Vec<String>>,
+    instruction_hierarchy_mode: Option<InstructionHierarchyMode>,
+    active_prevention: Option<ActivePrevention>,
 }
 
 impl ConstraintEvaluator {
     pub fn new(trace: &Trace) -> Self {
-        let constraints = trace.constraints_applied.as_ref();
+        let constraints = trace.constraints_applied.clone();
+        let c = constraints.as_ref();
         Self {
-            budget_limit: constraints.and_then(|c| c.budget_limit_usd),
-            budget_actual: constraints.and_then(|c| c.budget_actual_usd),
-            budget_strategy: constraints.and_then(|c| c.budget_strategy.clone()),
-            privacy_level: constraints.and_then(|c| c.privacy_level.clone()),
+            budget_limit: c.and_then(|c| c.budget_limit_usd),
+            budget_actual: c.and_then(|c| c.budget_actual_usd),
+            budget_strategy: c.and_then(|c| c.budget_strategy.clone()),
+            privacy_level: c.and_then(|c| c.privacy_level.clone()),
+            guardrails_active: c.and_then(|c| c.guardrails_active.clone()),
+            instruction_hierarchy_mode: c.and_then(|c| c.instruction_hierarchy_mode.clone()),
+            active_prevention: c.and_then(|c| c.active_prevention.clone()),
+            constraints,
         }
     }
 
@@ -170,35 +187,26 @@ impl ConstraintEvaluator {
 
     /// 指令层次检查（§5.7.2）
     fn check_instruction_hierarchy(&self, result: &mut ConstraintEvaluationResult) {
-        if let Some(constraints) = self.get_constraints() {
-            if let Some(mode) = &constraints.instruction_hierarchy_mode {
-                let mode_str = serde_json::to_string(mode).unwrap_or_default();
-                match mode_str.as_str() {
-                    "\"strict\"" => {
-                        result
-                            .checks_passed
-                            .push("instruction_hierarchy_strict".to_string());
-                    }
-                    "\"warn\"" => {
-                        result
-                            .checks_passed
-                            .push("instruction_hierarchy_warn".to_string());
-                        result
-                            .warnings
-                            .push("Instruction hierarchy set to warn".to_string());
-                    }
-                    "\"verified\"" => {
-                        result
-                            .checks_passed
-                            .push("instruction_hierarchy_verified".to_string());
-                    }
-                    _ => {
-                        result
-                            .checks_passed
-                            .push("instruction_hierarchy_off".to_string());
-                    }
-                }
-            } else {
+        match &self.instruction_hierarchy_mode {
+            Some(InstructionHierarchyMode::Strict) => {
+                result
+                    .checks_passed
+                    .push("instruction_hierarchy_strict".to_string());
+            }
+            Some(InstructionHierarchyMode::Warn) => {
+                result
+                    .checks_passed
+                    .push("instruction_hierarchy_warn".to_string());
+                result
+                    .warnings
+                    .push("Instruction hierarchy set to warn".to_string());
+            }
+            Some(InstructionHierarchyMode::Verified) => {
+                result
+                    .checks_passed
+                    .push("instruction_hierarchy_verified".to_string());
+            }
+            Some(InstructionHierarchyMode::Off) | None => {
                 result
                     .checks_passed
                     .push("instruction_hierarchy_default".to_string());
@@ -208,14 +216,12 @@ impl ConstraintEvaluator {
 
     /// 守卫级别检查（§7.0）
     fn check_guardrails(&self, result: &mut ConstraintEvaluationResult) {
-        if let Some(constraints) = self.get_constraints() {
-            if let Some(active) = &constraints.guardrails_active {
-                if !active.is_empty() {
-                    for guardrail in active {
-                        result
-                            .checks_passed
-                            .push(format!("guardrail_{}", guardrail));
-                    }
+        if let Some(active) = &self.guardrails_active {
+            if !active.is_empty() {
+                for guardrail in active {
+                    result
+                        .checks_passed
+                        .push(format!("guardrail_{}", guardrail));
                 }
             }
         }
@@ -226,19 +232,82 @@ impl ConstraintEvaluator {
 
     /// 主动预防检查（§5.3.2）
     fn check_active_prevention(&self, result: &mut ConstraintEvaluationResult) {
-        if let Some(constraints) = self.get_constraints() {
-            if let Some(prevention) = &constraints.active_prevention {
-                if prevention.constrained_decoding == Some(true) {
-                    result
-                        .checks_passed
-                        .push("active_prevention_enabled".to_string());
-                }
+        if let Some(prevention) = &self.active_prevention {
+            if prevention.constrained_decoding == Some(true) || prevention.is_enabled() {
+                result
+                    .checks_passed
+                    .push("active_prevention_enabled".to_string());
             }
         }
     }
 
+    /// 返回完整约束快照的引用（修复：之前始终返回 None）
     fn get_constraints(&self) -> Option<&ConstraintsApplied> {
-        None
+        self.constraints.as_ref()
+    }
+}
+
+#[cfg(test)]
+mod constraint_tests {
+    use super::*;
+    use crate::types::constraints::{
+        ActivePrevention, BudgetStrategy, ConstraintsApplied, InstructionHierarchyMode, PrivacyLevel,
+    };
+    use crate::types::trace::Trace;
+
+    fn make_test_trace(constraints: ConstraintsApplied) -> Trace {
+        let mut t = Trace::new("test-model");
+        t.constraints_applied = Some(constraints);
+        t
+    }
+
+    #[test]
+    fn test_evaluator_returns_constraints() {
+        let c = ConstraintsApplied {
+            budget_limit_usd: Some(5.0),
+            budget_strategy: Some(BudgetStrategy::HardStop),
+            privacy_level: Some(PrivacyLevel::Masked),
+            guardrails_active: Some(vec!["G1".to_string(), "G2".to_string()]),
+            instruction_hierarchy_mode: Some(InstructionHierarchyMode::Strict),
+            active_prevention: Some(ActivePrevention {
+                constrained_decoding: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let t = make_test_trace(c);
+        let evaluator = ConstraintEvaluator::new(&t);
+        let result = evaluator.evaluate(&t);
+
+        assert!(result.allowed);
+        assert!(result.checks_passed.contains(&"budget_limit_valid".to_string()));
+        assert!(result.checks_passed.contains(&"privacy_masked".to_string()));
+        assert!(result.checks_passed.contains(&"instruction_hierarchy_strict".to_string()));
+        assert!(result.checks_passed.contains(&"guardrail_G1".to_string()));
+        assert!(result.checks_passed.contains(&"guardrail_G2".to_string()));
+        assert!(result.checks_passed.contains(&"active_prevention_enabled".to_string()));
+    }
+
+    #[test]
+    fn test_evaluator_without_constraints() {
+        let t = Trace::new("test-model");
+        let evaluator = ConstraintEvaluator::new(&t);
+        let result = evaluator.evaluate(&t);
+        assert!(result.allowed);
+        assert!(result.checks_passed.contains(&"budget_no_limit".to_string()));
+    }
+
+    #[test]
+    fn test_get_constraints_returns_value() {
+        let c = ConstraintsApplied {
+            budget_limit_usd: Some(1.0),
+            ..Default::default()
+        };
+        let mut t = Trace::new("test-model");
+        t.constraints_applied = Some(c);
+        let evaluator = ConstraintEvaluator::new(&t);
+        assert!(evaluator.get_constraints().is_some());
+        assert_eq!(evaluator.get_constraints().unwrap().budget_limit_usd, Some(1.0));
     }
 }
 

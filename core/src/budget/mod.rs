@@ -7,3 +7,5 @@
 //! - 集成到 `server.rs` 的 `handle_chat_completion` 预检阶段
 
 pub mod cost_estimation;
+pub mod stream_guard;
+

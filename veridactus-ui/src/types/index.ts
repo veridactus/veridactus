@@ -5,6 +5,10 @@ export interface TraceSummary {
   execution_state: string;
   proof_levels: string[];
   signature?: string;
+  /** Vault page fields */
+  cost_estimated_usd?: number;
+  tokens_count?: number;
+  safety?: 'safe' | 'flagged' | 'blocked';
 }
 
 export interface TraceDetail {
@@ -20,6 +24,10 @@ export interface TraceDetail {
   observations?: Observations;
   supply_chain?: any;
   engine_determinism?: any;
+  /** Vault detail fields */
+  cost_estimated_usd?: number;
+  tokens_count?: number;
+  signature?: string;
 }
 
 export interface Observations {

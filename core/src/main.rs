@@ -224,37 +224,55 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let http_client = reqwest::Client::new();
 
     // 初始化代理配置（使用 RwLock 支持动态更新）
-    let zhipu_api_key = std::env::var("ZHIPU_API_KEY")
-        .unwrap_or_else(|_| "89f155e74b424fe7b82ccbc11d12e791.mLDuSRdpV4YV5Bfz".to_string());
+    // 所有 API 密钥必须通过环境变量提供，严禁硬编码
+    let zhipu_api_key = std::env::var("ZHIPU_API_KEY").ok();
+    let mut model_routes = Vec::new();
+
+    // 智谱 AI GLM-5.1（仅当 ZHIPU_API_KEY 环境变量已设置时启用）
+    if let Some(ref key) = zhipu_api_key {
+        model_routes.push(veridactus_core::http::server::ModelRoute {
+            name: "glm-5.1".to_string(),
+            upstream_model: "glm-5.1".to_string(),
+            upstream_endpoint: "/api/paas/v4/chat/completions".to_string(),
+            is_default: true,
+            upstream_url: Some("https://open.bigmodel.cn".to_string()),
+            api_key: Some(key.clone()),
+            api_key_header: Some("Authorization".to_string()),
+            use_proxy: false,
+            proxy_url: None,
+        });
+        info!("Zhipu GLM-5.1 model route configured (key from ZHIPU_API_KEY env)");
+    } else {
+        warn!("ZHIPU_API_KEY not set, GLM-5.1 model route disabled");
+    }
+
+    // Ollama 本地模型（回退选项，无需 API 密钥）
+    model_routes.push(veridactus_core::http::server::ModelRoute {
+        name: "deepseek-r1:14b".to_string(),
+        upstream_model: "deepseek-r1:14b".to_string(),
+        upstream_endpoint: "/v1/chat/completions".to_string(),
+        is_default: zhipu_api_key.is_none(),
+        upstream_url: Some(upstream_url.clone()),
+        api_key: None,
+        api_key_header: None,
+        use_proxy: false,
+        proxy_url: None,
+    });
+
+    if model_routes.is_empty() {
+        warn!("No model routes configured. Set ZHIPU_API_KEY or configure models via control plane.");
+    }
+
+    let default_model = model_routes
+        .iter()
+        .find(|r| r.is_default)
+        .map(|r| r.name.clone())
+        .unwrap_or_else(|| "deepseek-r1:14b".to_string());
+
     let proxy_config = Arc::new(tokio::sync::RwLock::new(ProxyConfig {
         upstream_base_url: upstream_url.clone(),
-        default_model: "glm-5.1".to_string(),
-        model_routes: vec![
-            // 智谱 AI GLM-5.1（主要工作模型）
-            veridactus_core::http::server::ModelRoute {
-                name: "glm-5.1".to_string(),
-                upstream_model: "glm-5.1".to_string(),
-                upstream_endpoint: "/api/paas/v4/chat/completions".to_string(),
-                is_default: true,
-                upstream_url: Some("https://open.bigmodel.cn".to_string()),
-                api_key: Some(zhipu_api_key.clone()),
-                api_key_header: Some("Authorization".to_string()),
-                use_proxy: false,
-                proxy_url: None,
-            },
-            // DeepSeek（本地 Ollama，可能不可用）
-            veridactus_core::http::server::ModelRoute {
-                name: "deepseek-r1:14b".to_string(),
-                upstream_model: "deepseek-r1:14b".to_string(),
-                upstream_endpoint: "/v1/chat/completions".to_string(),
-                is_default: false,
-                upstream_url: Some(upstream_url.clone()),
-                api_key: None,
-                api_key_header: None,
-                use_proxy: false,
-                proxy_url: None,
-            },
-        ],
+        default_model,
+        model_routes,
         supported_versions: vec!["0.1".to_string(), "0.2".to_string()],
         detailed_errors: true,
         pipeline_plan: None,

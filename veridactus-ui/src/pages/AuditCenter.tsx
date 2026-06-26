@@ -276,7 +276,7 @@ export default function AuditCenter() {
         </motion.div>
       )}
 
-      <div style={{ display: 'flex', gap: 20, height: 'calc(100vh - 250px)' }}>
+      <div style={{ display: 'flex', gap: 20, height: '100%', minHeight: 400 }}>
         {/* 左侧面板 - Trace列表和分支管理 */}
         <div style={{ width: 380, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ position: 'relative' }}>

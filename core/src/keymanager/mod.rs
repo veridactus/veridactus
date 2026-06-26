@@ -4,5 +4,7 @@
 //! 管理签名密钥的生成、轮换、存储和审计。
 
 pub mod manager;
+pub mod resolver;
 
 pub use manager::*;
+pub use resolver::*;

@@ -1,0 +1,130 @@
+{{- if .Values.controlPlane.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-veridactus-cp
+  labels:
+    app.kubernetes.io/name: veridactus-cp
+    app.kubernetes.io/component: control-plane
+    {{- include "veridactus.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.controlPlane.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: veridactus-cp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: veridactus-cp
+        app.kubernetes.io/component: control-plane
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: control-plane
+          image: "{{ .Values.controlPlane.image.repository }}:{{ .Values.controlPlane.image.tag }}"
+          imagePullPolicy: {{ .Values.controlPlane.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.controlPlane.service.targetPort }}
+              protocol: TCP
+          env:
+            {{- range $k, $v := .Values.controlPlane.env }}
+            - name: {{ $k }}
+              value: {{ tpl $v $ | quote }}
+            {{- end }}
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ .Release.Name }}-cp-secrets, key: JWT_SECRET } }
+            - name: VERIDACTUS_ADMIN_KEY
+              valueFrom: { secretKeyRef: { name: {{ .Release.Name }}-cp-secrets, key: VERIDACTUS_ADMIN_KEY } }
+            - name: VERIDACTUS_MASTER_KEY
+              valueFrom: { secretKeyRef: { name: {{ .Release.Name }}-cp-secrets, key: VERIDACTUS_MASTER_KEY } }
+            - name: PG_PASS
+              valueFrom: { secretKeyRef: { name: {{ .Release.Name }}-cp-secrets, key: PG_PASSWORD } }
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: {{ .Values.controlPlane.service.targetPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: {{ .Values.controlPlane.service.targetPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources: {{- toYaml .Values.controlPlane.resources | nindent 12 }}
+{{- if .Values.controlPlane.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-veridactus-cp-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}-veridactus-cp
+  minReplicas: {{ .Values.controlPlane.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.controlPlane.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.controlPlane.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-veridactus-cp
+  labels:
+    app.kubernetes.io/name: veridactus-cp
+spec:
+  type: {{ .Values.controlPlane.service.type }}
+  ports:
+    - port: {{ .Values.controlPlane.service.port }}
+      targetPort: {{ .Values.controlPlane.service.targetPort }}
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: veridactus-cp
+{{- if .Values.controlPlane.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-cp-ingress
+  annotations: {{- toYaml .Values.controlPlane.ingress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.controlPlane.ingress.className }}
+  tls: {{- toYaml .Values.controlPlane.ingress.tls | nindent 4 }}
+  rules:
+    {{- range .Values.controlPlane.ingress.hosts }}
+    - host: {{ .host }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ $.Release.Name }}-veridactus-cp
+                port:
+                  number: {{ $.Values.controlPlane.service.port }}
+          {{- end }}
+    {{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-cp-secrets
+type: Opaque
+stringData:
+  JWT_SECRET: {{ .Values.controlPlane.secrets.JWT_SECRET | quote }}
+  VERIDACTUS_ADMIN_KEY: {{ .Values.controlPlane.secrets.VERIDACTUS_ADMIN_KEY | quote }}
+  VERIDACTUS_MASTER_KEY: {{ .Values.controlPlane.secrets.VERIDACTUS_MASTER_KEY | quote }}
+  PG_PASSWORD: {{ .Values.controlPlane.secrets.PG_PASSWORD | quote }}
+{{- end }}

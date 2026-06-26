@@ -1,0 +1,62 @@
+// VERIDACTUS Config Sync Service
+// 控制面向数据面推送 Pipeline、Plugin、Model 配置
+syntax = "proto3";
+
+package veridactus.v1;
+
+option go_package = "github.com/veridactus/proto/gen/veridactus/v1;veridactusv1";
+
+// ConfigSyncService 配置同步服务
+// Rust 数据面启动时/定期从此服务拉取最新配置
+service ConfigSyncService {
+  // SyncConfig 全量同步配置（数据面启动时调用）
+  rpc SyncConfig(SyncConfigRequest) returns (SyncConfigResponse);
+  
+  // WatchConfig 监听配置变更（服务端流式推送）
+  rpc WatchConfig(WatchConfigRequest) returns (stream ConfigChangeEvent);
+}
+
+message SyncConfigRequest {
+  // 数据面实例 ID
+  string instance_id = 1;
+  // 当前已知的配置版本（首次为 0）
+  int64 config_version = 2;
+}
+
+message SyncConfigResponse {
+  // 当前配置版本号
+  int64 config_version = 1;
+  // Pipeline 列表（JSON 编码）
+  repeated string pipelines = 2;
+  // Plugin 列表（JSON 编码）
+  repeated string plugins = 3;
+  // Model 配置列表（JSON 编码）
+  repeated string models = 4;
+  // Policy 列表（JSON 编码）
+  repeated string policies = 5;
+  // Redis URL（数据面连接用）
+  string redis_url = 6;
+  // S3/MinIO 端点（对象存储）
+  string s3_endpoint = 7;
+  // S3 Bucket
+  string s3_bucket = 8;
+  // 管理 API Key（用于数据面回调控制面）
+  string admin_api_key = 9;
+}
+
+message WatchConfigRequest {
+  string instance_id = 1;
+}
+
+message ConfigChangeEvent {
+  // 变更类型：pipeline/plugin/model/policy
+  string change_type = 1;
+  // 操作：create/update/delete
+  string action = 2;
+  // 实体 ID
+  string entity_id = 3;
+  // 实体数据（JSON 编码）
+  string payload = 4;
+  // 新配置版本号
+  int64 config_version = 5;
+}
