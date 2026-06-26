@@ -38,12 +38,11 @@ const PlaygroundPage = lazy(() => import('./engines/devhub/PlaygroundPage'));
 
 function LoadingScreen() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-primary)' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 40, height: 40, border: '3px solid var(--border-default)', borderTopColor: '#00d4aa', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
-        <p style={{ color: 'var(--text-secondary)', fontSize: 14, fontWeight: 500 }}>Loading VERIDACTUS...</p>
+    <div className="flex items-center justify-center h-screen bg-[var(--bg-primary)]">
+      <div className="text-center">
+        <div className="w-10 h-10 border-[3px] border-[var(--border-default)] border-t-[#00d4aa] rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-sm font-medium text-[var(--text-secondary)]">Loading VERIDACTUS...</p>
       </div>
-      <style>{'@keyframes spin { to { transform: rotate(360deg); } }'}</style>
     </div>
   );
 }
@@ -59,7 +58,7 @@ function AppLayout() {
 
   return (
     <AuthGuard>
-    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg-primary)', transition: 'background 0.3s ease', overflow: 'hidden' }}>
+    <div className="flex h-screen overflow-hidden bg-[var(--bg-primary)]" style={{ transition: 'background 0.3s ease' }}>
       <DataFlowBackground />
       <Sidebar />
       <UserHeader />
