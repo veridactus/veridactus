@@ -168,15 +168,17 @@ export default function LoginPage() {
             ))}
           </div>
 
-          {/* Method 切换 */}
+          {/* Method 切换 — 仅邮箱（手机号/微信后续开放）*/}
           {tab==='register' && (
             <div className="flex gap-2 mb-5">
-              {([{id:'email' as Method, icon:<Mail size={14}/>, label:'邮箱'},{id:'phone' as Method, icon:<Smartphone size={14}/>, label:'手机号'}]).map(m=>(
-                <button key={m.id} onClick={()=>setMethod(m.id)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-all ${method===m.id?'border-[#6c5ce7] bg-[rgba(108,92,231,0.1)] text-[#6c5ce7]':'border-white/10 bg-transparent text-[#8892b0]'}`}>
-                  {m.icon}{m.label}
-                </button>
-              ))}
+              <span className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg border text-xs font-medium border-[#6c5ce7] bg-[rgba(108,92,231,0.1)] text-[#6c5ce7]">
+                <Mail size={14}/>邮箱
+              </span>
+              {/* 手机号注册 — 后续开放
+              <button onClick={()=>setMethod('phone')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-all ${method==='phone'?'border-[#6c5ce7] bg-[rgba(108,92,231,0.1)] text-[#6c5ce7]':'border-white/10 bg-transparent text-[#8892b0]'}`}>
+                <Smartphone size={14}/>手机号
+              </button> */}
             </div>
           )}
 
@@ -211,28 +213,14 @@ export default function LoginPage() {
               )}
             </>)}
 
+            {/* 手机号注册 — 后续开放
             {method==='phone' && (<>
               <div className="relative"><Smartphone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8892b0] z-10"/>
                 <input type="tel" placeholder="手机号 (如 +8613800138000)" value={phone} onChange={e=>setPhone(e.target.value)} className="input-field pl-10"/>
               </div>
-              {!phoneVerified?(
-                <div className="flex gap-2.5">
-                  {phoneSent?(<>
-                    <div className="relative flex-1"><input type="text" placeholder="验证码" value={phoneCode} onChange={e=>setPhoneCode(e.target.value)} className="input-field"/></div>
-                    <button type="button" onClick={handleVerifyCode} disabled={loading} className="bg-[#00d4aa] border-none px-5 text-sm font-semibold text-black cursor-pointer rounded-btn disabled:opacity-50">验证</button>
-                  </>):(
-                    <button type="button" onClick={handleSendCode} disabled={loading||phoneCountdown>0}
-                      className={`py-3 px-5 text-sm font-semibold text-white cursor-pointer rounded-btn w-full border-none ${phoneCountdown>0?'bg-[rgba(108,92,231,0.1)] cursor-default':'bg-[#6c5ce7]'}`}>
-                      {phoneCountdown>0?`重新发送 (${phoneCountdown}s)`:'发送验证码'}
-                    </button>
-                  )}
-                </div>
-              ):(
-                <div className="flex items-center gap-1.5 p-2 rounded-lg bg-[rgba(0,212,170,0.1)] border border-[rgba(0,212,170,0.2)] text-sm text-[#00d4aa]">
-                  <Check size={14}/> 手机号已验证: {phone}
-                </div>
-              )}
+              ...
             </>)}
+            */}
 
             {tab==='register' && (
               <div className="flex gap-2 mt-1">
@@ -266,10 +254,11 @@ export default function LoginPage() {
           </div>
 
           <div className="flex gap-2.5 flex-wrap">
+            {/* 微信登录 — 后续开放
             <motion.button whileHover={{scale:1.02}} whileTap={{scale:0.98}} onClick={()=>setShowWeChat(true)} disabled={loading}
               className="flex-1 flex items-center justify-center gap-2 py-[11px] rounded-btn border border-[rgba(7,193,96,0.3)] bg-gradient-to-r from-[rgba(7,193,96,0.15)] to-[rgba(7,193,96,0.05)] text-white text-sm font-semibold cursor-pointer">
               <span className="text-lg">💬</span>微信登录
-            </motion.button>
+            </motion.button> */}
             {githubAvailable && (
               <motion.a href={githubUrl} whileHover={{scale:1.02}} whileTap={{scale:0.98}}
                 className="flex-1 flex items-center justify-center gap-2 py-[11px] rounded-btn bg-[#24292e] border border-white/10 text-white text-sm font-semibold no-underline">
@@ -284,13 +273,14 @@ export default function LoginPage() {
             )}
           </div>
 
-          <p className="text-center text-[10px] text-[#5a6a8a] mt-3 leading-relaxed">微信扫码即可登录，首次登录自动创建账户<br/>登录后可绑定手机号，开启完整功能</p>
           <p className="text-center text-[10px] text-[#5a6a8a] mt-5">VERIDACTUS v0.3.0 · 注册即表示同意《服务条款》和《隐私政策》</p>
         </motion.div>
       </div>
 
+      {/* 微信扫码 — 后续开放
       <WeChatQRModal isOpen={showWeChat} onClose={()=>setShowWeChat(false)}
         onSuccess={(needBindPhone)=>{ navigate(needBindPhone?'/bind-phone':from,{replace:true}); }}/>
+      */}
     </div>
   );
 }
