@@ -5,6 +5,8 @@ import { useI18n } from '../i18n';
 import { Cpu, Plus, Edit, Trash2, Loader, Check, X, ArrowLeft } from 'lucide-react';
 import { getModelsConfig, createModel, updateModel, deleteModel } from '../api';
 import type { ModelConfig } from '../types';
+import { ConfirmDialog } from '../components/ui/Dialog';
+import { toast } from '../components/ui/Toast';
 
 interface EditingModel {
   id: string;
@@ -25,6 +27,7 @@ export default function Models() {
   const [models, setModels] = useState<ModelConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [modelToDelete, setModelToDelete] = useState<ModelConfig | null>(null);
   const [editingModel, setEditingModel] = useState<EditingModel | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState({
@@ -76,7 +79,7 @@ export default function Models() {
       resetForm();
       await loadModels();
     } catch (err) {
-      alert('Failed to create model');
+      toast.error('Failed to create model');
       console.error(err);
     }
   };
@@ -99,19 +102,22 @@ export default function Models() {
       setEditingModel(null);
       await loadModels();
     } catch (err) {
-      alert('Failed to update model');
+      toast.error('Failed to update model');
       console.error(err);
     }
   };
 
-  const handleDelete = async (model: ModelConfig) => {
-    if (!confirm(t('models.confirm_delete'))) return;
+  const handleConfirmDelete = async () => {
+    if (!modelToDelete) return;
     try {
-      await deleteModel(model.id);
+      await deleteModel(modelToDelete.id);
       await loadModels();
+      toast.success('模型已删除');
     } catch (err) {
-      alert('Failed to delete model');
+      toast.error('Failed to delete model');
       console.error(err);
+    } finally {
+      setModelToDelete(null);
     }
   };
 
@@ -296,7 +302,7 @@ export default function Models() {
                     <button className="btn-secondary" style={{ padding: '4px 8px' }} onClick={() => startEdit(m)} title={t('models.edit')}>
                       <Edit size={12} />
                     </button>
-                    <button className="btn-secondary" style={{ padding: '4px 8px', color: '#ff7675' }} onClick={() => handleDelete(m)} title={t('models.delete')}>
+                    <button className="btn-secondary" style={{ padding: '4px 8px', color: '#ff7675' }} onClick={() => setModelToDelete(m)} title={t('models.delete')}>
                       <Trash2 size={12} />
                     </button>
                   </div>
@@ -422,6 +428,16 @@ export default function Models() {
           </GlassCard>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!modelToDelete}
+        onClose={() => setModelToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title="删除模型"
+        message={`确定删除 ${modelToDelete?.name || ''}？删除后无法恢复。`}
+        confirmText="删除"
+        danger
+      />
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }

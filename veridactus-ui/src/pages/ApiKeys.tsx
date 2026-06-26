@@ -5,6 +5,8 @@ import { useI18n } from '../i18n';
 import { Key, Shield, Plus, Copy, Eye, EyeOff, RotateCcw, Trash2, Loader } from 'lucide-react';
 import { getApiKeys, createApiKey, deleteApiKey, rotateApiKey } from '../api';
 import type { ApiKey } from '../types';
+import { PromptDialog, ConfirmDialog } from '../components/ui/Dialog';
+import { toast } from '../components/ui/Toast';
 
 export default function ApiKeys() {
   const { t } = useI18n();
@@ -12,6 +14,9 @@ export default function ApiKeys() {
   const [loading, setLoading] = useState(true);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  // 对话框状态
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<null | { type: 'rotate' | 'delete'; key: ApiKey }>(null);
 
   const loadKeys = async () => {
     try {
@@ -40,36 +45,37 @@ export default function ApiKeys() {
     });
   };
 
-  const handleGenerate = async () => {
-    const name = prompt(t('apikey.generate') + ' - ' + t('apikey.name'));
-    if (!name) return;
+  const handleGenerate = () => { setPromptOpen(true); };
+
+  const doGenerateKey = async (name: string) => {
     try {
       await createApiKey(name);
       await loadKeys();
+      toast.success('API Key 创建成功');
     } catch (err) {
-      alert('Failed to generate key');
+      toast.error('Failed to generate key');
       console.error(err);
     }
   };
 
   const handleRotate = async (key: ApiKey) => {
-    if (!confirm(t('apikey.rotate') + '?')) return;
     try {
       await rotateApiKey(key.id);
       await loadKeys();
+      toast.success('API Key 轮换成功');
     } catch (err) {
-      alert('Failed to rotate key');
+      toast.error('Failed to rotate key');
       console.error(err);
     }
   };
 
   const handleDelete = async (key: ApiKey) => {
-    if (!confirm(t('models.confirm_delete'))) return;
     try {
       await deleteApiKey(key.id);
       await loadKeys();
+      toast.success('API Key 已删除');
     } catch (err) {
-      alert('Failed to delete key');
+      toast.error('Failed to delete key');
       console.error(err);
     }
   };
@@ -152,10 +158,10 @@ export default function ApiKeys() {
                 <button className="btn-secondary" style={{ padding: '6px 10px' }} onClick={() => copyKey(k.key)} title={t('apikey.copy')}>
                   <Copy size={14} />
                 </button>
-                <button className="btn-secondary" style={{ padding: '6px 10px' }} onClick={() => handleRotate(k)} title={t('apikey.rotate')}>
+                <button className="btn-secondary" style={{ padding: '6px 10px' }} onClick={() => setConfirmAction({ type: 'rotate', key: k })} title={t('apikey.rotate')}>
                   <RotateCcw size={14} />
                 </button>
-                <button className="btn-secondary" style={{ padding: '6px 10px', color: '#ff7675' }} onClick={() => handleDelete(k)} title={t('models.delete')}>
+                <button className="btn-secondary" style={{ padding: '6px 10px', color: '#ff7675' }} onClick={() => setConfirmAction({ type: 'delete', key: k })} title={t('models.delete')}>
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -171,6 +177,32 @@ export default function ApiKeys() {
         @keyframes spin { to { transform: rotate(360deg); } }
         .spin { animation: spin 0.8s linear infinite; }
       `}</style>
+
+      {/* 对话框组件 */}
+      <PromptDialog
+        open={promptOpen}
+        onClose={() => setPromptOpen(false)}
+        onSubmit={doGenerateKey}
+        title="创建 API Key"
+        placeholder="输入 Key 名称"
+      />
+      <ConfirmDialog
+        open={confirmAction?.type === 'rotate'}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={() => { if (confirmAction?.key) handleRotate(confirmAction.key); }}
+        title="轮换 API Key"
+        message="轮换后旧 Key 立即失效，是否继续？"
+        confirmText="轮换"
+      />
+      <ConfirmDialog
+        open={confirmAction?.type === 'delete'}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={() => { if (confirmAction?.key) handleDelete(confirmAction.key); }}
+        title="删除 API Key"
+        message="删除后无法恢复，是否继续？"
+        confirmText="删除"
+        danger
+      />
     </motion.div>
   );
 }

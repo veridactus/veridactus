@@ -5,6 +5,8 @@ import GlassCard from '../components/ui/GlassCard';
 import { useI18n } from '../i18n';
 import { getPipelines, createPipeline, deletePipeline } from '../api';
 import type { Pipeline } from '../types';
+import { ConfirmDialog } from '../components/ui/Dialog';
+import { toast } from '../components/ui/Toast';
 import {
   GitBranch, Plus, Play, CheckCircle, Zap, Clock, Shield,
   ChevronRight, Trash2, Copy, Star, MoreVertical, Sparkles,
@@ -196,7 +198,7 @@ function PipelineCard({ pipeline, index, onEdit, onAdvancedEdit, onDelete }: Pip
                         <Settings size={14} style={{ color: '#74b9ff' }} /> 高级配置
                       </button>
                       <button
-                        onClick={() => { setShowMenu(false); }}
+                        onClick={() => { setShowMenu(false); onDelete(pipeline.plan_id!); }}
                         style={{
                           width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
                           background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: 8,
@@ -307,6 +309,7 @@ export default function Pipelines() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const seeded = useRef(false);
 
   useEffect(() => {
@@ -340,12 +343,12 @@ export default function Pipelines() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除这个流水线吗？')) return;
     try {
       await deletePipeline(id);
       setPipelines(prev => prev.filter(p => p.plan_id !== id));
+      toast.success('流水线已删除');
     } catch (err) {
-      alert('删除失败');
+      toast.error('删除失败');
       console.error(err);
     }
   };
@@ -510,7 +513,7 @@ export default function Pipelines() {
               index={idx}
               onEdit={handleEdit}
               onAdvancedEdit={handleAdvancedEdit}
-              onDelete={handleDelete}
+              onDelete={(id: string) => setDeleteId(id)}
             />
           ))}
         </div>
@@ -532,6 +535,15 @@ export default function Pipelines() {
           VERIDACTUS 流水线遵循 <strong style={{ color: 'var(--text-primary)' }}>Protocol v0.2.1</strong>，
           支持同步快速路径治理和异步可信路径验证，确保 AI 应用的合规性和安全性
         </p>
+      <ConfirmDialog
+        open={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => { if (deleteId) { handleDelete(deleteId); setDeleteId(null); } }}
+        title="删除流水线"
+        message="确定要删除这个流水线吗？删除后无法恢复。"
+        confirmText="删除"
+        danger
+      />
       </motion.div>
     </motion.div>
   );

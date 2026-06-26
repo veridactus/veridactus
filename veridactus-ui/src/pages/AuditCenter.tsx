@@ -7,6 +7,7 @@ import ExecutionContract from '../components/viz/ExecutionContract';
 import ObservationsPanel from '../components/viz/ObservationsPanel';
 import StateMachineTimeline from '../components/viz/StateMachineTimeline';
 import { useI18n } from '../i18n';
+import { ConfirmDialog } from '../components/ui/Dialog';
 import { 
   getTracesFromDataPlane, 
   getTraceDetail,
@@ -44,6 +45,8 @@ export default function AuditCenter() {
   const [selectedTraces, setSelectedTraces] = useState<string[]>([]);
   const [showBranchPanel, setShowBranchPanel] = useState(false);
   const [showMetricsPanel, setShowMetricsPanel] = useState(false);
+  const [deleteBranchId, setDeleteBranchId] = useState<string | null>(null);
+  const [deleteTracesCount, setDeleteTracesCount] = useState<number>(0);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isReplaying, setIsReplaying] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
@@ -159,16 +162,7 @@ export default function AuditCenter() {
     }
   };
 
-  const handleDeleteBranch = async (branchId: string) => {
-    if (confirm('Are you sure you want to delete this branch?')) {
-      try {
-        await deleteReplayBranch(branchId);
-        loadBranches();
-      } catch (err) {
-        console.error('Failed to delete branch:', err);
-      }
-    }
-  };
+  const handleDeleteBranch = (branchId: string) => { setDeleteBranchId(branchId); };
 
   const handleExportSelected = async () => {
     if (selectedTraces.length === 0) return;
@@ -186,16 +180,33 @@ export default function AuditCenter() {
     }
   };
 
-  const handleDeleteSelected = async () => {
+  const handleDeleteSelected = () => {
     if (selectedTraces.length === 0) return;
-    if (confirm(`Are you sure you want to delete ${selectedTraces.length} traces?`)) {
-      try {
-        await batchDeleteTraces(selectedTraces);
-        setSelectedTraces([]);
-        loadTraces();
-      } catch (err) {
-        console.error('Delete failed:', err);
-      }
+    setDeleteTracesCount(selectedTraces.length);
+  };
+
+  const confirmDeleteBranch = async () => {
+    if (!deleteBranchId) return;
+    try {
+      await deleteReplayBranch(deleteBranchId);
+      loadBranches();
+    } catch (err) {
+      console.error('Failed to delete branch:', err);
+    } finally {
+      setDeleteBranchId(null);
+    }
+  };
+
+  const confirmDeleteTraces = async () => {
+    if (selectedTraces.length === 0) return;
+    try {
+      await batchDeleteTraces(selectedTraces);
+      setSelectedTraces([]);
+      loadTraces();
+    } catch (err) {
+      console.error('Delete failed:', err);
+    } finally {
+      setDeleteTracesCount(0);
     }
   };
 
@@ -939,6 +950,25 @@ export default function AuditCenter() {
             </AnimatePresence>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!deleteBranchId}
+        onClose={() => setDeleteBranchId(null)}
+        onConfirm={confirmDeleteBranch}
+        title="删除分支"
+        message="确定要删除这个分支吗？"
+        confirmText="删除"
+        danger
+      />
+      <ConfirmDialog
+        open={deleteTracesCount > 0}
+        onClose={() => setDeleteTracesCount(0)}
+        onConfirm={confirmDeleteTraces}
+        title="批量删除 Traces"
+        message={`确定要删除 ${deleteTracesCount} 条 Trace 记录吗？`}
+        confirmText="删除"
+        danger
+      />
     </motion.div>
   );
 }

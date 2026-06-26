@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import GlassCard from '../components/ui/GlassCard';
 import { useI18n } from '../i18n';
+import { toast } from '../components/ui/Toast';
 import { getPipeline, updatePipeline, createPipeline } from '../api';
 import type { Pipeline } from '../types';
 import {
@@ -113,7 +114,7 @@ export default function PipelineEdit() {
       }
       navigate('/pipelines');
     } catch (err) {
-      alert('保存失败');
+      toast.error('保存失败');
       console.error(err);
     } finally {
       setSaving(false);

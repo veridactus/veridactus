@@ -9,6 +9,7 @@ import UserHeader from './components/layout/UserHeader';
 import BottomStatusBar from './components/layout/BottomStatusBar';
 import DataFlowBackground from './components/viz/DataFlowBackground';
 import { useMetricsStream } from './hooks/useMetricsStream';
+import { ToastContainer, useToastMount } from './components/ui/Toast';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Pipelines = lazy(() => import('./pages/Pipelines'));
@@ -50,6 +51,7 @@ function LoadingScreen() {
 function AppLayout() {
   const theme = useThemeStore(s => s.theme);
   useMetricsStream();
+  useToastMount();
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -100,6 +102,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <I18nProvider>
+        <ToastContainer />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/bind-phone" element={<PhoneBind />} />

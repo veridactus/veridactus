@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, CheckCircle, Palette, Image, Loader2, X } from 'lucide-react';
+import { toast } from '../components/ui/Toast';
 
 const STORAGE_KEY = 'veridactus_brand';
 const API = (import.meta as any)?.env?.VITE_API_URL || '';
@@ -52,7 +53,7 @@ export default function BrandSettings() {
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { alert('Logo 文件不能超过 2MB'); return; }
+    if (file.size > 2 * 1024 * 1024) { toast.warning('Logo 文件不能超过 2MB'); return; }
 
     setUploading(true);
     try {
@@ -66,7 +67,7 @@ export default function BrandSettings() {
       setLogoPreview(dataUrl);
       setLogoUrl(dataUrl);
     } catch {
-      alert('Logo 上传失败');
+      toast.error('Logo 上传失败');
     } finally {
       setUploading(false);
     }
@@ -103,7 +104,7 @@ export default function BrandSettings() {
 
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch { alert('保存失败'); }
+    } catch { toast.error('保存失败'); }
     finally { setSaving(false); }
   };
 
