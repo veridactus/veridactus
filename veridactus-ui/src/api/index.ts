@@ -1,9 +1,38 @@
 import type { TraceSummary, TraceDetail, Pipeline, PluginMeta, Policy, ModelInfo, ApiKey, ModelConfig, VerificationResult, ReplayResult, ReplayBranch, RealTimeMetrics } from '../types';
 import { transformTraceList, transformTraceDetail } from './transform';
 
+// ==================== 统一错误类型 ====================
+
+/** API 错误 — 携带结构化错误信息，上游可直接用于 Toast 展示 */
+export class ApiError extends Error {
+  public status: number;
+  public code: string;
+  public detail: string;
+  public traceId?: string;
+
+  constructor(status: number, code: string, detail: string, traceId?: string) {
+    super(`[${status}] ${code}: ${detail}`);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.detail = detail;
+    this.traceId = traceId;
+  }
+
+  /** 用户友好的错误消息 */
+  get userMessage(): string {
+    if (this.status === 401) return '登录已过期，请重新登录';
+    if (this.status === 403) return '没有权限执行此操作';
+    if (this.status === 429) return '请求过于频繁，请稍后重试';
+    if (this.status >= 500) return '服务器错误，请稍后重试';
+    return this.detail || `请求失败 (${this.status})`;
+  }
+}
+
+// ==================== Admin Key ====================
+
 /// 用于控制面管理 API 的 Admin Key（从构建时环境变量或 localStorage 获取）
 function getAdminKey(): string | null {
-  // 优先从 URL 参数获取（开发环境）
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search);
     const key = params.get('admin_key');
@@ -11,11 +40,12 @@ function getAdminKey(): string | null {
       localStorage.setItem('veridactus_admin_key', key);
       return key;
     }
-    // 回退到 localStorage
     return localStorage.getItem('veridactus_admin_key');
   }
   return null;
 }
+
+// ==================== 内部请求工具 ====================
 
 async function fetchJSON(url: string, isCpApi = false): Promise<any> {
   const headers: Record<string, string> = {};
@@ -24,7 +54,16 @@ async function fetchJSON(url: string, isCpApi = false): Promise<any> {
     if (adminKey) headers['X-Admin-Key'] = adminKey;
   }
   const res = await fetch(url, { headers });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
+  if (!res.ok) {
+    let code = 'http_error';
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      if (body.error) code = body.error;
+      if (body.message) detail = body.message;
+    } catch {}
+    throw new ApiError(res.status, code, detail);
+  }
   return res.json();
 }
 
@@ -37,7 +76,16 @@ async function cpFetch(url: string, method: string, body?: any): Promise<any> {
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
+  if (!res.ok) {
+    let code = 'http_error';
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      if (body.error) code = body.error;
+      if (body.message) detail = body.message;
+    } catch {}
+    throw new ApiError(res.status, code, detail);
+  }
   return res.json();
 }
 
