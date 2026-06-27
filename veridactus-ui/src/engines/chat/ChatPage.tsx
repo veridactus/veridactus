@@ -21,7 +21,8 @@ function save(k:string,v:any){try{localStorage.setItem(k,JSON.stringify(v))}catc
 
 async function fetchModels(): Promise<AvailableModel[]> {
   try{const r=await fetch('/models');if(r.ok){const d=await r.json();return(d.data||[]).map((m:any,i:number)=>({id:m.id,name:m.id,provider:m.owned_by||'',color:MODEL_COLORS[i%8],is_default:!!m.is_default}));}}catch{}
-  try{const r=await fetch('/api/v1/models');if(r.ok){const d=await r.json();return(d.models||[]).map((m:any,i:number)=>({id:m.name,name:m.name,provider:'',color:MODEL_COLORS[i%8],is_default:!!m.is_default}));}}catch{return FALLBACK;}
+  try{const r=await fetch('/api/v1/models');if(r.ok){const d=await r.json();return(d.models||[]).map((m:any,i:number)=>({id:m.name,name:m.name,provider:'',color:MODEL_COLORS[i%8],is_default:!!m.is_default}));}}catch{}
+  return FALLBACK;
 }
 
 // ==================== Component ====================
