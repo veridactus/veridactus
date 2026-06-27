@@ -3734,28 +3734,44 @@ async fn forward_to_upstream_streaming(
             break response;
         }
 
-        // 401/403 → 刷新 API key 并重试
+        // 401/403 且无 API key → 直接失败，不重试（避免阻塞）
+        if (status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN)
+            && effective_api_key.is_none()
+        {
+            let body_bytes = response.bytes().await.unwrap_or_default();
+            let body_str = String::from_utf8_lossy(&body_bytes);
+            warn!("Upstream auth failed for model {}: no API key configured", route.name);
+            journal.append_event(JournalEventType::StreamError {
+                error: format!("鉴权失败(401): 模型 {} 未配置 API key，请先在 LLM 模型管理中添加 API 密钥", route.name),
+                truncated: true,
+            });
+            return Err((status, Json(ErrorResponse::new_minimal(body_str, VeridactusErrorCode::UpstreamDisconnect))));
+        }
+
+        // 401/403 有 API key → 刷新并重试
         if (status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN) && retry_count < MAX_AUTH_RETRIES {
             retry_count += 1;
             let body_bytes = response.bytes().await.unwrap_or_default();
             let body_str = String::from_utf8_lossy(&body_bytes);
-            warn!("Upstream auth failed ({}), attempt {}/{} for model {}: refreshing API key via control plane...",
-                status, retry_count, MAX_AUTH_RETRIES, route.name);
-
-            if let Some(fresh) = refresh_model_api_key(state, &route.name).await {
-                if let Some(_) = &fresh {
-                    effective_api_key = fresh;
-                    info!("API key refreshed for {}, retrying upstream...", route.name);
+            warn!("Upstream auth failed with key, attempt {}/{} for {}: refreshing via control plane...", retry_count, MAX_AUTH_RETRIES, route.name);
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                refresh_model_api_key(state, &route.name),
+            ).await {
+                Ok(Some(Some(k))) if !k.is_empty() => {
+                    effective_api_key = Some(k);
+                    info!("API key refreshed, retrying...");
                     continue;
                 }
+                _ => {
+                    warn!("Auth retry failed for {} after {} attempts", route.name, retry_count);
+                    journal.append_event(JournalEventType::StreamError {
+                        error: format!("鉴权失败(401): 模型 {} API key 无效或不可用 ({}/3)", route.name, retry_count),
+                        truncated: true,
+                    });
+                    return Err((status, Json(ErrorResponse::new_minimal(body_str, VeridactusErrorCode::UpstreamDisconnect))));
+                }
             }
-            // No fresh key → fail
-            warn!("Auth retry failed for model {} after {} attempts: no API key available in control plane", route.name, retry_count);
-            journal.append_event(JournalEventType::StreamError {
-                error: format!("鉴权失败(401/403): 模型 {} 缺少有效 API key (已尝试 {} 次刷新)", route.name, retry_count),
-                truncated: true,
-            });
-            return Err((status, Json(ErrorResponse::new_minimal(body_str, VeridactusErrorCode::UpstreamDisconnect))));
         }
 
         // Non-auth error → no retry
