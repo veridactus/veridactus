@@ -191,6 +191,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let upstream_api_key = std::env::var("UPSTREAM_API_KEY").unwrap_or_default();
     let control_plane_url =
         std::env::var("CONTROL_PLANE_URL").unwrap_or_else(|_| "http://localhost:8081".to_string());
+    let admin_key = std::env::var("VERIDACTUS_ADMIN_KEY").unwrap_or_default();
 
     // 初始化存储（自动检测后端：memory | file | postgres）
     let backend = StoreBackend::detect();
@@ -360,6 +361,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         agent_chain_manager,
         gdpr_manager,
         hook_registry: Arc::new(veridactus_core::hooks::registry::HookRegistry::new()),
+        control_plane_url: control_plane_url.clone(),
+        admin_key: admin_key.clone(),
     };
 
     // 创建路由

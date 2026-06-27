@@ -143,6 +143,10 @@ pub struct AppState {
     pub gdpr_manager: Arc<GdprErasureManager>,
     /// 钩子注册中心（§6.3）
     pub hook_registry: Arc<crate::hooks::registry::HookRegistry>,
+    /// 控制面地址（用于 401 重试时重新拉取 API key）
+    pub control_plane_url: String,
+    /// 控制面 Admin Key
+    pub admin_key: String,
 }
 
 impl AppState {
@@ -172,6 +176,8 @@ impl AppState {
             compliance_mapper: Arc::new(ComplianceMapper::new()),
             gdpr_manager: Arc::new(GdprErasureManager::new(Box::new(InMemoryGdprStorage))),
             hook_registry: Arc::new(crate::hooks::registry::HookRegistry::new()),
+            control_plane_url: "http://localhost:8081".to_string(),
+            admin_key: String::new(),
         }
     }
 }
@@ -3647,6 +3653,43 @@ fn check_instruction_hierarchy_violation(
     Some((severity_str, event))
 }
 
+/// 401 重试：从控制面拉取最新模型 API key 并更新内存路由
+async fn refresh_model_api_key(state: &AppState, model_name: &str) -> Option<Option<String>> {
+    let url = format!("{}/api/v1/models", state.control_plane_url.trim_end_matches('/'));
+    let mut req = state.http_client.get(&url);
+    if !state.admin_key.is_empty() {
+        req = req.header("X-Admin-Key", &state.admin_key);
+    }
+    let resp = req.send().await.ok()?;
+    if !resp.status().is_success() {
+        warn!("refresh_model_api_key: CP returned {}", resp.status());
+        return None;
+    }
+    let body: serde_json::Value = resp.json().await.ok()?;
+    let models = body.get("models")?.as_array()?;
+    let mut api_key: Option<String> = None;
+    // 更新内存中的模型路由
+    let mut config = state.config.write().await;
+    for m in models {
+        let name = m.get("name")?.as_str()?;
+        let key = m.get("api_key").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(|s| s.to_string());
+        if name == model_name {
+            api_key = key.clone();
+        }
+        if let Some(route) = config.model_routes.iter_mut().find(|r| r.name == name) {
+            if key.is_some() {
+                route.api_key = key;
+            }
+        }
+    }
+    if let Some(ref k) = api_key {
+        info!("refresh_model_api_key: refreshed key for model {} (len={})", model_name, k.len());
+    } else {
+        warn!("refresh_model_api_key: model {} has no API key in control plane", model_name);
+    }
+    Some(api_key)
+}
+
 /// 流式转发到上游 LLM（治理模式）
 async fn forward_to_upstream_streaming(
     state: &AppState,
@@ -3661,42 +3704,61 @@ async fn forward_to_upstream_streaming(
 ) -> Result<axum::response::Response, (StatusCode, Json<ErrorResponse>)> {
     use futures::StreamExt;
 
-    let mut upstream_body = body_json.clone();
-    // 替换为上游真实模型名
-    if let Some(obj) = upstream_body.as_object_mut() {
-        obj.insert(
-            "model".to_string(),
-            serde_json::Value::String(route.upstream_model.clone()),
-        );
-    }
+    const MAX_AUTH_RETRIES: u32 = 3;
+    let mut effective_api_key = route.api_key.clone();
+    let mut retry_count: u32 = 0;
 
-    let mut req_builder = state.http_client.post(upstream_url).json(&upstream_body);
-
-    // 添加 API Key 认证（上游 LLM 需要）
-    if let Some(ref api_key) = route.api_key {
-        if let Some(ref header) = route.api_key_header {
-            if header.to_lowercase() == "authorization" {
-                req_builder = req_builder.header(header.as_str(), format!("Bearer {}", api_key));
-            } else {
-                req_builder = req_builder.header(header.as_str(), api_key);
+    let response = loop {
+        let mut _upstream_body = body_json.clone();
+        if let Some(obj) = _upstream_body.as_object_mut() {
+            obj.insert("model".to_string(), serde_json::Value::String(route.upstream_model.clone()));
+        }
+        let mut req_builder = state.http_client.post(upstream_url).json(&_upstream_body);
+        if let Some(ref api_key) = effective_api_key {
+            if let Some(ref header) = route.api_key_header {
+                if header.to_lowercase() == "authorization" {
+                    req_builder = req_builder.header(header.as_str(), format!("Bearer {}", api_key));
+                } else {
+                    req_builder = req_builder.header(header.as_str(), api_key);
+                }
             }
         }
-    }
 
-    let response = req_builder.send().await.map_err(|e| {
-        warn!("Upstream streaming forward failed: {}", e);
-        let body_str = format!("Upstream LLM unavailable: {}", e);
-        (
-            StatusCode::BAD_GATEWAY,
-            Json(ErrorResponse::new_minimal(
-                body_str,
-                VeridactusErrorCode::UpstreamDisconnect,
-            )),
-        )
-    })?;
+        let response = req_builder.send().await.map_err(|e| {
+            warn!("Upstream streaming forward failed: {}", e);
+            (StatusCode::BAD_GATEWAY, Json(ErrorResponse::new_minimal(format!("Upstream LLM unavailable: {}", e), VeridactusErrorCode::UpstreamDisconnect)))
+        })?;
 
-    let status = response.status();
-    if !status.is_success() {
+        let status = response.status();
+        if status.is_success() {
+            break response;
+        }
+
+        // 401/403 → 刷新 API key 并重试
+        if (status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN) && retry_count < MAX_AUTH_RETRIES {
+            retry_count += 1;
+            let body_bytes = response.bytes().await.unwrap_or_default();
+            let body_str = String::from_utf8_lossy(&body_bytes);
+            warn!("Upstream auth failed ({}), attempt {}/{} for model {}: refreshing API key via control plane...",
+                status, retry_count, MAX_AUTH_RETRIES, route.name);
+
+            if let Some(fresh) = refresh_model_api_key(state, &route.name).await {
+                if let Some(_) = &fresh {
+                    effective_api_key = fresh;
+                    info!("API key refreshed for {}, retrying upstream...", route.name);
+                    continue;
+                }
+            }
+            // No fresh key → fail
+            warn!("Auth retry failed for model {} after {} attempts: no API key available in control plane", route.name, retry_count);
+            journal.append_event(JournalEventType::StreamError {
+                error: format!("鉴权失败(401/403): 模型 {} 缺少有效 API key (已尝试 {} 次刷新)", route.name, retry_count),
+                truncated: true,
+            });
+            return Err((status, Json(ErrorResponse::new_minimal(body_str, VeridactusErrorCode::UpstreamDisconnect))));
+        }
+
+        // Non-auth error → no retry
         let body_bytes = response.bytes().await.unwrap_or_default();
         let body_str = String::from_utf8_lossy(&body_bytes).to_string();
         warn!("Upstream stream error: {}", status);
@@ -3704,14 +3766,11 @@ async fn forward_to_upstream_streaming(
             error: format!("上游返回 {}", status),
             truncated: true,
         });
-        return Err((
-            status,
-            Json(ErrorResponse::new_minimal(
-                body_str,
-                VeridactusErrorCode::UpstreamDisconnect,
-            )),
-        ));
-    }
+        return Err((status, Json(ErrorResponse::new_minimal(body_str, VeridactusErrorCode::UpstreamDisconnect))));
+    };
+
+    // Success path — response already validated as success
+    let status = response.status();
 
     // 创建预防解码器（§8.4）
     let prevention = std::sync::Arc::new(crate::prevention::ConstrainedDecoder::new(
