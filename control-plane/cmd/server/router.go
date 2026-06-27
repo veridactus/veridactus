@@ -856,9 +856,25 @@ func (srv *Server) handleTraces() http.HandlerFunc {
 func (srv *Server) handleConfigPoll() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet { jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "only GET"); return }
+
+		// 解析客户端当前版本号
+		q := r.URL.Query()
+		_clientPV := q.Get("pv"); _clientPlV := q.Get("plv"); _clientSV := q.Get("sv"); _clientMV := q.Get("mv")
+		_ = _clientPV; _ = _clientPlV; _ = _clientSV; _ = _clientMV // TODO: 按变更类型增量返回
+
 		versions, err := srv.store.GetConfigVersions(r.Context())
 		if err != nil { jsonError(w, http.StatusInternalServerError, "db_error", err.Error()); return }
-		jsonResponse(w, http.StatusOK, versions)
+
+		// 检测 model_version 变化 → 返回最新模型列表
+		// 简化实现：每次 poll 都返回最新 model 数据（生产环境应增量推送）
+		models, mErr := srv.store.ListModels(r.Context(), "")
+		if mErr != nil { jsonError(w, http.StatusInternalServerError, "db_error", mErr.Error()); return }
+
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"change_type": "model",
+			"data":        models,
+			"version":     versions,
+		})
 	}
 }
 func (srv *Server) handleResolveKey() http.HandlerFunc {
