@@ -29,6 +29,7 @@ func main() {
 	adminKey := getEnv("VERIDACTUS_ADMIN_KEY", "")
 	port := getEnv("PORT", "8081")
 	corsOrigin := getEnv("CORS_ORIGINS", "") // 默认仅允许同源，生产设置具体域名
+	dpHost := getEnv("DP_HOST", "localhost:8080")          // 数据面地址，用于模型更新通知
 
 	// PostgreSQL 为生产默认后端，未配置时给出明确错误
 	if storeBackend == "postgres" && getEnv("PG_HOST", "") == "" {
@@ -75,7 +76,7 @@ func main() {
 	logInfo("Storage initialized", "backend", storeBackend)
 
 	// ==================== 路由注册 ====================
-	srv := NewServer(st, jwtSecret, adminKey)
+	srv := NewServer(st, jwtSecret, adminKey, dpHost)
 
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)

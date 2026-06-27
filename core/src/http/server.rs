@@ -316,6 +316,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/models", get(list_models))
         // 管理端点：接收控制面推送的配置更新
         .route("/v1/admin/config/sync", post(handle_config_sync))
+        // 内部端点：控制面通知刷新模型 API key
+        .route("/internal/refresh-model", post(handle_refresh_model))
         // GDPR 删除端点（§8.7）
         .route("/v1/gdpr/delete", post(handle_gdpr_deletion))
         .route(
@@ -3688,6 +3690,27 @@ async fn refresh_model_api_key(state: &AppState, model_name: &str) -> Option<Opt
         warn!("refresh_model_api_key: model {} has no API key in control plane", model_name);
     }
     Some(api_key)
+}
+
+/// 内部端点：控制面通知刷新指定模型的 API key
+/// POST /internal/refresh-model  {"model_name": "GLM-5.1"}
+async fn handle_refresh_model(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let model_name = body.get("model_name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "missing model_name"}))))?;
+
+    info!("Received refresh-model notification for: {}", model_name);
+    match refresh_model_api_key(&state, model_name).await {
+        Some(Some(_)) => {
+            info!("Model {} API key refreshed successfully via notification", model_name);
+            Ok(Json(serde_json::json!({"status": "refreshed", "model": model_name})))
+        }
+        Some(None) => Ok(Json(serde_json::json!({"status": "no_key", "model": model_name, "hint": "model exists but has no API key configured"}))),
+        None => Err((StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": "failed to reach control plane", "model": model_name})))),
+    }
 }
 
 /// 流式转发到上游 LLM（治理模式）

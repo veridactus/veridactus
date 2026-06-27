@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -18,19 +19,23 @@ import (
 
 // Server 控制面 HTTP 服务器
 type Server struct {
-	store     store.StoreFacade
-	oauthSvc  *auth.OAuthService
-	adminKey  string
-	jwtSecret string
+	store      store.StoreFacade
+	oauthSvc   *auth.OAuthService
+	adminKey   string
+	jwtSecret  string
+	dpHost     string // 数据面地址，用于模型更新通知
+	httpClient *http.Client
 }
 
 // NewServer 创建服务器实例
-func NewServer(s store.StoreFacade, jwtSecret, adminKey string) *Server {
+func NewServer(s store.StoreFacade, jwtSecret, adminKey, dpHost string) *Server {
 	return &Server{
-		store:     s,
-		oauthSvc:  auth.NewOAuthService(s, jwtSecret),
-		adminKey:  adminKey,
-		jwtSecret: jwtSecret,
+		store:      s,
+		oauthSvc:   auth.NewOAuthService(s, jwtSecret),
+		adminKey:   adminKey,
+		jwtSecret:  jwtSecret,
+		dpHost:     dpHost,
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -683,6 +688,7 @@ func (srv *Server) handleModels() http.HandlerFunc {
 				jsonError(w, http.StatusInternalServerError, "create_failed", err.Error()); return
 			}
 			_ = srv.store.IncrementConfigVersion(r.Context(), "model")
+			go srv.notifyDataPlaneModelRefresh(m.Name) // 异步通知数据面刷新
 			jsonResponse(w, http.StatusCreated, m)
 		default:
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "only GET/POST")
@@ -700,12 +706,25 @@ func (srv *Server) handleModelByID() http.HandlerFunc {
 		case http.MethodPut:
 			var m model.ModelConfig
 			if err := decodeJSON(r, &m); err != nil { jsonError(w, http.StatusBadRequest, "invalid_json", err.Error()); return }
+			modelName := m.Name
 			if err := srv.store.UpdateModel(r.Context(), id, &m); err != nil {
 				jsonError(w, http.StatusInternalServerError, "update_failed", err.Error()); return
 			}
 			_ = srv.store.IncrementConfigVersion(r.Context(), "model")
+			go srv.notifyDataPlaneModelRefresh(modelName) // 异步通知数据面刷新
 			jsonResponse(w, http.StatusOK, m)
 		case http.MethodDelete:
+			// 删除前获取模型名，用于通知数据面
+			if existing, _ := srv.store.GetModel(r.Context(), id); existing != nil {
+				modelName := existing.Name
+				if err := srv.store.DeleteModel(r.Context(), id); err != nil {
+					jsonError(w, http.StatusInternalServerError, "delete_failed", err.Error()); return
+				}
+				_ = srv.store.IncrementConfigVersion(r.Context(), "model")
+				go srv.notifyDataPlaneModelRefresh(modelName) // 异步通知
+				jsonResponse(w, http.StatusOK, map[string]string{"status": "deleted"})
+				return
+			}
 			if err := srv.store.DeleteModel(r.Context(), id); err != nil {
 				jsonError(w, http.StatusInternalServerError, "delete_failed", err.Error()); return
 			}
@@ -716,6 +735,37 @@ func (srv *Server) handleModelByID() http.HandlerFunc {
 		}
 	}
 }
+
+// notifyDataPlaneModelRefresh 通过 HTTP POST 通知数据面刷新指定模型的 API key
+func (srv *Server) notifyDataPlaneModelRefresh(modelName string) {
+	if srv.dpHost == "" {
+		return // 数据面未配置，跳过通知（开发环境）
+	}
+	url := fmt.Sprintf("http://%s/internal/refresh-model", srv.dpHost)
+	body, _ := json.Marshal(map[string]string{"model_name": modelName})
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		logWarn("notifyDataPlane: failed to create request", "error", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	// 内部端点使用 Admin Key 鉴权
+	if srv.adminKey != "" {
+		req.Header.Set("X-Admin-Key", srv.adminKey)
+	}
+	resp, err := srv.httpClient.Do(req)
+	if err != nil {
+		logWarn("notifyDataPlane: request failed", "model", modelName, "error", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		logInfo("notifyDataPlane: model refresh notified", "model", modelName)
+	} else {
+		logWarn("notifyDataPlane: unexpected response", "model", modelName, "status", resp.StatusCode)
+	}
+}
+
 func (srv *Server) handleVirtualKeys() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		wsID := srv.getWorkspaceIDSafe(r)
