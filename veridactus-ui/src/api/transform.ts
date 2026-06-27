@@ -26,6 +26,10 @@ export function transformTraceSummary(raw: any): TraceSummary {
       : '',
     proof_levels: Array.isArray(raw.proof_levels) ? raw.proof_levels : [],
     signature: raw.signature || undefined,
+    session_id: raw.session_id || undefined,
+    cost_estimated_usd: typeof raw.cost_estimated_usd === 'number' ? raw.cost_estimated_usd : undefined,
+    tokens_count: typeof raw.tokens_count === 'number' ? raw.tokens_count : undefined,
+    safety: raw.safety || undefined,
   };
 }
 

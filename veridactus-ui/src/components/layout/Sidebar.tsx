@@ -41,7 +41,6 @@ export default function Sidebar() {
   ];
 
   const personalItems = [
-    { to: '/audit', icon: Activity, label: t('nav.audit'), id: 'audit' },
     { to: '/playground', icon: Eye, label: 'Dev Hub', id: 'playground' },
     { to: '/settings', icon: Settings, label: t('nav.settings'), id: 'settings' },
   ];

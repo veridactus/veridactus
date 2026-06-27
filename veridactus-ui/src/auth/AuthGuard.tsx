@@ -15,7 +15,8 @@ export function isAuthenticated(): boolean {
   if (parts.length !== 3) return false;
   try {
     const payload = JSON.parse(atob(parts[1]));
-    if (payload.exp && payload.exp * 1000 < Date.now()) { clearToken(); return false; }
+    // token 过期时不清除（useAuth 会自动刷新），仅返回 false 让路由守卫拦截
+    if (payload.exp && payload.exp * 1000 < Date.now()) return false;
     return true;
   } catch { return false; }
 }
@@ -27,6 +28,15 @@ export function getUserPlan(): string {
     if (!token) return 'personal';
     return JSON.parse(atob(token.split('.')[1])).plan || 'personal';
   } catch { return 'personal'; }
+}
+
+// 从 JWT 获取 workspace_id（用于多租户隔离）
+export function getWorkspaceId(): string {
+  try {
+    const token = getToken();
+    if (!token) return '';
+    return JSON.parse(atob(token.split('.')[1])).workspace_id || '';
+  } catch { return ''; }
 }
 
 export function getUserId(): string | null {

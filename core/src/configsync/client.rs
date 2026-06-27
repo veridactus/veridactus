@@ -46,6 +46,9 @@ pub struct ConfigChangePayload {
     pub change_type: String,
     pub data: serde_json::Value,
     pub version: ConfigVersions,
+    /// 附带的最新模型列表（pipeline 变更时一起推送，避免额外 poll）
+    #[serde(default)]
+    pub models: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -183,6 +186,22 @@ impl ConfigPullClient {
                             self.config_store.set_pipeline(&tenant, execution_plan);
                         }
                     }
+                }
+                // 同时处理附带的最新模型列表（避免额外 poll）
+                if let Some(models) = payload.models.as_ref().and_then(|m| m.as_array()) {
+                    let mut model_configs = Vec::new();
+                    for model_data in models {
+                        if let Ok(model_config) =
+                            serde_json::from_value::<ModelConfig>(model_data.clone())
+                        {
+                            model_configs.push(model_config);
+                        }
+                    }
+                    let model_count = model_configs.len();
+                    if let Some(updater) = &self.model_config_updater {
+                        updater(model_configs).await;
+                    }
+                    info!("附带模型更新: {} models", model_count);
                 }
             }
             "model" => {

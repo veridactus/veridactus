@@ -89,8 +89,8 @@ pub struct ProxyConfig {
     pub supported_versions: Vec<String>,
     /// 是否启用详细错误
     pub detailed_errors: bool,
-    /// 当前活跃的流水线执行计划
-    pub pipeline_plan: Option<crate::pipeline::config::ExecutionPlan>,
+    /// 多流水线执行计划（plan_id → ExecutionPlan），支持按请求头切换
+    pub pipeline_plans: HashMap<String, crate::pipeline::config::ExecutionPlan>,
 }
 
 impl Default for ProxyConfig {
@@ -115,7 +115,7 @@ impl Default for ProxyConfig {
             }],
             supported_versions: vec!["0.1".to_string(), "0.2".to_string()],
             detailed_errors: false,
-            pipeline_plan: None,
+            pipeline_plans: HashMap::new(),
         }
     }
 }
@@ -481,20 +481,20 @@ async fn handle_config_sync(
             }
         }
         "pipeline" => {
-            // 解析控制面推送的流水线配置→ExecutionPlan
+            // 解析控制面推送的流水线配置→ExecutionPlan（支持多流水线）
             if let Some(pipelines) = data.and_then(|d| d.as_array()) {
                 info!("收到流水线配置推送，共 {} pipelines", pipelines.len());
-                if let Some(first) = pipelines.first() {
+                let mut config = state.config.write().await;
+                for pipeline_data in pipelines {
                     if let Ok(plan) = serde_json::from_value::<crate::pipeline::config::ExecutionPlan>(
-                        first.clone(),
+                        pipeline_data.clone(),
                     ) {
-                        info!(
-                            "激活流水线: plan_id={}, {} 阶段",
-                            plan.plan_id,
-                            plan.stages.len()
-                        );
-                        let mut config = state.config.write().await;
-                        config.pipeline_plan = Some(plan);
+                        let pid = plan.plan_id.clone();
+                        let stages_count = plan.stages.len();
+                        config.pipeline_plans.insert(pid.clone(), plan);
+                        info!("激活流水线: plan_id={}, {} 阶段", pid, stages_count);
+                    } else {
+                        warn!("流水线反序列化失败，跳过: {:?}", pipeline_data.get("plan_id").and_then(|v| v.as_str()).unwrap_or("unknown"));
                     }
                 }
             }
@@ -512,19 +512,87 @@ async fn handle_config_sync(
 /// 列出 Trace (支持 ?id=uuid 查询单个 Trace)
 async fn list_traces(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Json<serde_json::Value> {
+    // 认证检查：需要有效 API key，按租户过滤
+    let auth_header = headers.get("authorization").and_then(|v| v.to_str().ok());
+    let request_tenant = auth_header.and_then(|token| {
+        let token = token.trim_start_matches("Bearer ").trim_start_matches("bearer ");
+        state.api_key_manager.lock().unwrap().validate(token).map(|t| t.to_string())
+    });
+
     // If ?id=xxx provided, return single trace detail
     if let Some(trace_id) = params.get("id") {
         if let Ok(id) = uuid::Uuid::parse_str(trace_id) {
             if let Some(trace) = state.trace_store.get(&id).await {
+                // 验证租户所有权（已认证 + tenant 匹配）
+                if let Some(ref tenant) = request_tenant {
+                    if trace.tenant_id.as_deref() != Some(tenant) && tenant != "admin-tenant" {
+                        return Json(serde_json::json!({"error": "forbidden: not your trace"}));
+                    }
+                }
                 let value = serde_json::to_value(&trace).unwrap_or_default();
                 return Json(value);
             }
         }
         return Json(serde_json::json!({"error": "trace not found"}));
     }
-    let traces = state.trace_store.list(None, 100, 0).await;
+
+    // 需要认证才能列出 traces
+    let tenant_filter = match request_tenant {
+        Some(t) => t,
+        None => return Json(serde_json::json!({"total": 0, "traces": [], "error": "authentication required"})),
+    };
+
+    // 按 session_id 过滤
+    let session_filter = params.get("session_id").and_then(|s| uuid::Uuid::parse_str(s).ok());
+    let mut traces = state.trace_store.list(Some(&tenant_filter), 1000, 0).await;
+
+    if let Some(sid) = session_filter {
+        traces.retain(|t| t.session_id.as_ref() == Some(&sid));
+    }
+
+    // 是否按会话分组返回
+    let group_by_session = params.get("group_by")
+        .map(|s| s == "session")
+        .unwrap_or(false);
+
+    if group_by_session {
+        use std::collections::BTreeMap;
+        let mut sessions: BTreeMap<String, Vec<serde_json::Value>> = BTreeMap::new();
+
+        for t in &traces {
+            let sid = t.session_id
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "ungrouped".to_string());
+            let trace_summary = serde_json::json!({
+                "trace_id": t.trace_id,
+                "model": t.model,
+                "created_at": t.created_at,
+                "execution_state": t.execution_state,
+                "proof_levels": t.proofs.proof_chain.iter().map(|p| format!("{:?}", p.level)).collect::<Vec<_>>(),
+                "signature": t.proofs.proof_chain.first().and_then(|p| p.signature.clone()),
+                "session_id": t.session_id,
+            });
+            sessions.entry(sid).or_insert_with(Vec::new).push(trace_summary);
+        }
+
+        let session_list: Vec<serde_json::Value> = sessions.into_iter().map(|(sid, traces)| {
+            serde_json::json!({
+                "session_id": sid,
+                "trace_count": traces.len(),
+                "traces": traces,
+            })
+        }).collect();
+
+        return Json(serde_json::json!({
+            "total": traces.len(),
+            "sessions": session_list,
+            "grouped_by": "session",
+        }));
+    }
+
     let trace_summaries: Vec<serde_json::Value> = traces
         .iter()
         .map(|t| {
@@ -535,6 +603,7 @@ async fn list_traces(
                 "execution_state": t.execution_state,
                 "proof_levels": t.proofs.proof_chain.iter().map(|p| format!("{:?}", p.level)).collect::<Vec<_>>(),
                 "signature": t.proofs.proof_chain.first().and_then(|p| p.signature.clone()),
+                "session_id": t.session_id,
             })
         })
         .collect();
@@ -545,12 +614,19 @@ async fn list_traces(
     }))
 }
 
-/// 获取单个 Trace
+/// 获取单个 Trace（需要认证，验证租户归属）
 async fn get_trace(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     axum::extract::Path(trace_id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     info!("GET Trace: id={}", trace_id);
+    // 认证检查
+    let auth_header = headers.get("authorization").and_then(|v| v.to_str().ok());
+    let request_tenant = auth_header.and_then(|token| {
+        let token = token.trim_start_matches("Bearer ").trim_start_matches("bearer ");
+        state.api_key_manager.lock().unwrap().validate(token).map(|t| t.to_string())
+    });
 
     let id = uuid::Uuid::parse_str(&trace_id).map_err(|e| {
         warn!("无效的 Trace ID 格式: {} - {}", trace_id, e);
@@ -563,6 +639,18 @@ async fn get_trace(
     match state.trace_store.get(&id).await {
         Some(trace) => {
             info!("Trace 找到: {}", trace_id);
+            // 验证租户归属
+            if let Some(ref tenant) = request_tenant {
+                if trace.tenant_id.as_deref() != Some(tenant)
+                    && tenant != "admin-tenant"
+                    && trace.tenant_id.as_deref() != Some("passthrough")
+                {
+                    return Err((
+                        StatusCode::FORBIDDEN,
+                        Json(serde_json::json!({"error": "forbidden: not your trace"})),
+                    ));
+                }
+            }
             let value = serde_json::to_value(&trace).unwrap_or_default();
             Ok(Json(value))
         }
@@ -856,7 +944,25 @@ async fn handle_chat_completion(
     let mut journal = ExecutionJournal::new(trace_id, &tenant_id);
     let mut trace = Trace::new(route.name.clone());
     trace.trace_id = trace_id;
-    trace.tenant_id = Some(tenant_id.clone());
+    // 优先使用 VERIDACTUS-Workspace-Id 作为租户标识（多租户隔离），否则用 API key 的 tenant
+    let effective_tenant = veridactus_headers.workspace_id.as_deref().unwrap_or(&tenant_id);
+    trace.tenant_id = Some(effective_tenant.to_string());
+
+    // 关联会话 ID（多轮对话逻辑分组）
+    if let Some(ref session_id_str) = veridactus_headers.session_id {
+        if let Ok(sid) = uuid::Uuid::parse_str(session_id_str) {
+            trace.session_id = Some(sid);
+            info!("Trace 关联会话: trace_id={} session_id={}", trace_id, sid);
+        } else {
+            warn!("会话 ID 不是有效 UUID: {}", session_id_str);
+        }
+    } else {
+        // 调试：检查原始头部中是否有 session-id
+        let has_session = header_map.iter().any(|(k,_)| k.to_lowercase().contains("session"));
+        if has_session {
+            info!("原始头部包含 session，但未被解析为 veridactus_headers.session_id");
+        }
+    }
 
     // 创建 OTel span 用于监控
     let otel_tracer = OtelTracer::new("veridactus-core");
@@ -1511,10 +1617,21 @@ async fn handle_chat_completion(
         };
         let pipeline_plan = {
             let config = state.config.read().await;
-            config
-                .pipeline_plan
-                .clone()
-                .unwrap_or_else(|| crate::pipeline::config::ExecutionPlan::default_plan())
+            // 按 VERIDACTUS-Pipeline-Id 请求头选择特定流水线
+            // 如果未指定或未找到，使用第一个可用的；如果没有任何流水线，使用默认
+            if let Some(ref pid) = veridactus_headers.pipeline_id {
+                let found = config.pipeline_plans.get(pid).cloned();
+                if let Some(ref plan) = found {
+                    info!("使用指定流水线: plan_id={}, {} 阶段", plan.plan_id, plan.stages.len());
+                }
+                found.unwrap_or_else(|| {
+                    config.pipeline_plans.values().next().cloned()
+                        .unwrap_or_else(|| crate::pipeline::config::ExecutionPlan::default_plan())
+                })
+            } else {
+                config.pipeline_plans.values().next().cloned()
+                    .unwrap_or_else(|| crate::pipeline::config::ExecutionPlan::default_plan())
+            }
         };
         if !pipeline_plan.stages.is_empty() {
             let mut req_ctx = crate::plugin::RequestContext {
@@ -1578,6 +1695,10 @@ async fn handle_chat_completion(
                 == Some("awareness")
                 || veridactus_headers.budget_strategy.as_deref() == Some("adaptive");
             let effective_route = degraded_route.as_ref().unwrap_or(&route);
+            // 收集流式输出的完整文本，用于 Trace 存储
+            let stream_output_collector: std::sync::Arc<std::sync::Mutex<String>> =
+                std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+
             let stream_result = forward_to_upstream_streaming(
                 &state,
                 effective_route,
@@ -1588,15 +1709,28 @@ async fn handle_chat_completion(
                 &tenant_id,
                 stream_budget,
                 stream_awareness,
+                Some(stream_output_collector.clone()),
             )
             .await;
             match stream_result {
                 Ok(response) => {
                     info!("Governance streaming complete: trace_id={}", trace_id);
                     // 后台异步生成 L0+L2A 证明（流式模式下延迟生成，不阻塞响应）
+                    // 等流式数据全部落盘后再收集 output
                     let mut t_for_proof = trace.clone();
                     let store_for_proof = state.trace_store.clone();
+                    let output_collector = stream_output_collector;
                     tokio::spawn(async move {
+                        // 等待流式数据写入完成（最多等 5s）
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        let collected = output_collector.lock().unwrap().clone();
+                        if !collected.is_empty() {
+                            t_for_proof.output = Some(crate::types::trace::Output {
+                                response: Some(serde_json::json!({"streaming_content": collected})),
+                                truncated: false,
+                                finish_reason: Some("streaming_stop".to_string()),
+                            });
+                        }
                         t_for_proof.execution_state = Some(ExecutionState::Finalized);
                         let l0 = crate::crypto::signature::generate_l0_proof(&mut t_for_proof);
                         t_for_proof.proofs.proof_chain.push(l0);
@@ -2023,6 +2157,7 @@ async fn handle_chat_completion(
             &tenant_id,
             None,
             false, // passthrough: 无预算限制，无预算感知
+            None,  // 无输出收集器
         )
         .await;
         match stream_result {
@@ -3724,6 +3859,7 @@ async fn forward_to_upstream_streaming(
     _tenant_id: &str,
     budget_limit: Option<f64>,
     budget_awareness: bool,
+    output_collector: Option<std::sync::Arc<std::sync::Mutex<String>>>,
 ) -> Result<axum::response::Response, (StatusCode, Json<ErrorResponse>)> {
     use futures::StreamExt;
 
@@ -3825,6 +3961,9 @@ async fn forward_to_upstream_streaming(
 
     let trace_id_clone = *trace_id;
 
+    // 累积完整输出文本（用于 Trace 存储）
+    let acc_clone = output_collector.clone();
+
     // 后台任务：从上游读取字节并发送到 channel
     tokio::spawn(async move {
         let mut byte_stream = response.bytes_stream();
@@ -3832,8 +3971,14 @@ async fn forward_to_upstream_streaming(
             match chunk_result {
                 Ok(bytes) => {
                     let body_str = String::from_utf8_lossy(&bytes).to_string();
+                    // 累积完整输出（如果提供了 collector）
+                    if let Some(ref acc) = acc_clone {
+                        if let Ok(mut a) = acc.lock() {
+                            a.push_str(&body_str);
+                        }
+                    }
                     if tx.send(Ok(body_str)).await.is_err() {
-                        break; // 接收端已关闭
+                        break;
                     }
                 }
                 Err(e) => {
@@ -3843,7 +3988,7 @@ async fn forward_to_upstream_streaming(
                 }
             }
         }
-        drop(tx); // 显式关闭 channel，通知接收端流结束
+        drop(tx);
     });
 
     // 构建 SSE 响应

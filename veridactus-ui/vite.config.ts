@@ -28,6 +28,11 @@ export default defineConfig({
       '/models': {
         target: dpTarget,
         changeOrigin: true,
+        // SPA fallback：浏览器页面刷新时不代理，交给 React Router
+        bypass(req) {
+          const accept = req.headers.accept || '';
+          if (accept.includes('text/html')) return '/index.html';
+        },
       },
       '/pw': {
         target: pwTarget,

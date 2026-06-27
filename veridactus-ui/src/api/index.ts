@@ -1,4 +1,4 @@
-import type { TraceSummary, TraceDetail, Pipeline, PluginMeta, Policy, ModelInfo, ApiKey, ModelConfig, VerificationResult, ReplayResult, ReplayBranch, RealTimeMetrics } from '../types';
+import type { TraceSummary, TraceDetail, Pipeline, PluginMeta, Policy, ModelInfo, ApiKey, ModelConfig, VerificationResult, ReplayResult, ReplayBranch, RealTimeMetrics, SessionGroup } from '../types';
 import { transformTraceList, transformTraceDetail } from './transform';
 
 // ==================== 统一错误类型 ====================
@@ -123,6 +123,21 @@ export async function getTracesFromDataPlane(): Promise<TraceSummary[]> {
   return transformTraceList(data.traces || []);
 }
 
+/** 通过控制面 API 获取 traces（带 JWT 认证 + workspace 隔离） */
+export async function getTracesFromCP(): Promise<TraceSummary[]> {
+  const data = await fetchJSON('/api/v1/traces', true);
+  return transformTraceList(data.traces || []);
+}
+
+export async function getTracesGroupedBySession(): Promise<SessionGroup[]> {
+  const data = await fetchJSON('/v1/traces?group_by=session');
+  return (data.sessions || []).map((s: any) => ({
+    session_id: s.session_id,
+    trace_count: s.trace_count,
+    traces: transformTraceList(s.traces || []),
+  }));
+}
+
 export async function getTraceDetail(traceId: string): Promise<TraceDetail> {
   const raw = await fetchJSON('/v1/traces/' + traceId);
   return transformTraceDetail(raw);
@@ -152,6 +167,10 @@ export async function updatePipeline(id: string, p: Partial<Pipeline>): Promise<
 
 export async function deletePipeline(id: string): Promise<boolean> {
   return cpFetchNoBody('/api/v1/pipelines/' + id, 'DELETE');
+}
+
+export async function publishPipeline(id: string): Promise<{ status: string; plan_id: string }> {
+  return cpFetch('/api/v1/pipelines/' + id + '/publish', 'POST');
 }
 
 export async function getPlugins(): Promise<PluginMeta[]> {

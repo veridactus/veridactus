@@ -6,6 +6,7 @@
 use futures::executor;
 use futures::Future;
 use reqwest;
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use tracing::{info, warn};
@@ -276,7 +277,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model_routes,
         supported_versions: vec!["0.1".to_string(), "0.2".to_string()],
         detailed_errors: true,
-        pipeline_plan: None,
+        pipeline_plans: HashMap::new(),
     }));
 
     // 创建模型配置更新回调

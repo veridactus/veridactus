@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import GlassCard from '../components/ui/GlassCard';
 import { useI18n } from '../i18n';
-import { getPipelines, createPipeline, deletePipeline } from '../api';
+import { getPipelines, createPipeline, deletePipeline, publishPipeline } from '../api';
 import type { Pipeline } from '../types';
 import { ConfirmDialog } from '../components/ui/Dialog';
 import { toast } from '../components/ui/Toast';
@@ -127,7 +127,7 @@ function PipelineCard({ pipeline, index, onEdit, onAdvancedEdit, onDelete, onPub
               </motion.div>
               <div>
                 <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2 }}>
-                  {pipeline.plan_id?.slice(0, 12) || 'Unnamed Pipeline'}
+                  {pipeline.name || pipeline.plan_id?.slice(0, 12) || 'Unnamed Pipeline'}
                 </h3>
                 <p style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
                   {pipeline.tenant || 'default'} • {stageCount} stages
@@ -263,7 +263,9 @@ function PipelineCard({ pipeline, index, onEdit, onAdvancedEdit, onDelete, onPub
                 <Clock size={12} style={{ color: '#fdcb6e' }} />
                 <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 600, letterSpacing: '0.05em' }}>STATUS</span>
               </div>
-              <p style={{ fontSize: 14, fontWeight: 700, color: '#00d4aa' }}>Active</p>
+              <p style={{ fontSize: 14, fontWeight: 700, color: ((s:string) => s === 'published' ? '#6c5ce7' : s === 'active' ? '#00d4aa' : '#fdcb6e')(pipeline.status || 'draft') }}>
+                {((s:string) => s === 'published' ? 'Published' : s === 'active' ? 'Active' : 'Draft')(pipeline.status || 'draft')}
+              </p>
             </div>
           </div>
 
@@ -392,8 +394,8 @@ export default function Pipelines() {
         className="flex gap-4 mb-8">
         {[
           [() => <GitBranch size={24} color="#6c5ce7" />, 'TOTAL PIPELINES', pipelines.length, 'var(--text-primary)'],
-          [() => <CheckCircle size={24} color="#00d4aa" />, 'ACTIVE', pipelines.length, '#00d4aa'],
-          [() => <Shield size={24} color="#fdcb6e" />, 'PLUGINS ACTIVE', pipelines.reduce((acc: number, p: Pipeline) => acc + (p.stages?.reduce((a: number, s: any) => a + (s.plugins?.length || 0), 0) || 0), 0), '#fdcb6e'],
+          [() => <CheckCircle size={24} color="#00d4aa" />, 'PUBLISHED', pipelines.filter(p => p.status === 'published' || p.status === 'active').length, '#00d4aa'],
+          [() => <Shield size={24} color="#fdcb6e" />, 'PLUGINS', pipelines.reduce((acc: number, p: Pipeline) => acc + (p.stages?.reduce((a: number, s: any) => a + (s.plugins?.length || 0), 0) || 0), 0), '#fdcb6e'],
         ].map(([icon, label, value, valColor], i) => (
           <GlassCard key={i} className="flex-1 flex items-center gap-4 py-5 px-6">
             <div className="w-[52px] h-[52px] rounded-2xl flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${valColor}33, ${valColor}1a)` }}>
@@ -445,9 +447,12 @@ export default function Pipelines() {
               onDelete={(id: string) => setDeleteId(id)}
               onPublish={async (id: string) => {
                 try {
-                  await fetch('/api/v1/pipelines/' + id + '/publish', { method: 'POST' });
-                  setPipelines(prev => prev.map(p => p.plan_id === id ? {...p, status:'published'} : p));
-                } catch {}
+                  const result = await publishPipeline(id);
+                  toast.success('流水线已发布');
+                  setPipelines(prev => prev.map(p => p.plan_id === id ? {...p, status: (result && result.status) || 'published'} : p));
+                } catch (err: any) {
+                  toast.error(err?.userMessage || err?.message || '发布失败');
+                }
               }}
             />
           ))}

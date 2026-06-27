@@ -5,6 +5,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Shield, Github, Mail, Lock, User, Eye, EyeOff, AlertTriangle, Check, Phone, Smartphone, Building, User as UserIcon, ArrowRight, Sparkles } from 'lucide-react';
 import { setToken, isAuthenticated } from './AuthGuard';
+
+function saveRefreshToken(token: string) { localStorage.setItem('veridactus_refresh', token); }
+function updateLastActive() { localStorage.setItem('veridactus_last_active', String(Date.now())); }
 import WeChatQRModal from './WeChatQRModal';
 
 const API = (import.meta as any)?.env?.VITE_API_URL || '';
@@ -59,7 +62,9 @@ export default function LoginPage() {
       if (!res.ok) { setError(data.message || '微信登录失败'); return; }
       if (data.access_token) {
         setToken(data.access_token);
+        if(data.refresh_token) saveRefreshToken(data.refresh_token);
         localStorage.setItem('veridactus_user', JSON.stringify(data.user || {}));
+        updateLastActive();
         navigate(data.need_bind_phone ? '/bind-phone' : from, { replace: true });
       }
     } catch { setError('微信服务连接失败'); }
@@ -115,7 +120,7 @@ export default function LoginPage() {
       else { setError('请选择登录方式'); setLoading(false); return; }
       const data = await res.json();
       if (!res.ok) { setError(data.error||data.message||'操作失败'); setLoading(false); return; }
-      if (data.access_token) { setToken(data.access_token); localStorage.setItem('veridactus_user',JSON.stringify(data.user||{})); navigate(from,{replace:true}); }
+      if (data.access_token) { setToken(data.access_token); if(data.refresh_token) saveRefreshToken(data.refresh_token); localStorage.setItem('veridactus_user',JSON.stringify(data.user||{})); updateLastActive(); navigate(from,{replace:true}); }
     } catch { setError('无法连接服务器'); setLoading(false); }
   };
 

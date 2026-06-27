@@ -35,6 +35,7 @@ export default function PipelineEdit() {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [stages, setStages] = useState<StageConfig[]>([]);
   const [tenant, setTenant] = useState('');
+  const [name, setName] = useState('');
   const [showStageMenu, setShowStageMenu] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function PipelineEdit() {
       const data = await getPipeline(id!);
       setPipeline(data);
       setTenant(data.tenant || 'default');
+      setName(data.name || '');
       setStages(data.stages || [{ placement: 'pre_request', parallel: false, plugins: [] }]);
     } catch (err) {
       console.error('Failed to load pipeline:', err);
@@ -106,7 +108,7 @@ export default function PipelineEdit() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const payload = { tenant, stages };
+      const payload = { name: name.trim() || undefined, tenant, stages };
       if (id) {
         await updatePipeline(id, payload);
       } else {
@@ -145,6 +147,10 @@ export default function PipelineEdit() {
       <GlassCard className="p-6 mb-6">
         <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2"><Settings size={16} className="text-[#6c5ce7]" /> 基本信息</h3>
         <div className="flex gap-6">
+          <div className="flex-1">
+            <label className="text-xs text-[var(--text-tertiary)] block mb-1.5">流水线名称 <span className="text-[#ff7675]">*</span></label>
+            <input className="input-field" value={name} onChange={e => setName(e.target.value)} placeholder="如：生产环境安全审计" />
+          </div>
           <div className="flex-1">
             <label className="text-xs text-[var(--text-tertiary)] block mb-1.5">租户 ID</label>
             <input className="input-field" value={tenant} onChange={e => setTenant(e.target.value)} placeholder="输入租户ID" />

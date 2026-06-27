@@ -18,8 +18,12 @@ const (
 	ContextKeyUserID contextKey = "veridactus_user_id"
 	// ContextKeyWorkspaceID 上下文中存放 workspace_id 的 key
 	ContextKeyWorkspaceID contextKey = "veridactus_workspace_id"
+	// ContextKeyOrgID 上下文中存放 org_id 的 key
+	ContextKeyOrgID contextKey = "veridactus_org_id"
 	// ContextKeyRole 上下文中存放 role 的 key
 	ContextKeyRole contextKey = "veridactus_role"
+	// ContextKeyPlan 上下文中存放 plan 的 key
+	ContextKeyPlan contextKey = "veridactus_plan"
 )
 
 // isPublicPath 判断是否为公开端点（无需认证）
@@ -95,7 +99,9 @@ func injectClaims(ctx context.Context, claims *VeridactusClaims) context.Context
 	ctx = context.WithValue(ctx, ContextKeyClaims, claims)
 	ctx = context.WithValue(ctx, ContextKeyUserID, claims.UserID)
 	ctx = context.WithValue(ctx, ContextKeyWorkspaceID, claims.WorkspaceID)
+	ctx = context.WithValue(ctx, ContextKeyOrgID, claims.OrgID)
 	ctx = context.WithValue(ctx, ContextKeyRole, claims.Role)
+	ctx = context.WithValue(ctx, ContextKeyPlan, claims.Plan)
 	return ctx
 }
 
@@ -177,6 +183,18 @@ func GetWorkspaceID(ctx context.Context) string {
 func GetRole(ctx context.Context) string {
 	role, _ := ctx.Value(ContextKeyRole).(string)
 	return role
+}
+
+// GetOrgID 从 context 中获取当前组织 ID
+func GetOrgID(ctx context.Context) string {
+	id, _ := ctx.Value(ContextKeyOrgID).(string)
+	return id
+}
+
+// GetPlan 从 context 中获取当前用户计划（personal/enterprise）
+func GetPlan(ctx context.Context) string {
+	plan, _ := ctx.Value(ContextKeyPlan).(string)
+	return plan
 }
 
 func writeAuthError(w http.ResponseWriter, msg string) {

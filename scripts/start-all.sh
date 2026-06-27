@@ -4,11 +4,22 @@
 
 set -e
 
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ==================== 加载环境变量 ====================
+if [ -f "$ROOT_DIR/.env" ]; then
+  set -a  # 自动 export 所有变量
+  source "$ROOT_DIR/.env"
+  set +a
+  echo "✅ Loaded .env configuration"
+else
+  echo "⚠️  WARNING: .env not found — JWT_SECRET and MASTER_KEY will be randomly generated"
+  echo "   Create .env from .env.example for persistent secrets"
+fi
+
 echo "═══════════════════════════════════════"
 echo "  VERIDACTUS 全栈启动"
 echo "═══════════════════════════════════════"
-
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # 1. 启动基础设施
 echo "[1/5] 启动基础设施 (Redis + PostgreSQL + MinIO)..."
@@ -20,7 +31,10 @@ echo "  ✅ 基础设施就绪"
 # 2. 启动 Rust 数据平面
 echo "[2/5] 启动数据平面 (Rust:8080)..."
 cd "$ROOT_DIR/core"
-RUST_LOG=info cargo run --release &
+DATABASE_URL="${DATABASE_URL:-postgres://veridactus:veridactus@localhost:5432/veridactus}" \
+VERIDACTUS_ADMIN_KEY="${VERIDACTUS_ADMIN_KEY:-veridactus-admin-dev-2026}" \
+VERIDACTUS_STORE_BACKEND="${VERIDACTUS_STORE_BACKEND:-postgres}" \
+RUST_LOG=info cargo run --release --bin veridactus-core &
 DATA_PLANE_PID=$!
 echo "  ✅ 数据平面启动中 (PID=$DATA_PLANE_PID)"
 

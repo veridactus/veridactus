@@ -5,6 +5,7 @@ export interface TraceSummary {
   execution_state: string;
   proof_levels: string[];
   signature?: string;
+  session_id?: string;
   /** Vault page fields */
   cost_estimated_usd?: number;
   tokens_count?: number;
@@ -59,6 +60,7 @@ export interface Proof {
 
 export interface Pipeline {
   plan_id: string;
+  name?: string;
   tenant: string;
   stages: StageConfig[];
   status?: string;
@@ -176,4 +178,11 @@ export interface RealTimeMetrics {
   asi_risks_flagged_total: number;
   average_latency_ms: number;
   timestamp: string;
+}
+
+// 会话分组类型（审计中心按会话分组查看 Trace）
+export interface SessionGroup {
+  session_id: string;
+  trace_count: number;
+  traces: TraceSummary[];
 }

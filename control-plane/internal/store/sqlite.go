@@ -583,9 +583,14 @@ func (s *SQLiteStore) CreatePipeline(ctx context.Context, p *model.Pipeline) err
 
 func (s *SQLiteStore) UpdatePipeline(ctx context.Context, id string, p *model.Pipeline) error {
 	stagesJSON, _ := json.Marshal(p.Stages)
+	stagesStr := string(stagesJSON)
+	// stages 保护: nil 或无效 JSON → 保留原值
+	if stagesStr == "null" || stagesStr == "" || stagesStr == "[null]" {
+		stagesStr = ""
+	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE pipelines SET name=?, description=?, tenant=?, stages=?, workspace_id=? WHERE plan_id=?`,
-		p.Name, p.Description, p.Tenant, string(stagesJSON), p.WorkspaceID, id)
+		`UPDATE pipelines SET name=COALESCE(NULLIF(?,''),name), description=COALESCE(NULLIF(?,''),description), tenant=COALESCE(NULLIF(?,''),tenant), stages=COALESCE(NULLIF(?,''),stages), workspace_id=COALESCE(NULLIF(?,''),workspace_id), status=COALESCE(NULLIF(?,''),status) WHERE plan_id=?`,
+		p.Name, p.Description, p.Tenant, stagesStr, p.WorkspaceID, p.Status, id)
 	if err != nil {
 		return err
 	}
@@ -1143,4 +1148,5 @@ func (s *SQLiteStore) CreateMessage(ctx context.Context, msg *model.Message) err
 func (s *SQLiteStore) DeleteMessagesByConversation(ctx context.Context, conversationID string) error {
 	return fmt.Errorf("conversations not supported in SQLite dev mode, use postgres")
 }
-func (s *SQLiteStore) ListDpTraces(ctx context.Context, limit int) ([]map[string]interface{}, error) { return nil, nil }
+func (s *SQLiteStore) ListDpTraces(ctx context.Context, workspaceID string, limit int) ([]map[string]interface{}, error) { return nil, nil }
+func (s *SQLiteStore) ListDpTracesByWorkspaces(ctx context.Context, workspaceIDs []string, limit int) ([]map[string]interface{}, error) { return nil, nil }

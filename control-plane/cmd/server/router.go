@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -573,13 +574,29 @@ func (srv *Server) handleMembers() http.HandlerFunc {
 
 func (srv *Server) handlePipelines() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		userID := auth.GetUserID(r.Context())
 		wsID := srv.getWorkspaceIDSafe(r)
 		orgID := srv.getUserOrgID(r)
 		switch r.Method {
 		case http.MethodGet:
-			ps, err := srv.store.ListPipelines(r.Context(), wsID)
-			if err != nil { jsonError(w, http.StatusInternalServerError, "db_error", err.Error()); return }
-			jsonResponse(w, http.StatusOK, map[string]interface{}{"total": len(ps), "pipelines": ps})
+			// 查询用户所有 workspace 的 pipelines
+			var allPipelines []model.Pipeline
+			if userID != "" {
+				orgs, _ := srv.store.ListOrganizationsByUser(r.Context(), userID)
+				for _, org := range orgs {
+					wss, _ := srv.store.ListWorkspaces(r.Context(), org.ID)
+					for _, ws := range wss {
+						ps, _ := srv.store.ListPipelines(r.Context(), ws.ID)
+						allPipelines = append(allPipelines, ps...)
+					}
+				}
+			}
+			if len(allPipelines) == 0 {
+				ps, err := srv.store.ListPipelines(r.Context(), wsID)
+				if err != nil { jsonError(w, http.StatusInternalServerError, "db_error", err.Error()); return }
+				allPipelines = ps
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"total": len(allPipelines), "pipelines": allPipelines})
 		case http.MethodPost:
 			if !srv.requirePermission(w, r, "pipeline:write") { return }
 			var p model.Pipeline
@@ -613,11 +630,26 @@ func (srv *Server) handlePipelineByID() http.HandlerFunc {
 		publishRoute := len(pathParts) > 1 && pathParts[1] == "publish"
 
 		if publishRoute && r.Method == http.MethodPost {
+			// 权限校验
+			if !srv.requirePermission(w, r, "pipeline:write") { return }
+			// 先获取 pipeline 确认存在且有权限
+			existing, err := srv.store.GetPipeline(r.Context(), id)
+			if err != nil {
+				jsonError(w, http.StatusNotFound, "not_found", "pipeline not found"); return
+			}
+			if !srv.canAccessResource(r, existing.WorkspaceID) {
+				jsonError(w, http.StatusForbidden, "forbidden", "access denied to this pipeline")
+				return
+			}
+			// 使用只更新 status 的调用（stages 等通过 COALESCE 保护保留原值）
 			if err := srv.store.UpdatePipeline(r.Context(), id, &model.Pipeline{Status: "published"}); err != nil {
 				jsonError(w, http.StatusInternalServerError, "publish_failed", err.Error()); return
 			}
 			_ = srv.store.IncrementConfigVersion(r.Context(), "pipeline")
-			jsonResponse(w, http.StatusOK, map[string]string{"status": "published"})
+			// 推送到数据面，使其立即采用新发布的 pipeline（标记 status 为 published）
+			existing.Status = "published"
+			go srv.notifyDataPlanePipelineRefresh(existing)
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"status": "published", "plan_id": id})
 			return
 		}
 
@@ -705,6 +737,17 @@ func (srv *Server) handleModels() http.HandlerFunc {
 		case http.MethodGet:
 			models, err := srv.store.ListModels(r.Context(), wsID)
 			if err != nil { jsonError(w, http.StatusInternalServerError, "db_error", err.Error()); return }
+			// 租户隔离：非管理员只返回自己 workspace 的模型，不暴露全局模型
+			role := auth.GetRole(r.Context())
+			if role != "platform_admin" {
+				filtered := make([]model.ModelConfig, 0, len(models))
+				for _, m := range models {
+					if m.WorkspaceID == wsID {
+						filtered = append(filtered, m)
+					}
+				}
+				models = filtered
+			}
 			jsonResponse(w, http.StatusOK, map[string]interface{}{"models": models})
 		case http.MethodPost:
 			// ⚠️ 生产环境应启用 RBAC: requirePermission(w, r, "model:create")
@@ -728,12 +771,23 @@ func (srv *Server) handleModels() http.HandlerFunc {
 func (srv *Server) handleModelByID() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := extractPathID(r.URL.Path, "/api/v1/models/")
+		wsID := auth.GetWorkspaceID(r.Context())
+
+		// 先获取模型以校验所有权
+		existing, err := srv.store.GetModel(r.Context(), id)
+		if err != nil { jsonError(w, http.StatusNotFound, "not_found", ""); return }
+		// 全局模型（无 workspace_id）任何人可读，但不能修改
+		isGlobal := existing.WorkspaceID == ""
+		if !isGlobal && existing.WorkspaceID != wsID {
+			jsonError(w, http.StatusForbidden, "forbidden", "not your workspace model")
+			return
+		}
+
 		switch r.Method {
 		case http.MethodGet:
-			m, err := srv.store.GetModel(r.Context(), id)
-			if err != nil { jsonError(w, http.StatusNotFound, "not_found", ""); return }
-			jsonResponse(w, http.StatusOK, m)
+			jsonResponse(w, http.StatusOK, existing)
 		case http.MethodPut:
+			if isGlobal { jsonError(w, http.StatusForbidden, "forbidden", "cannot modify global model"); return }
 			var m model.ModelConfig
 			if err := decodeJSON(r, &m); err != nil { jsonError(w, http.StatusBadRequest, "invalid_json", err.Error()); return }
 			modelName := m.Name
@@ -744,21 +798,13 @@ func (srv *Server) handleModelByID() http.HandlerFunc {
 			go srv.notifyDataPlaneModelRefresh(modelName) // 异步通知数据面刷新
 			jsonResponse(w, http.StatusOK, m)
 		case http.MethodDelete:
-			// 删除前获取模型名，用于通知数据面
-			if existing, _ := srv.store.GetModel(r.Context(), id); existing != nil {
-				modelName := existing.Name
-				if err := srv.store.DeleteModel(r.Context(), id); err != nil {
-					jsonError(w, http.StatusInternalServerError, "delete_failed", err.Error()); return
-				}
-				_ = srv.store.IncrementConfigVersion(r.Context(), "model")
-				go srv.notifyDataPlaneModelRefresh(modelName) // 异步通知
-				jsonResponse(w, http.StatusOK, map[string]string{"status": "deleted"})
-				return
-			}
+			if isGlobal { jsonError(w, http.StatusForbidden, "forbidden", "cannot delete global model"); return }
+			modelName := existing.Name
 			if err := srv.store.DeleteModel(r.Context(), id); err != nil {
 				jsonError(w, http.StatusInternalServerError, "delete_failed", err.Error()); return
 			}
 			_ = srv.store.IncrementConfigVersion(r.Context(), "model")
+			go srv.notifyDataPlaneModelRefresh(modelName) // 异步通知
 			jsonResponse(w, http.StatusOK, map[string]string{"status": "deleted"})
 		default:
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "only GET/PUT/DELETE")
@@ -793,6 +839,77 @@ func (srv *Server) notifyDataPlaneModelRefresh(modelName string) {
 		logInfo("notifyDataPlane: model refresh notified", "model", modelName)
 	} else {
 		logWarn("notifyDataPlane: unexpected response", "model", modelName, "status", resp.StatusCode)
+	}
+}
+
+// notifyDataPlanePipelineRefresh 通过 HTTP POST 推送 pipeline 配置到数据面
+// DP 的 /v1/admin/config/sync 端点收到后直接写入 ProxyConfig.pipeline_plans，下次请求生效
+func (srv *Server) notifyDataPlanePipelineRefresh(pipeline *model.Pipeline) {
+	if srv.dpHost == "" {
+		logInfo("notifyDataPlane: DP not configured, skipping pipeline push")
+		return
+	}
+	// 构建 DP 兼容的 pipeline JSON：必须将 config 字符串解析为 JSON 对象
+	stages := make([]map[string]interface{}, 0, len(pipeline.Stages))
+	for _, s := range pipeline.Stages {
+		plugins := make([]map[string]interface{}, 0, len(s.Plugins))
+		for _, p := range s.Plugins {
+			plugin := map[string]interface{}{
+				"name": p.Name,
+				"type": p.Type,
+			}
+			// 解析 Config 字符串为 JSON 对象（DP 期望 serde_json::Value）
+			if p.Config != "" {
+				var cfgObj interface{}
+				if err := json.Unmarshal([]byte(p.Config), &cfgObj); err == nil {
+					plugin["config"] = cfgObj
+				} else {
+					plugin["config"] = p.Config // fallback: 保留原始字符串
+				}
+			} else {
+				plugin["config"] = map[string]interface{}{}
+			}
+			plugins = append(plugins, plugin)
+		}
+		stages = append(stages, map[string]interface{}{
+			"placement": s.Placement,
+			"parallel":  s.Parallel,
+			"plugins":   plugins,
+		})
+	}
+	pipelineData := map[string]interface{}{
+		"plan_id": pipeline.PlanID,
+		"tenant":  pipeline.Tenant,
+		"stages":  stages,
+	}
+
+	url := fmt.Sprintf("http://%s/v1/admin/config/sync", srv.dpHost)
+	payload := map[string]interface{}{
+		"change_type": "pipeline",
+		"data":        []interface{}{pipelineData},
+		"plan_id":     pipeline.PlanID,
+	}
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		logWarn("notifyDataPlanePipeline: failed to create request", "error", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if srv.adminKey != "" {
+		req.Header.Set("X-Admin-Key", srv.adminKey)
+	}
+	resp, err := srv.httpClient.Do(req)
+	if err != nil {
+		logWarn("notifyDataPlanePipeline: request failed", "pipeline", pipeline.PlanID, "error", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		logInfo("notifyDataPlanePipeline: pipeline pushed to DP", "plan_id", pipeline.PlanID, "stages", len(pipeline.Stages))
+	} else {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		logWarn("notifyDataPlanePipeline: DP rejected", "plan_id", pipeline.PlanID, "status", resp.StatusCode, "body", string(bodyBytes)[:200])
 	}
 }
 
@@ -842,6 +959,15 @@ func (srv *Server) handleConversationByID() http.HandlerFunc {
 		isMessages := len(parts) > 1 && parts[1] == "messages"
 		if id == "" { jsonError(w, http.StatusBadRequest, "missing_id", ""); return }
 
+		userID := auth.GetUserID(r.Context())
+		// 验证所有权：所有操作都需先获取 conversation 并校验 user_id
+		conv, err := srv.store.GetConversation(r.Context(), id)
+		if err != nil { jsonError(w, http.StatusNotFound, "not_found", ""); return }
+		if conv.UserID != userID {
+			jsonError(w, http.StatusForbidden, "forbidden", "not your conversation")
+			return
+		}
+
 		if isMessages && r.Method == http.MethodPost {
 			var req struct {
 				ID        string `json:"id"`
@@ -874,8 +1000,6 @@ func (srv *Server) handleConversationByID() http.HandlerFunc {
 
 		switch r.Method {
 		case http.MethodGet:
-			conv, err := srv.store.GetConversation(r.Context(), id)
-			if err != nil { jsonError(w, http.StatusNotFound, "not_found", ""); return }
 			msgs, _ := srv.store.ListMessages(r.Context(), id, 200)
 			jsonResponse(w, http.StatusOK, map[string]interface{}{"conversation": conv, "messages": msgs})
 		case http.MethodPut:
@@ -1029,7 +1153,31 @@ func (srv *Server) handleSettings() http.HandlerFunc {
 func (srv *Server) handleTraces() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet { jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "only GET"); return }
-		dpTraces, err := srv.store.ListDpTraces(r.Context(), 50)
+		wsID := auth.GetWorkspaceID(r.Context())
+		if wsID == "" { jsonError(w, http.StatusForbidden, "no_workspace", "workspace required"); return }
+
+		var dpTraces []map[string]interface{}
+		var err error
+
+		// 企业用户：按组织维度查询，能看到同组织下所有 workspace 的 traces
+		plan := auth.GetPlan(r.Context())
+		if plan == "enterprise" {
+			orgID := auth.GetOrgID(r.Context())
+			if orgID != "" {
+				workspaces, wsErr := srv.store.ListWorkspaces(r.Context(), orgID)
+				if wsErr == nil && len(workspaces) > 0 {
+					wsIDs := make([]string, len(workspaces))
+					for i, ws := range workspaces { wsIDs[i] = ws.ID }
+					dpTraces, err = srv.store.ListDpTracesByWorkspaces(r.Context(), wsIDs, 200)
+				}
+			}
+		}
+
+		// 个人用户或企业回退：仅看自己的 workspace
+		if dpTraces == nil {
+			dpTraces, err = srv.store.ListDpTraces(r.Context(), wsID, 50)
+		}
+
 		if err != nil {
 			jsonResponse(w, http.StatusOK, map[string]interface{}{"total": 0, "traces": []interface{}{}})
 			return
@@ -1043,14 +1191,39 @@ func (srv *Server) handleConfigPoll() http.HandlerFunc {
 
 		// 解析客户端当前版本号
 		q := r.URL.Query()
-		_clientPV := q.Get("pv"); _clientPlV := q.Get("plv"); _clientSV := q.Get("sv"); _clientMV := q.Get("mv")
-		_ = _clientPV; _ = _clientPlV; _ = _clientSV; _ = _clientMV // TODO: 按变更类型增量返回
+		clientPV := q.Get("pv")
 
 		versions, err := srv.store.GetConfigVersions(r.Context())
 		if err != nil { jsonError(w, http.StatusInternalServerError, "db_error", err.Error()); return }
 
-		// 检测 model_version 变化 → 返回最新模型列表
-		// 简化实现：每次 poll 都返回最新 model 数据（生产环境应增量推送）
+		serverPV := fmt.Sprintf("%d", versions.PipelineVersion)
+
+		// 优先级 1: pipeline 版本变化 → 返回已发布的 pipeline 配置 + 最新模型列表
+		if clientPV != "" && clientPV != serverPV {
+			pipelines, pErr := srv.store.ListPipelines(r.Context(), "")
+			if pErr != nil { jsonError(w, http.StatusInternalServerError, "db_error", pErr.Error()); return }
+			var activePipelines []model.Pipeline
+			for _, p := range pipelines {
+				if p.Status == "published" || p.Status == "active" {
+					activePipelines = append(activePipelines, p)
+				}
+			}
+			if len(activePipelines) == 0 {
+				activePipelines = []model.Pipeline{}
+			}
+			// 同时返回最新模型列表，避免 DP 需要等下一轮 poll 才拿到模型
+			models, mErr := srv.store.ListModels(r.Context(), "")
+			if mErr != nil { models = []model.ModelConfig{} }
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"change_type": "pipeline",
+				"data":        activePipelines,
+				"version":     versions,
+				"models":      models, // 附带模型数据
+			})
+			return
+		}
+
+		// 优先级 2: 返回最新模型配置（当前默认行为）
 		models, mErr := srv.store.ListModels(r.Context(), "")
 		if mErr != nil { jsonError(w, http.StatusInternalServerError, "db_error", mErr.Error()); return }
 

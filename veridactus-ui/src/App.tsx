@@ -28,7 +28,6 @@ const VaultPage = lazy(() => import('./engines/vault/VaultPage'));
 const VaultDetail = lazy(() => import('./engines/vault/VaultDetail'));
 
 // Phase 4: 企业级
-const AuditorCommandCenter = lazy(() => import('./engines/vault/AuditCenter'));
 const BrandSettings = lazy(() => import('./admin/BrandSettings'));
 const ComplianceReport = lazy(() => import('./pages/ComplianceReport'));
 const PluginMarket = lazy(() => import('./pages/PluginMarket'));
@@ -69,7 +68,7 @@ function AppLayout() {
               <Route path="/pipelines/new" element={<PipelineDesigner />} />
               <Route path="/pipelines/design/:id?" element={<PipelineDesigner />} />
               <Route path="/pipelines/edit/:id" element={<PipelineEdit />} />
-              <Route path="/audit" element={<AuditCenter />} />
+              <Route path="/audit" element={<Navigate to="/vault" replace />} />
               <Route path="/plugins" element={<Plugins />} />
               <Route path="/api-keys" element={<ApiKeys />} />
               <Route path="/models" element={<Models />} />
@@ -80,7 +79,7 @@ function AppLayout() {
               <Route path="/vault/:traceId" element={<VaultDetail />} />
               {/* Phase 4: 企业级 */}
               <Route path="/playground" element={<PlaygroundPage />} />
-              <Route path="/audit-center" element={<AuditorCommandCenter />} />
+              <Route path="/audit-center" element={<Navigate to="/vault" replace />} />
               <Route path="/brand" element={<BrandSettings />} />
               <Route path="/compliance" element={<ComplianceReport />} />
               <Route path="/plugins/market" element={<PluginMarket />} />

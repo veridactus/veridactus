@@ -10,11 +10,11 @@ This document outlines the planned development trajectory for the VERIDACTUS pro
 
 | Area | Deliverable | Status |
 |:---|:---|:---|
+| **Multi-Tenant Isolation** | Full workspace-level data isolation (traces, conversations, pipelines, models) | ✅ Done |
+| **Dual-Engine Frontend** | Chat safety sandbox + Dev Hub playground + Holo-Trace Vault | ✅ Done |
+| **Enterprise SSO** | Email/password registration with JWT auth, 5-role RBAC | ✅ Done |
 | **Helm Charts** | Complete `deploy/helm/` with working templates + values for Kubernetes deployment | 📋 Planned |
 | **Docker** | Multi-arch images (amd64 + arm64) published to `ghcr.io` | 📋 Planned |
-| **Dependabot** | Automated dependency updates for Rust, Go, npm, and GitHub Actions | 📋 Planned |
-| **OpenSSF** | Scorecard integration + best-practices badge | 📋 Planned |
-| **SBOM** | Software Bill of Materials (SPDX) generation in CI | 📋 Planned |
 | **Tests** | Go unit tests, TypeScript component tests, Python worker tests | 📋 Planned |
 | **Docs** | Multi-language documentation site (zh-CN + en-US) | 📋 Planned |
 
@@ -26,12 +26,12 @@ This document outlines the planned development trajectory for the VERIDACTUS pro
 
 | Area | Deliverable | Status |
 |:---|:---|:---|
+| **RBAC** | 5-role access control (platform_admin/org_admin/workspace_admin/developer/auditor) | ✅ Done |
+| **FinOps** | Micro-dollar billing with Stripe integration + wallet management | 🚧 In Progress |
 | **L3 Proof** | Hardware TEE attestation (Intel TDX / AMD SEV-SNP) with remote verification | 🔬 Research |
-| **gRPC Plugins** | Python SDK for external governance plugin development | 📋 Planned |
-| **RBAC** | Role-based access control for multi-tenant deployments | 📋 Planned |
+| **gRPC Plugins** | External governance plugin SDK for custom safety filters | 📋 Planned |
 | **Prometheus** | Native metrics exporter with Grafana dashboards | 📋 Planned |
 | **SLSA L3** | Build provenance attestation and signed releases | 📋 Planned |
-| **Conformance** | CNCF conformance test suite runner | 📋 Planned |
 
 ---
 

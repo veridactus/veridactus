@@ -4,12 +4,14 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"github.com/veridactus/control-plane/internal/crypto"
 	"github.com/veridactus/control-plane/internal/model"
 	"github.com/veridactus/control-plane/internal/store"
 )
@@ -35,11 +37,12 @@ type RegisterRequest struct {
 
 // RegisterResult 注册/登录结果
 type RegisterResult struct {
-	User          *model.User        `json:"user"`
+	User          *model.User         `json:"user"`
 	Org           *model.Organization `json:"org"`
-	Workspace     *model.Workspace   `json:"workspace"`
-	Token         string             `json:"access_token"`
-	NeedBindPhone bool               `json:"need_bind_phone,omitempty"` // 微信登录后提示绑定手机号
+	Workspace     *model.Workspace    `json:"workspace"`
+	Token         string              `json:"access_token"`
+	RefreshToken  string              `json:"refresh_token"`
+	NeedBindPhone bool                `json:"need_bind_phone,omitempty"` // 微信登录后提示绑定手机号
 }
 
 // Register 邮箱注册 (自动创建组织+工作空间, 支持个人版/企业版)
@@ -137,11 +140,18 @@ func (s *EmailAuthService) Register(ctx context.Context, req RegisterRequest) (*
 		return nil, fmt.Errorf("token 签发失败: %w", err)
 	}
 
+	// 生成刷新令牌
+	refreshToken, _ := crypto.GenerateRefreshToken()
+	h := sha256.Sum256([]byte(refreshToken))
+	refreshHash := hex.EncodeToString(h[:])
+	s.store.CreateRefreshToken(ctx, user.ID, refreshHash, time.Now().Add(30*24*time.Hour).UTC().Format(time.RFC3339))
+
 	return &RegisterResult{
-		User:      user,
-		Org:       org,
-		Workspace: ws,
-		Token:     token,
+		User:         user,
+		Org:          org,
+		Workspace:    ws,
+		Token:        token,
+		RefreshToken: refreshToken,
 	}, nil
 }
 
@@ -207,15 +217,22 @@ func (s *EmailAuthService) Login(ctx context.Context, email, password string) (*
 		return nil, fmt.Errorf("认证失败，请重试")
 	}
 
-	// 7. 更新最后登录时间
+	// 7. 生成刷新令牌
+	refreshToken, _ := crypto.GenerateRefreshToken()
+	h := sha256.Sum256([]byte(refreshToken))
+	refreshHash := hex.EncodeToString(h[:])
+	s.store.CreateRefreshToken(ctx, user.ID, refreshHash, time.Now().Add(30*24*time.Hour).UTC().Format(time.RFC3339))
+
+	// 8. 更新最后登录时间
 	now := time.Now().UTC().Format(time.RFC3339)
 	s.store.UpdateUser(ctx, user.ID, map[string]interface{}{"last_login_at": now})
 
 	finalWs, _ := s.store.GetWorkspace(ctx, wsID)
 	return &RegisterResult{
 		User: user, Workspace: finalWs,
-		Org:   org,
-		Token: token,
+		Org:          org,
+		Token:        token,
+		RefreshToken: refreshToken,
 	}, nil
 }
 
