@@ -262,7 +262,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     if model_routes.is_empty() {
-        warn!("No model routes configured. Set ZHIPU_API_KEY or configure models via control plane.");
+        warn!(
+            "No model routes configured. Set ZHIPU_API_KEY or configure models via control plane."
+        );
     }
 
     let default_model = model_routes

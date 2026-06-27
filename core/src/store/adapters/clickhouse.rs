@@ -101,11 +101,26 @@ impl ClickHouseTraceStore {
             workspace_id: trace.tenant_id.clone().unwrap_or_default(),
             user_id: String::new(),
             model: trace.model.clone(),
-            provider: trace.model.split('/').next().unwrap_or("unknown").to_string(),
-            tokens_count: obs.and_then(|o| o.tokens_count.map(|t| t as i64)).unwrap_or(0),
-            cost_usd_micro: obs.and_then(|o| o.cost_estimated_usd.map(|c| (c * 1_000_000.0) as i64)).unwrap_or(0),
-            latency_ms: obs.and_then(|o| o.latency_ms.map(|l| l as i64)).unwrap_or(0),
-            execution_state: trace.execution_state.as_ref().map(|s| format!("{:?}", s)).unwrap_or_default(),
+            provider: trace
+                .model
+                .split('/')
+                .next()
+                .unwrap_or("unknown")
+                .to_string(),
+            tokens_count: obs
+                .and_then(|o| o.tokens_count.map(|t| t as i64))
+                .unwrap_or(0),
+            cost_usd_micro: obs
+                .and_then(|o| o.cost_estimated_usd.map(|c| (c * 1_000_000.0) as i64))
+                .unwrap_or(0),
+            latency_ms: obs
+                .and_then(|o| o.latency_ms.map(|l| l as i64))
+                .unwrap_or(0),
+            execution_state: trace
+                .execution_state
+                .as_ref()
+                .map(|s| format!("{:?}", s))
+                .unwrap_or_default(),
             safety_status: "safe".to_string(),
             proof_levels: proof_levels.join(","),
             created_at: Utc::now().to_rfc3339(),

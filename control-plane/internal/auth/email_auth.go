@@ -159,7 +159,7 @@ func (s *EmailAuthService) Register(ctx context.Context, req RegisterRequest) (*
 func (s *EmailAuthService) Login(ctx context.Context, email, password string) (*RegisterResult, error) {
 	// 1. 检查账户锁定
 	if locked, msg := IsAccountLocked(ctx, s.store, email); locked {
-		return nil, fmt.Errorf(msg)
+		return nil, fmt.Errorf("%s", msg)
 	}
 
 	// 2. 查找用户
