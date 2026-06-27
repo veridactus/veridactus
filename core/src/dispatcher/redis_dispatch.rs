@@ -47,6 +47,7 @@ pub struct AsyncTask {
 }
 
 /// Redis 异步分发器
+#[derive(Clone)]
 pub struct AsyncDispatcher {
     /// Redis 连接 URL
     redis_url: String,

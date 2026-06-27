@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import ReactFlow, {
   Background, Controls, MiniMap, useNodesState, useEdgesState,
@@ -9,8 +9,9 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import GlassCard from '../components/ui/GlassCard';
 import { useI18n } from '../i18n';
-import { createPipeline, updatePipeline, getPipeline, getPipelines } from '../api';
+import { createPipeline, updatePipeline, getPipeline } from '../api';
 import type { Pipeline } from '../types';
+import TemplateSelector from '../engines/pipeline/TemplateSelector';
 import {
   ArrowLeft, Save, Send, GripVertical, AlarmClock, CheckCircle, AlertCircle,
   Zap, Shield, Clock, Sparkles, Loader2, Trash2, Copy, Play, Star, ChevronDown, ChevronUp
@@ -190,10 +191,116 @@ function PipelineCanvas({ pipelineId }: { pipelineId: string | null }) {
     if (!pipelineId) return;
     (async () => {
       try {
-        const pipelines = await getPipelines();
-        const existing = pipelines.find((p: Pipeline) => p.plan_id === pipelineId);
-        if (existing) {}
-      } catch {}
+        const pipeline = await getPipeline(pipelineId);
+        if (!pipeline || !pipeline.stages || pipeline.stages.length === 0) return;
+
+        const ns: Node[] = [];
+        const es: any[] = [];
+
+        // 客户端入口节点
+        ns.push({
+          id: 'client-in', type: 'default', position: { x: -60, y: SYNC_Y - 40 },
+          data: { label: '🖥️ Client\nRequest', stage: 'client', name: 'Client', type: 'client' },
+          style: SPECIAL_NODE_STYLE.client
+        });
+        // 上游 LLM 网关节点
+        ns.push({
+          id: 'llm-upstream', type: 'default', position: { x: stageX(1.5), y: SYNC_Y - 100 },
+          data: { label: '☁️ Upstream\nLLM API', stage: 'upstream', name: 'Upstream LLM', type: 'gateway' },
+          style: SPECIAL_NODE_STYLE.upstream
+        });
+        // 客户端出口节点
+        ns.push({
+          id: 'client-out', type: 'default', position: { x: stageX(3.5), y: SYNC_Y - 40 },
+          data: { label: '🖥️ Client\nResponse', stage: 'client', name: 'Client', type: 'client' },
+          style: SPECIAL_NODE_STYLE.client
+        });
+
+        // 按阶段渲染已保存的插件
+        const stageOrder: Record<string, { x: number; y: number; color: string; glow: string }> = {
+          pre_request: { x: stageX(0.3), y: SYNC_Y, color: stages.pre_request.color, glow: stages.pre_request.glow },
+          streaming: { x: stageX(2), y: SYNC_Y, color: stages.streaming.color, glow: stages.streaming.glow },
+          post_response: { x: stageX(2.8), y: SYNC_Y, color: stages.post_response.color, glow: stages.post_response.glow },
+          async: { x: stageX(0.8), y: ASYNC_Y, color: stages.async.color, glow: stages.async.glow },
+        };
+
+        pipeline.stages.forEach((stage: any) => {
+          const placement: string = stage.placement || 'pre_request';
+          const layout = stageOrder[placement] || stageOrder.pre_request;
+          const isAsync = placement === 'async';
+          const gap = isAsync ? ASYNC_GAP : 40;
+
+          (stage.plugins || []).forEach((plugin: any, i: number) => {
+            const nodeId = `plugin-${placement}-${i}`;
+            ns.push({
+              id: nodeId, type: 'default',
+              position: { x: layout.x + i * gap, y: layout.y + i * 60 },
+              data: {
+                label: `${plugin.name}`,
+                stage: placement,
+                name: plugin.name,
+                type: plugin.type || 'native',
+                plugin: plugin,
+              },
+              style: pluginNodeStyle(layout.color, layout.glow)
+            });
+          });
+        });
+
+        // 构建连线
+        const preNodes = ns.filter(n => n.data?.stage === 'pre_request');
+        const streamNodes = ns.filter(n => n.data?.stage === 'streaming');
+        const postNodes = ns.filter(n => n.data?.stage === 'post_response');
+        const asyncNodes = ns.filter(n => n.data?.stage === 'async');
+
+        preNodes.forEach(n => {
+          es.push({
+            id: `e-cin-${n.id}`, source: 'client-in', target: n.id,
+            animated: true, style: SYNC_EDGE,
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#6c5ce7', width: 20, height: 20 }
+          });
+          es.push({
+            id: `e-${n.id}-up`, source: n.id, target: 'llm-upstream',
+            animated: true, style: SYNC_EDGE,
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#6c5ce7' }
+          });
+        });
+
+        streamNodes.forEach(n => {
+          es.push({
+            id: `e-up-${n.id}`, source: 'llm-upstream', target: n.id,
+            animated: true, style: SYNC_EDGE,
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#6c5ce7' }
+          });
+          postNodes.forEach(pn => {
+            es.push({
+              id: `e-${n.id}-${pn.id}`, source: n.id, target: pn.id,
+              animated: true, style: SYNC_EDGE,
+              markerEnd: { type: MarkerType.ArrowClosed, color: '#6c5ce7' }
+            });
+          });
+        });
+
+        postNodes.forEach(n => {
+          es.push({
+            id: `e-${n.id}-cout`, source: n.id, target: 'client-out',
+            animated: true, style: SYNC_EDGE,
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#6c5ce7' }
+          });
+          asyncNodes.forEach(an => {
+            es.push({
+              id: `e-${n.id}-${an.id}`, source: n.id, target: an.id,
+              animated: false, style: ASYNC_EDGE,
+              markerEnd: { type: MarkerType.ArrowClosed, color: '#fdcb6e' }
+            });
+          });
+        });
+
+        setNodes(ns);
+        setEdges(es);
+      } catch (err) {
+        console.warn('Failed to load pipeline data, using defaults:', err);
+      }
     })();
   }, [pipelineId]);
 
@@ -389,7 +496,7 @@ function PipelineCanvas({ pipelineId }: { pipelineId: string | null }) {
   }, [exportPipelineData]);
 
   return (
-    <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 220px)', minHeight: 500 }}>
+    <div style={{ display: 'flex', gap: 16, height: '100%', minHeight: 500 }}>
       <motion.div
         initial={{ x: -20, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
@@ -699,6 +806,7 @@ export default function PipelineDesigner() {
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [toast, setToast] = useState<ToastProps>({ message: '', type: 'info', visible: false });
   const [pipelineId] = useState(id || null);
 

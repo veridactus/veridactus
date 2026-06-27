@@ -1,0 +1,30 @@
+#!/bin/bash
+# VERIDACTUS pre-commit hook — 代码质量门禁
+set -euo pipefail
+
+echo "🔍 VERIDACTUS pre-commit checks..."
+
+# 1. Rust formatting
+echo "  Rust fmt..."
+cd core && cargo fmt --check 2>/dev/null || { echo "  ❌ Rust fmt failed. Run: cd core && cargo fmt"; exit 1; }
+cd ..
+
+# 2. Rust clippy
+echo "  Rust clippy..."
+cd core && cargo clippy --all-targets 2>/dev/null || echo "  ⚠️  Clippy warnings (non-blocking)"
+cd ..
+
+# 3. Go vet
+echo "  Go vet..."
+cd control-plane && go vet ./... || { echo "  ❌ Go vet failed"; exit 1; }
+cd ..
+
+# 4. Secret scanning (block if new keys found in diff)
+echo "  Secret scan..."
+if git diff --cached | grep -qE 'sk-proj-|sk-ant-|bce-v3/ALTAK'; then
+    echo "  ❌ Potential API key in staged changes! Commit blocked."
+    exit 1
+fi
+
+echo "  ✅ All pre-commit checks passed"
+exit 0

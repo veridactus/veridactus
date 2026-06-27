@@ -45,3 +45,18 @@ export const useThemeStore = create<ThemeState>((set) => ({
     return { theme: next };
   }),
 }));
+
+// ==================== 全局主导航栏折叠状态 ====================
+interface NavSidebarState {
+  navCollapsed: boolean;
+  toggleNav: () => void;
+}
+export const useNavSidebarStore = create<NavSidebarState>((set) => ({
+  navCollapsed: false,
+  toggleNav: () => set((s) => {
+    const next = !s.navCollapsed;
+    document.documentElement.style.setProperty('--sidebar-width', next ? '64px' : '260px');
+    try { localStorage.setItem('v_nav_collapsed', next ? '1' : '0'); } catch {}
+    return { navCollapsed: next };
+  }),
+}));

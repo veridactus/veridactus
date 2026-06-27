@@ -73,6 +73,9 @@ pub struct ProofChainEntry {
     /// 规范化方法
     #[serde(default = "default_canonicalization")]
     pub canonicalization_method: String,
+    /// 签名时的规范 JSON 字符串（用于跨存储验证，避免 JSONB 反序列化差异）
+    #[serde(default)]
+    pub canonical_json: Option<String>,
 }
 
 fn default_canonicalization() -> String {

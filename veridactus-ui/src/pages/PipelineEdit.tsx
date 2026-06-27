@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import GlassCard from '../components/ui/GlassCard';
 import { useI18n } from '../i18n';
+import { toast } from '../components/ui/Toast';
 import { getPipeline, updatePipeline, createPipeline } from '../api';
 import type { Pipeline } from '../types';
 import {
@@ -34,6 +35,7 @@ export default function PipelineEdit() {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [stages, setStages] = useState<StageConfig[]>([]);
   const [tenant, setTenant] = useState('');
+  const [name, setName] = useState('');
   const [showStageMenu, setShowStageMenu] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,6 +53,7 @@ export default function PipelineEdit() {
       const data = await getPipeline(id!);
       setPipeline(data);
       setTenant(data.tenant || 'default');
+      setName(data.name || '');
       setStages(data.stages || [{ placement: 'pre_request', parallel: false, plugins: [] }]);
     } catch (err) {
       console.error('Failed to load pipeline:', err);
@@ -105,7 +108,7 @@ export default function PipelineEdit() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const payload = { tenant, stages };
+      const payload = { name: name.trim() || undefined, tenant, stages };
       if (id) {
         await updatePipeline(id, payload);
       } else {
@@ -113,146 +116,62 @@ export default function PipelineEdit() {
       }
       navigate('/pipelines');
     } catch (err) {
-      alert('保存失败');
+      toast.error('保存失败');
       console.error(err);
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-        <Loader2 size={32} style={{ color: '#6c5ce7', animation: 'spin 1s linear infinite' }} />
-      </div>
-    );
-  }
+  if (loading) return <div className="flex justify-center items-center h-[50vh]"><Loader2 size={32} className="animate-spin text-[#6c5ce7]" /></div>;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      style={{ position: 'relative', zIndex: 1 }}
-    >
-      <div style={{
-        position: 'absolute', top: -100, right: -100, width: 400, height: 400,
-        borderRadius: '50%', background: 'radial-gradient(circle, rgba(108,92,231,0.1) 0%, transparent 70%)',
-        pointerEvents: 'none',
-      }} />
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative z-[1]">
+      <div className="absolute -top-[100px] -right-[100px] w-[400px] h-[400px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(108,92,231,0.1) 0%, transparent 70%)' }} />
 
-      <motion.div
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 32 }}
-      >
-        <motion.button
-          onClick={() => navigate('/pipelines')}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          style={{
-            width: 44, height: 44, borderRadius: 12,
-            background: 'rgba(255,255,255,0.1)',
-            border: '1px solid var(--border-default)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
-          }}
-        >
+      <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex items-center gap-5 mb-8">
+        <motion.button onClick={() => navigate('/pipelines')} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+          className="w-11 h-11 rounded-xl flex items-center justify-center cursor-pointer" style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid var(--border-default)' }}>
           <ArrowLeft size={20} />
         </motion.button>
         <div>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-            {id ? '编辑流水线' : '新建流水线'}
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginTop: 4 }}>
-            配置治理流水线的各个阶段和插件
-          </p>
+          <h1 className="text-3xl font-bold text-[var(--text-primary)] tracking-tight">{id ? '编辑流水线' : '新建流水线'}</h1>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">配置治理流水线的各个阶段和插件</p>
         </div>
-        <motion.button
-          className="btn-primary"
-          onClick={handleSave}
-          disabled={saving}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}
-        >
-          {saving ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={18} />}
+        <motion.button className="btn-primary flex gap-2 items-center ml-auto" onClick={handleSave} disabled={saving} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+          {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
           {saving ? '保存中...' : '保存'}
         </motion.button>
       </motion.div>
 
-      <GlassCard style={{ padding: 24, marginBottom: 24 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Settings size={16} style={{ color: '#6c5ce7' }} />
-          基本信息
-        </h3>
-        <div style={{ display: 'flex', gap: 24 }}>
-          <div style={{ flex: 1 }}>
-            <label style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'block', marginBottom: 6 }}>
-              租户 ID
-            </label>
-            <input
-              type="text"
-              value={tenant}
-              onChange={(e) => setTenant(e.target.value)}
-              style={{
-                width: '100%', padding: '12px 16px',
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid var(--border-default)',
-                borderRadius: 10,
-                color: 'var(--text-primary)',
-                fontSize: 14,
-              }}
-              placeholder="输入租户ID"
-            />
+      <GlassCard className="p-6 mb-6">
+        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2"><Settings size={16} className="text-[#6c5ce7]" /> 基本信息</h3>
+        <div className="flex gap-6">
+          <div className="flex-1">
+            <label className="text-xs text-[var(--text-tertiary)] block mb-1.5">流水线名称 <span className="text-[#ff7675]">*</span></label>
+            <input className="input-field" value={name} onChange={e => setName(e.target.value)} placeholder="如：生产环境安全审计" />
           </div>
-          <div style={{ flex: 1 }}>
-            <label style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'block', marginBottom: 6 }}>
-              流水线 ID
-            </label>
-            <input
-              type="text"
-              value={pipeline?.plan_id || '新建'}
-              disabled
-              style={{
-                width: '100%', padding: '12px 16px',
-                background: 'rgba(0,0,0,0.1)',
-                border: '1px solid var(--border-default)',
-                borderRadius: 10,
-                color: 'var(--text-secondary)',
-                fontSize: 14,
-              }}
-            />
+          <div className="flex-1">
+            <label className="text-xs text-[var(--text-tertiary)] block mb-1.5">租户 ID</label>
+            <input className="input-field" value={tenant} onChange={e => setTenant(e.target.value)} placeholder="输入租户ID" />
+          </div>
+          <div className="flex-1">
+            <label className="text-xs text-[var(--text-tertiary)] block mb-1.5">流水线 ID</label>
+            <input className="input-field" value={pipeline?.plan_id || '新建'} disabled style={{ background: 'rgba(0,0,0,0.1)', color: 'var(--text-secondary)' }} />
           </div>
         </div>
       </GlassCard>
 
-      <GlassCard style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: 24, borderBottom: '1px solid var(--border-default)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <GitBranch size={16} style={{ color: '#6c5ce7' }} />
-            流水线阶段
-          </h3>
-          <motion.button
-            onClick={addStage}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            style={{
-              padding: '8px 16px',
-              background: 'rgba(108,92,231,0.1)',
-              color: '#6c5ce7',
-              border: '1px solid rgba(108,92,231,0.3)',
-              borderRadius: 8,
-              fontSize: 12,
-              fontWeight: 600,
-              display: 'flex', alignItems: 'center', gap: 6,
-              cursor: 'pointer',
-            }}
-          >
+      <GlassCard className="p-0 overflow-hidden">
+        <div className="p-6 border-b border-[var(--border-default)] flex justify-between items-center">
+          <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2"><GitBranch size={16} className="text-[#6c5ce7]" /> 流水线阶段</h3>
+          <motion.button onClick={addStage} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+            className="py-2 px-4 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer" style={{ background: 'rgba(108,92,231,0.1)', color: '#6c5ce7', border: '1px solid rgba(108,92,231,0.3)' }}>
             <Plus size={14} /> 添加阶段
           </motion.button>
         </div>
 
-        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="p-6 flex flex-col gap-4">
           {stages.map((stage, stageIndex) => (
             <motion.div
               key={stageIndex}

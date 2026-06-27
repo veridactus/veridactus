@@ -21,7 +21,7 @@ impl PostgresTraceStore {
     pub async fn init_schema(pool: &sqlx::PgPool) -> Result<(), String> {
         sqlx::query(
             r#"
-            CREATE TABLE IF NOT EXISTS traces (
+            CREATE TABLE IF NOT EXISTS dp_traces (
                 trace_id UUID PRIMARY KEY,
                 tenant_id VARCHAR(64) NOT NULL,
                 session_id UUID,
@@ -37,7 +37,7 @@ impl PostgresTraceStore {
 
         sqlx::query(
             r#"
-            CREATE INDEX IF NOT EXISTS idx_traces_tenant ON traces(tenant_id)
+            CREATE INDEX IF NOT EXISTS idx_dp_traces_tenant ON dp_traces(tenant_id)
             "#,
         )
         .execute(pool)
@@ -46,7 +46,7 @@ impl PostgresTraceStore {
 
         sqlx::query(
             r#"
-            CREATE INDEX IF NOT EXISTS idx_traces_timestamp ON traces(created_at)
+            CREATE INDEX IF NOT EXISTS idx_dp_traces_timestamp ON dp_traces(created_at)
             "#,
         )
         .execute(pool)
@@ -55,7 +55,7 @@ impl PostgresTraceStore {
 
         sqlx::query(
             r#"
-            CREATE INDEX IF NOT EXISTS idx_traces_session ON traces(session_id)
+            CREATE INDEX IF NOT EXISTS idx_dp_traces_session ON dp_traces(session_id)
             "#,
         )
         .execute(pool)
@@ -73,7 +73,7 @@ impl TraceStore for PostgresTraceStore {
 
         sqlx::query(
             r#"
-            INSERT INTO traces (
+            INSERT INTO dp_traces (
                 trace_id, tenant_id, session_id, trace_data, created_at
             ) VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (trace_id) DO UPDATE SET
@@ -94,7 +94,7 @@ impl TraceStore for PostgresTraceStore {
 
     async fn get(&self, trace_id: &Uuid) -> Option<Trace> {
         let row: Option<(Value,)> =
-            sqlx::query_as("SELECT trace_data FROM traces WHERE trace_id = $1")
+            sqlx::query_as("SELECT trace_data FROM dp_traces WHERE trace_id = $1")
                 .bind(trace_id)
                 .fetch_optional(self.pool.as_ref())
                 .await
@@ -106,7 +106,7 @@ impl TraceStore for PostgresTraceStore {
     async fn list(&self, tenant_id: Option<&str>, limit: usize, offset: usize) -> Vec<Trace> {
         let rows: Vec<(Value,)> = if let Some(tid) = tenant_id {
             sqlx::query_as(
-                "SELECT trace_data FROM traces WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"
+                "SELECT trace_data FROM dp_traces WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"
             )
             .bind(tid)
             .bind(limit as i64)
@@ -116,7 +116,7 @@ impl TraceStore for PostgresTraceStore {
             .unwrap_or_default()
         } else {
             sqlx::query_as(
-                "SELECT trace_data FROM traces ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+                "SELECT trace_data FROM dp_traces ORDER BY created_at DESC LIMIT $1 OFFSET $2",
             )
             .bind(limit as i64)
             .bind(offset as i64)
@@ -132,13 +132,13 @@ impl TraceStore for PostgresTraceStore {
 
     async fn count(&self, tenant_id: Option<&str>) -> usize {
         if let Some(tid) = tenant_id {
-            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM traces WHERE tenant_id = $1")
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM dp_traces WHERE tenant_id = $1")
                 .bind(tid)
                 .fetch_one(self.pool.as_ref())
                 .await
                 .unwrap_or(0) as usize
         } else {
-            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM traces")
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM dp_traces")
                 .fetch_one(self.pool.as_ref())
                 .await
                 .unwrap_or(0) as usize
@@ -147,7 +147,7 @@ impl TraceStore for PostgresTraceStore {
 
     async fn delete(&self, trace_id: &Uuid) -> Result<Option<Trace>, String> {
         let row: Option<(Value,)> =
-            sqlx::query_as("DELETE FROM traces WHERE trace_id = $1 RETURNING trace_data")
+            sqlx::query_as("DELETE FROM dp_traces WHERE trace_id = $1 RETURNING trace_data")
                 .bind(trace_id)
                 .fetch_optional(self.pool.as_ref())
                 .await
@@ -158,7 +158,7 @@ impl TraceStore for PostgresTraceStore {
 
     async fn delete_by_session(&self, session_id: &Uuid) -> Result<Vec<Trace>, String> {
         let rows: Vec<(Value,)> =
-            sqlx::query_as("DELETE FROM traces WHERE session_id = $1 RETURNING trace_data")
+            sqlx::query_as("DELETE FROM dp_traces WHERE session_id = $1 RETURNING trace_data")
                 .bind(session_id)
                 .fetch_all(self.pool.as_ref())
                 .await
@@ -172,7 +172,7 @@ impl TraceStore for PostgresTraceStore {
 
     async fn delete_by_tenant(&self, tenant_id: &str) -> Result<Vec<Trace>, String> {
         let rows: Vec<(Value,)> =
-            sqlx::query_as("DELETE FROM traces WHERE tenant_id = $1 RETURNING trace_data")
+            sqlx::query_as("DELETE FROM dp_traces WHERE tenant_id = $1 RETURNING trace_data")
                 .bind(tenant_id)
                 .fetch_all(self.pool.as_ref())
                 .await

@@ -21,17 +21,18 @@ VERIDACTUS implements a **microservices architecture** with four primary compone
 
 | Component | Technology | Port | Responsibility |
 |-----------|------------|------|----------------|
-| **veridactus-core** | Rust + Axum | 8080 | AI proxy gateway, plugin execution, trace signing |
-| **veridactus-cp** | Go + SQLite | 8081 | Configuration management, CRUD operations |
-| **veridactus-ui** | React + Vite | 3000 | Admin dashboard, pipeline designer |
-| **veridactus-python-worker** | Python + FastAPI | 8002 | Enhanced computation (optional) |
+| **veridactus-core** | Rust + Axum | 8080 | AI proxy gateway (OpenAI-compatible), governance pipeline execution, cryptographic trace signing, model routing |
+| **veridactus-cp** | Go + PostgreSQL | 8081 | Multi-tenant management (Org/Workspace), JWT auth + RBAC, pipeline/model CRUD, virtual keys, wallets, conversations, config polling |
+| **veridactus-ui** | React + Vite + TypeScript | 3000 | Chat safety sandbox, Dev Hub playground, Holo-Trace Vault, pipeline designer, model & API key management, admin settings |
+| **veridactus-python-worker** | Python + FastAPI | 8001 | Enhanced computation: compliance reports, ZK proof generation (optional) |
 
 ### Design Principles
 
 1. **Separation of Concerns**: Control plane handles configuration; data plane handles execution
-2. **Fail-Safe Defaults**: Plugins degrade gracefully when external services fail
-3. **Cryptographic Audit**: All traces are cryptographically signed for tamper evidence
-4. **Dynamic Configuration**: Pipeline changes take effect without restart
+2. **Multi-Tenant Isolation**: Strict workspace-level data isolation at every API layer (CP handler + DP trace tenant_id)
+3. **Fail-Safe Defaults**: Plugins degrade gracefully when external services fail
+4. **Cryptographic Audit**: All traces are cryptographically signed with JCS+SHA-256 for tamper evidence
+5. **Dynamic Configuration**: Pipeline changes take effect without restart via config polling
 
 ---
 
@@ -88,7 +89,7 @@ The data plane is implemented in Rust for high performance and memory safety.
 
 ### Control Plane (veridactus-cp)
 
-The control plane is implemented in Go for simplicity and SQLite for persistence.
+The control plane is implemented in Go for simplicity and uses PostgreSQL for production persistence (with SQLite available as a lightweight development option).
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -119,7 +120,7 @@ The control plane is implemented in Go for simplicity and SQLite for persistence
 │                              ▼                                          │
 │                     ┌────────────────┐                                  │
 │                     │   Store Layer  │                                  │
-│                     │   (SQLite)    │                                  │
+│                     │  (PostgreSQL) │                                  │
 │                     └────────────────┘                                  │
 └─────────────────────────────────────────────────────────────────────────┘
          │
@@ -133,13 +134,14 @@ The control plane is implemented in Go for simplicity and SQLite for persistence
 
 ### Frontend (veridactus-ui)
 
-The frontend is a React SPA with:
+The frontend is a React 18 SPA (Vite + TypeScript) with multiple engines:
 
-- **Dashboard**: Real-time metrics and trace overview
-- **Pipeline Designer**: Visual drag-and-drop pipeline editor
-- **Plugin Market**: Browse and install plugins
-- **API Key Management**: Create and rotate keys
-- **Audit Center**: View security events and traces
+- **VERIDACTUS Chat**: Safety sandbox with dynamic PII detection shield, pipeline selector, model picker, multi-conversation sidebar, and real-time streaming with VERIDACTUS governance protocol headers
+- **Dev Hub Playground**: Three-panel developer workspace with prompt editor, streaming output, and X-Ray diagnostics panel
+- **Holo-Trace Vault**: Audit center with session-grouped trace browsing, cryptographic signature verification, compliance status, cost/token tracking, and per-trace detail view
+- **Pipeline Studio**: Visual pipeline designer and editor for governance pipeline stages
+- **Model Management**: CRUD for LLM model configurations with workspace-level isolation
+- **API Key Management**: Create, view, and rotate API keys per workspace
 
 ---
 
@@ -389,10 +391,9 @@ VERIDACTUS implements a hierarchical constraint configuration system:
 
 | Backend | Use Case | Configuration |
 |---------|----------|---------------|
-| **In-Memory** | Development | Default |
-| **Redis** | Caching/Idempotency | `VERIDACTUS_STORE_REDIS_*` |
-| **PostgreSQL** | Trace persistence | `VERIDACTUS_STORE_POSTGRES_*` |
-| **S3/MinIO** | Large blob storage | `VERIDACTUS_STORE_S3_*` |
+| **PostgreSQL** | Production — trace persistence + CP business data | `DATABASE_URL` / `VERIDACTUS_STORE_BACKEND=postgres` |
+| **In-Memory** | Development / testing | `VERIDACTUS_STORE_BACKEND=memory` |
+| **SQLite** | Lightweight dev mode (CP only) | `STORE_BACKEND=sqlite` |
 
 ### Trace Storage Schema
 

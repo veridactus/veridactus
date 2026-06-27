@@ -49,6 +49,12 @@ pub struct VeridactusRequestHeaders {
     pub proof_timeout: Option<u64>,
     /// 证明模式
     pub proof_mode: Option<String>,
+    /// 指定使用的流水线 ID（多流水线切换）
+    pub pipeline_id: Option<String>,
+    /// 会话 ID（多轮对话的逻辑分组，用于关联 Trace）
+    pub session_id: Option<String>,
+    /// 工作空间 ID（用于多租户隔离，写入 trace.tenant_id）
+    pub workspace_id: Option<String>,
     /// 传入的原始头部（用于 Journal 记录）
     pub raw_headers: BTreeMap<String, String>,
 }
@@ -216,7 +222,15 @@ pub fn parse_veridactus_headers(headers: &BTreeMap<String, String>) -> Veridactu
                 result.proof_timeout = value.parse::<u64>().ok();
             }
             "veridactus-proof-mode" => result.proof_mode = Some(value.clone()),
-            _ => {}
+            "veridactus-pipeline-id" => result.pipeline_id = Some(value.clone()),
+            "veridactus-session-id" => result.session_id = Some(value.clone()),
+            "veridactus-workspace-id" => result.workspace_id = Some(value.clone()),
+            _ => {
+                // 调试：记录未识别的 veridactus-* 头部
+                if lower_key.starts_with("veridactus-") {
+                    tracing::debug!("未识别的 VERIDACTUS 头部: {}={}", key, value);
+                }
+            }
         }
     }
 

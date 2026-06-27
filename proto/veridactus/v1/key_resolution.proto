@@ -1,0 +1,86 @@
+// VERIDACTUS Key Resolution Service
+// Go 控制面 ↔ Rust 数据面之间的 gRPC 通信协议
+// 用于虚拟密钥解析：数据面收到请求后，向控制面查询真实 LLM 密钥
+syntax = "proto3";
+
+package veridactus.v1;
+
+option go_package = "github.com/veridactus/proto/gen/veridactus/v1;veridactusv1";
+
+// KeyResolutionService 密钥解析服务
+// 数据面在收到 LLM 请求时调用此服务解析 Virtual Key → 真实 Provider Key
+// 确保真实 Key 从不暴露给前端和 Rust 内存持久层
+service KeyResolutionService {
+  // ResolveKey 解析虚拟密钥为真实 Provider Key
+  // 根据 Virtual Key 的归属（BYOK 或 Unified Platform）返回解密后的真实密钥或路由策略
+  rpc ResolveKey(ResolveKeyRequest) returns (ResolveKeyResponse);
+  
+  // ReportUsage 上报 token 用量（异步，用于计费）
+  rpc ReportUsage(ReportUsageRequest) returns (ReportUsageResponse);
+}
+
+// ResolveKeyRequest 密钥解析请求
+message ResolveKeyRequest {
+  // 虚拟密钥的 SHA-256 哈希值
+  string virtual_key_hash = 1;
+  // 请求的模型名称（如 "glm-4-flash"）
+  string model = 2;
+  // 请求的工作空间 ID
+  string workspace_id = 3;
+  // 请求的 trace ID（用于审计）
+  string trace_id = 4;
+  // 请求的幂等键（可选）
+  string idempotency_key = 5;
+}
+
+// ResolveKeyResponse 密钥解析响应
+message ResolveKeyResponse {
+  // 解密后的真实 Provider Key
+  string provider_key = 1;
+  // 上游 LLM 端点 URL
+  string upstream_url = 2;
+  // 上游模型名称
+  string upstream_model = 3;
+  // API Key Header 名称（默认 "Authorization"）
+  string api_key_header = 4;
+  // 预算剩余（微美元）
+  int64 budget_remaining_micro = 5;
+  // 是否使用代理
+  bool use_proxy = 6;
+  // 代理 URL（若 use_proxy=true）
+  string proxy_url = 7;
+  // 限流配置：每分钟请求数
+  int32 rate_limit_rpm = 8;
+  // 限流配置：每分钟 Token 数
+  int32 rate_limit_tpm = 9;
+  // 工作空间 ID（确认）
+  string workspace_id = 10;
+  // 允许的模型列表（JSON 数组字符串）
+  string allowed_models = 11;
+}
+
+// ReportUsageRequest Token 用量上报请求
+message ReportUsageRequest {
+  // 虚拟密钥哈希
+  string virtual_key_hash = 1;
+  // 工作空间 ID
+  string workspace_id = 2;
+  // 消耗的 Token 数
+  int64 tokens_consumed = 3;
+  // 消耗成本（微美元）
+  int64 cost_usd_micro = 4;
+  // Trace ID
+  string trace_id = 5;
+  // 模型名称
+  string model = 6;
+}
+
+// ReportUsageResponse Token 用量上报响应
+message ReportUsageResponse {
+  // 是否成功
+  bool success = 1;
+  // 更新后的预算剩余（微美元）
+  int64 budget_remaining_micro = 2;
+  // 是否触发预算告警（剩余 < 10%）
+  bool budget_warning = 3;
+}

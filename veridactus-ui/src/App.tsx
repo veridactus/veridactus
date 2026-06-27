@@ -3,10 +3,12 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { I18nProvider } from './i18n';
 import { useThemeStore } from './store';
+import AuthGuard from './auth/AuthGuard';
 import Sidebar from './components/layout/Sidebar';
 import BottomStatusBar from './components/layout/BottomStatusBar';
 import DataFlowBackground from './components/viz/DataFlowBackground';
 import { useMetricsStream } from './hooks/useMetricsStream';
+import { ToastContainer, useToastMount } from './components/ui/Toast';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Pipelines = lazy(() => import('./pages/Pipelines'));
@@ -18,14 +20,27 @@ const ApiKeys = lazy(() => import('./pages/ApiKeys'));
 const Models = lazy(() => import('./pages/Models'));
 const Settings = lazy(() => import('./pages/Settings'));
 
+// Phase 3: 新引擎
+const LoginPage = lazy(() => import('./auth/LoginPage'));
+const PhoneBind = lazy(() => import('./auth/PhoneBind'));
+const ChatPage = lazy(() => import('./engines/chat/ChatPage'));
+const VaultPage = lazy(() => import('./engines/vault/VaultPage'));
+const VaultDetail = lazy(() => import('./engines/vault/VaultDetail'));
+
+// Phase 4: 企业级
+const BrandSettings = lazy(() => import('./admin/BrandSettings'));
+const ComplianceReport = lazy(() => import('./pages/ComplianceReport'));
+const PluginMarket = lazy(() => import('./pages/PluginMarket'));
+const OnboardingPage = lazy(() => import('./auth/OnboardingPage'));
+const PlaygroundPage = lazy(() => import('./engines/devhub/PlaygroundPage'));
+
 function LoadingScreen() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-primary)' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 40, height: 40, border: '3px solid var(--border-default)', borderTopColor: '#00d4aa', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
-        <p style={{ color: 'var(--text-secondary)', fontSize: 14, fontWeight: 500 }}>Loading VERIDACTUS...</p>
+    <div className="flex items-center justify-center h-screen bg-[var(--bg-primary)]">
+      <div className="text-center">
+        <div className="w-10 h-10 border-[3px] border-[var(--border-default)] border-t-[#00d4aa] rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-sm font-medium text-[var(--text-secondary)]">Loading VERIDACTUS...</p>
       </div>
-      <style>{'@keyframes spin { to { transform: rotate(360deg); } }'}</style>
     </div>
   );
 }
@@ -33,13 +48,15 @@ function LoadingScreen() {
 function AppLayout() {
   const theme = useThemeStore(s => s.theme);
   useMetricsStream();
+  useToastMount();
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-primary)', transition: 'background 0.3s ease' }}>
+    <AuthGuard>
+    <div className="flex h-screen overflow-hidden bg-[var(--bg-primary)]" style={{ transition: 'background 0.3s ease' }}>
       <DataFlowBackground />
       <Sidebar />
       <main className="main-content">
@@ -51,18 +68,29 @@ function AppLayout() {
               <Route path="/pipelines/new" element={<PipelineDesigner />} />
               <Route path="/pipelines/design/:id?" element={<PipelineDesigner />} />
               <Route path="/pipelines/edit/:id" element={<PipelineEdit />} />
-              <Route path="/audit" element={<AuditCenter />} />
+              <Route path="/audit" element={<Navigate to="/vault" replace />} />
               <Route path="/plugins" element={<Plugins />} />
               <Route path="/api-keys" element={<ApiKeys />} />
               <Route path="/models" element={<Models />} />
               <Route path="/settings" element={<Settings />} />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              {/* Phase 3: 新引擎 */}
+              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/vault" element={<VaultPage />} />
+              <Route path="/vault/:traceId" element={<VaultDetail />} />
+              {/* Phase 4: 企业级 */}
+              <Route path="/playground" element={<PlaygroundPage />} />
+              <Route path="/audit-center" element={<Navigate to="/vault" replace />} />
+              <Route path="/brand" element={<BrandSettings />} />
+              <Route path="/compliance" element={<ComplianceReport />} />
+              <Route path="/plugins/market" element={<PluginMarket />} />
+              <Route path="*" element={<Navigate to="/chat" replace />} />
             </Routes>
           </Suspense>
         </div>
       </main>
       <BottomStatusBar />
     </div>
+    </AuthGuard>
   );
 }
 
@@ -70,7 +98,13 @@ export default function App() {
   return (
     <BrowserRouter>
       <I18nProvider>
-        <AppLayout />
+        <ToastContainer />
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/bind-phone" element={<PhoneBind />} />
+          <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="/*" element={<AppLayout />} />
+        </Routes>
       </I18nProvider>
     </BrowserRouter>
   );

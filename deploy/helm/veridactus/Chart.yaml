@@ -1,0 +1,40 @@
+apiVersion: v2
+name: veridactus
+description: VERIDACTUS — AI Execution Governance Infrastructure (Full Stack)
+type: application
+version: 0.3.0
+appVersion: "0.3.0"
+keywords:
+  - ai-governance
+  - llm-proxy
+  - cryptographic-proof
+  - finops
+  - pii-detection
+home: https://github.com/veridactus/veridactus
+sources:
+  - https://github.com/veridactus/veridactus
+maintainers:
+  - name: VERIDACTUS Team
+    email: team@veridactus.io
+
+dependencies:
+  - name: postgresql
+    version: "~15"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "~19"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+  - name: clickhouse
+    version: "~6"
+    repository: https://charts.bitnami.com/bitnami
+    condition: clickhouse.enabled
+  - name: minio
+    version: "~5"
+    repository: https://charts.bitnami.com/bitnami
+    condition: minio.enabled
+  - name: grafana
+    version: "~8"
+    repository: https://grafana.github.io/helm-charts
+    condition: grafana.enabled

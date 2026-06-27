@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import GlassCard from '../components/ui/GlassCard';
 import { useI18n } from '../i18n';
-import { getPipelines, createPipeline, deletePipeline } from '../api';
+import { getPipelines, createPipeline, deletePipeline, publishPipeline } from '../api';
 import type { Pipeline } from '../types';
+import { ConfirmDialog } from '../components/ui/Dialog';
+import { toast } from '../components/ui/Toast';
 import {
   GitBranch, Plus, Play, CheckCircle, Zap, Clock, Shield,
   ChevronRight, Trash2, Copy, Star, MoreVertical, Sparkles,
-  ArrowUpRight, ArrowDownRight, AlertCircle, Loader2, Settings
+  ArrowUpRight, ArrowDownRight, AlertCircle, Loader2, Settings, Send
 } from 'lucide-react';
 
 const examplePipelines = [
@@ -53,10 +55,11 @@ interface PipelineCardProps {
   index: number;
   onEdit: (id: string) => void;
   onAdvancedEdit: (id: string) => void;
+  onPublish: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
-function PipelineCard({ pipeline, index, onEdit, onAdvancedEdit, onDelete }: PipelineCardProps) {
+function PipelineCard({ pipeline, index, onEdit, onAdvancedEdit, onDelete, onPublish }: PipelineCardProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -124,7 +127,7 @@ function PipelineCard({ pipeline, index, onEdit, onAdvancedEdit, onDelete }: Pip
               </motion.div>
               <div>
                 <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2 }}>
-                  {pipeline.plan_id?.slice(0, 12) || 'Unnamed Pipeline'}
+                  {pipeline.name || pipeline.plan_id?.slice(0, 12) || 'Unnamed Pipeline'}
                 </h3>
                 <p style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
                   {pipeline.tenant || 'default'} • {stageCount} stages
@@ -133,15 +136,16 @@ function PipelineCard({ pipeline, index, onEdit, onAdvancedEdit, onDelete }: Pip
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{
-                padding: '4px 10px', borderRadius: 20, fontSize: 10, fontWeight: 700,
-                background: 'rgba(0,212,170,0.1)', color: '#00d4aa',
-                border: '1px solid rgba(0,212,170,0.2)',
-              }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <CheckCircle size={10} /> Active
-                </span>
-              </span>
+              {/* 动态状态徽章: draft=黄, published=蓝, active=绿 */}
+              {((status:string) => {
+                const cfg: Record<string,{bg:string;color:string;border:string;label:string}> = {
+                  draft: {bg:'rgba(253,203,110,0.1)',color:'#fdcb6e',border:'rgba(253,203,110,0.2)',label:'草稿'},
+                  published: {bg:'rgba(108,92,231,0.1)',color:'#6c5ce7',border:'rgba(108,92,231,0.2)',label:'已发布'},
+                  active: {bg:'rgba(0,212,170,0.1)',color:'#00d4aa',border:'rgba(0,212,170,0.2)',label:'Active'},
+                };
+                const c = cfg[status] || cfg.draft;
+                return <span key={status} style={{padding:'4px 10px',borderRadius:20,fontSize:10,fontWeight:700,background:c.bg,color:c.color,border:`1px solid ${c.border}`}}><CheckCircle size={10}/> {c.label}</span>;
+              })(pipeline.status || 'draft')}
 
               <div ref={menuRef} style={{ position: 'relative' }}>
                 <motion.button
@@ -195,8 +199,18 @@ function PipelineCard({ pipeline, index, onEdit, onAdvancedEdit, onDelete }: Pip
                       >
                         <Settings size={14} style={{ color: '#74b9ff' }} /> 高级配置
                       </button>
+                      {(pipeline.status !== 'published') && (
+                        <button
+                          onClick={() => { onPublish(pipeline.plan_id!); setShowMenu(false); }}
+                          style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:'transparent',border:'none',cursor:'pointer',borderRadius:8,color:'var(--text-primary)',fontSize:13,transition:'background 0.15s'}}
+                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,212,170,0.1)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <Send size={14} style={{ color: '#00d4aa' }} /> 发布上线
+                        </button>
+                      )}
                       <button
-                        onClick={() => { setShowMenu(false); }}
+                        onClick={() => { setShowMenu(false); onDelete(pipeline.plan_id!); }}
                         style={{
                           width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
                           background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: 8,
@@ -249,7 +263,9 @@ function PipelineCard({ pipeline, index, onEdit, onAdvancedEdit, onDelete }: Pip
                 <Clock size={12} style={{ color: '#fdcb6e' }} />
                 <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 600, letterSpacing: '0.05em' }}>STATUS</span>
               </div>
-              <p style={{ fontSize: 14, fontWeight: 700, color: '#00d4aa' }}>Active</p>
+              <p style={{ fontSize: 14, fontWeight: 700, color: ((s:string) => s === 'published' ? '#6c5ce7' : s === 'active' ? '#00d4aa' : '#fdcb6e')(pipeline.status || 'draft') }}>
+                {((s:string) => s === 'published' ? 'Published' : s === 'active' ? 'Active' : 'Draft')(pipeline.status || 'draft')}
+              </p>
             </div>
           </div>
 
@@ -307,6 +323,7 @@ export default function Pipelines() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const seeded = useRef(false);
 
   useEffect(() => {
@@ -340,156 +357,73 @@ export default function Pipelines() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除这个流水线吗？')) return;
     try {
       await deletePipeline(id);
       setPipelines(prev => prev.filter(p => p.plan_id !== id));
+      toast.success('流水线已删除');
     } catch (err) {
-      alert('删除失败');
+      toast.error('删除失败');
       console.error(err);
     }
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      style={{ position: 'relative', zIndex: 1 }}
-    >
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative z-[1]">
       {/* Background decoration */}
-      <div style={{
-        position: 'absolute', top: -100, right: -100, width: 400, height: 400,
-        borderRadius: '50%', background: 'radial-gradient(circle, rgba(108,92,231,0.1) 0%, transparent 70%)',
-        pointerEvents: 'none',
-      }} />
-      <div style={{
-        position: 'absolute', bottom: -50, left: -50, width: 300, height: 300,
-        borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,212,170,0.08) 0%, transparent 70%)',
-        pointerEvents: 'none',
-      }} />
+      <div className="absolute -top-[100px] -right-[100px] w-[400px] h-[400px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(108,92,231,0.1) 0%, transparent 70%)' }} />
+      <div className="absolute -bottom-[50px] -left-[50px] w-[300px] h-[300px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(0,212,170,0.08) 0%, transparent 70%)' }} />
 
       {/* Header */}
-      <motion.div
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}
-      >
+      <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex justify-between items-center mb-8">
         <div>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+          <h1 className="text-3xl font-bold text-[var(--text-primary)] tracking-tight">
             治理流水线
-            <span style={{
-              marginLeft: 12, fontSize: 14, fontWeight: 600, padding: '4px 12px',
-              background: 'rgba(108,92,231,0.1)', color: '#6c5ce7', borderRadius: 20,
-              verticalAlign: 'middle',
-            }}>
-              v0.2.1
-            </span>
+            <span className="ml-3 text-sm font-semibold py-1 px-3 rounded-badge align-middle text-[#6c5ce7]" style={{ background: 'rgba(108,92,231,0.1)' }}>v0.2.1</span>
           </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginTop: 6 }}>
-            设计、部署和管理你的 AI 治理流水线
-          </p>
+          <p className="text-sm text-[var(--text-secondary)] mt-1.5">设计、部署和管理你的 AI 治理流水线</p>
         </div>
-
-        <motion.button
-          className="btn-primary"
-          onClick={handleCreate}
-          disabled={creating}
-          whileHover={{ scale: 1.02, boxShadow: '0 0 40px rgba(108,92,231,0.5)' }}
-          whileTap={{ scale: 0.98 }}
-          style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '12px 24px' }}
-        >
-          {creating ? (
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-            >
-              <Loader2 size={18} />
-            </motion.div>
-          ) : (
-            <Plus size={18} />
-          )}
+        <motion.button className="btn-primary flex gap-2.5 items-center py-3 px-6" onClick={handleCreate} disabled={creating}
+          whileHover={{ scale: 1.02, boxShadow: '0 0 40px rgba(108,92,231,0.5)' }} whileTap={{ scale: 0.98 }}>
+          {creating ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}><Loader2 size={18} /></motion.div> : <Plus size={18} />}
           {creating ? '创建中...' : '新建流水线'}
         </motion.button>
       </motion.div>
 
       {/* Quick stats */}
-      <motion.div
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.1 }}
-        style={{ display: 'flex', gap: 16, marginBottom: 32 }}
-      >
-        <GlassCard style={{ flex: 1, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 14,
-            background: 'linear-gradient(135deg, rgba(108,92,231,0.2) 0%, rgba(162,155,254,0.2) 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <GitBranch size={24} style={{ color: '#6c5ce7' }} />
-          </div>
-          <div>
-            <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 2, fontWeight: 600, letterSpacing: '0.05em' }}>TOTAL PIPELINES</p>
-            <p style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>{pipelines.length}</p>
-          </div>
-        </GlassCard>
-
-        <GlassCard style={{ flex: 1, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 14,
-            background: 'linear-gradient(135deg, rgba(0,212,170,0.2) 0%, rgba(0,212,170,0.1) 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <CheckCircle size={24} style={{ color: '#00d4aa' }} />
-          </div>
-          <div>
-            <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 2, fontWeight: 600, letterSpacing: '0.05em' }}>ACTIVE</p>
-            <p style={{ fontSize: 28, fontWeight: 700, color: '#00d4aa' }}>{pipelines.length}</p>
-          </div>
-        </GlassCard>
-
-        <GlassCard style={{ flex: 1, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 14,
-            background: 'linear-gradient(135deg, rgba(253,203,110,0.2) 0%, rgba(253,203,110,0.1) 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Shield size={24} style={{ color: '#fdcb6e' }} />
-          </div>
-          <div>
-            <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 2, fontWeight: 600, letterSpacing: '0.05em' }}>PLUGINS ACTIVE</p>
-            <p style={{ fontSize: 28, fontWeight: 700, color: '#fdcb6e' }}>
-              {pipelines.reduce((acc: number, p: Pipeline) => acc + (p.stages?.reduce((a: number, s: any) => a + (s.plugins?.length || 0), 0) || 0), 0)}
-            </p>
-          </div>
-        </GlassCard>
+      <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}
+        className="flex gap-4 mb-8">
+        {[
+          [() => <GitBranch size={24} color="#6c5ce7" />, 'TOTAL PIPELINES', pipelines.length, 'var(--text-primary)'],
+          [() => <CheckCircle size={24} color="#00d4aa" />, 'PUBLISHED', pipelines.filter(p => p.status === 'published' || p.status === 'active').length, '#00d4aa'],
+          [() => <Shield size={24} color="#fdcb6e" />, 'PLUGINS', pipelines.reduce((acc: number, p: Pipeline) => acc + (p.stages?.reduce((a: number, s: any) => a + (s.plugins?.length || 0), 0) || 0), 0), '#fdcb6e'],
+        ].map(([icon, label, value, valColor], i) => (
+          <GlassCard key={i} className="flex-1 flex items-center gap-4 py-5 px-6">
+            <div className="w-[52px] h-[52px] rounded-2xl flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${valColor}33, ${valColor}1a)` }}>
+              {(icon as () => JSX.Element)()}
+            </div>
+            <div>
+              <p className="text-xs text-[var(--text-tertiary)] font-semibold tracking-wider mb-0.5">{label as string}</p>
+              <p className="text-3xl font-bold" style={{ color: valColor as string }}>{value as number}</p>
+            </div>
+          </GlassCard>
+        ))}
       </motion.div>
 
       {/* Pipeline list */}
       {loading ? (
-        <GlassCard style={{ textAlign: 'center', padding: 80 }}>
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-            style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}
-          >
-            <Loader2 size={48} style={{ color: '#6c5ce7', opacity: 0.5 }} />
+        <GlassCard className="text-center py-20">
+          <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }} className="flex justify-center mb-4">
+            <Loader2 size={48} className="text-[#6c5ce7] opacity-50" />
           </motion.div>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 15 }}>加载中...</p>
+          <p className="text-sm text-[var(--text-secondary)]">加载中...</p>
         </GlassCard>
       ) : pipelines.length === 0 ? (
-        <GlassCard style={{ textAlign: 'center', padding: 80 }}>
-          <motion.div
-            animate={{ y: [0, -10, 0] }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-          >
-            <GitBranch size={64} style={{ opacity: 0.2, margin: '0 auto 20px', display: 'block', color: '#6c5ce7' }} />
+        <GlassCard className="text-center py-20">
+          <motion.div animate={{ y: [0, -10, 0] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}>
+            <GitBranch size={64} className="block mx-auto mb-5 text-[#6c5ce7] opacity-20" />
           </motion.div>
-          <h3 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8, color: 'var(--text-primary)' }}>
-            还没有流水线
-          </h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24, maxWidth: 400, margin: '0 auto 24px' }}>
-            创建你的第一个 AI 治理流水线，设计同步和异步治理流程，保护你的 LLM 应用
-          </p>
+          <h3 className="text-2xl font-bold mb-2 text-[var(--text-primary)]">还没有流水线</h3>
+          <p className="text-sm text-[var(--text-secondary)] mb-6 max-w-[400px] mx-auto">创建你的第一个 AI 治理流水线，设计同步和异步治理流程，保护你的 LLM 应用</p>
           <motion.button
             className="btn-primary"
             onClick={handleCreate}
@@ -510,7 +444,16 @@ export default function Pipelines() {
               index={idx}
               onEdit={handleEdit}
               onAdvancedEdit={handleAdvancedEdit}
-              onDelete={handleDelete}
+              onDelete={(id: string) => setDeleteId(id)}
+              onPublish={async (id: string) => {
+                try {
+                  const result = await publishPipeline(id);
+                  toast.success('流水线已发布');
+                  setPipelines(prev => prev.map(p => p.plan_id === id ? {...p, status: (result && result.status) || 'published'} : p));
+                } catch (err: any) {
+                  toast.error(err?.userMessage || err?.message || '发布失败');
+                }
+              }}
             />
           ))}
         </div>
@@ -532,6 +475,15 @@ export default function Pipelines() {
           VERIDACTUS 流水线遵循 <strong style={{ color: 'var(--text-primary)' }}>Protocol v0.2.1</strong>，
           支持同步快速路径治理和异步可信路径验证，确保 AI 应用的合规性和安全性
         </p>
+      <ConfirmDialog
+        open={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => { if (deleteId) { handleDelete(deleteId); setDeleteId(null); } }}
+        title="删除流水线"
+        message="确定要删除这个流水线吗？删除后无法恢复。"
+        confirmText="删除"
+        danger
+      />
       </motion.div>
     </motion.div>
   );

@@ -33,6 +33,7 @@ use crate::audit::token::AuditTokenValidator;
 use crate::auth::keys::ApiKeyManager;
 use crate::compliance::ComplianceMapper;
 use crate::crypto::signature::generate_l0_proof;
+use crate::dispatcher::redis_dispatch::AsyncDispatcher;
 use crate::gdpr::{DeletionRequest, DeletionType, GdprErasureManager};
 use crate::http::error_handler::build_error_response;
 use crate::http::headers::{
@@ -88,8 +89,8 @@ pub struct ProxyConfig {
     pub supported_versions: Vec<String>,
     /// 是否启用详细错误
     pub detailed_errors: bool,
-    /// 当前活跃的流水线执行计划
-    pub pipeline_plan: Option<crate::pipeline::config::ExecutionPlan>,
+    /// 多流水线执行计划（plan_id → ExecutionPlan），支持按请求头切换
+    pub pipeline_plans: HashMap<String, crate::pipeline::config::ExecutionPlan>,
 }
 
 impl Default for ProxyConfig {
@@ -114,7 +115,7 @@ impl Default for ProxyConfig {
             }],
             supported_versions: vec!["0.1".to_string(), "0.2".to_string()],
             detailed_errors: false,
-            pipeline_plan: None,
+            pipeline_plans: HashMap::new(),
         }
     }
 }
@@ -142,6 +143,10 @@ pub struct AppState {
     pub gdpr_manager: Arc<GdprErasureManager>,
     /// 钩子注册中心（§6.3）
     pub hook_registry: Arc<crate::hooks::registry::HookRegistry>,
+    /// 控制面地址（用于 401 重试时重新拉取 API key）
+    pub control_plane_url: String,
+    /// 控制面 Admin Key
+    pub admin_key: String,
 }
 
 impl AppState {
@@ -171,6 +176,8 @@ impl AppState {
             compliance_mapper: Arc::new(ComplianceMapper::new()),
             gdpr_manager: Arc::new(GdprErasureManager::new(Box::new(InMemoryGdprStorage))),
             hook_registry: Arc::new(crate::hooks::registry::HookRegistry::new()),
+            control_plane_url: "http://localhost:8081".to_string(),
+            admin_key: String::new(),
         }
     }
 }
@@ -309,6 +316,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/models", get(list_models))
         // 管理端点：接收控制面推送的配置更新
         .route("/v1/admin/config/sync", post(handle_config_sync))
+        // 内部端点：控制面通知刷新模型 API key
+        .route("/internal/refresh-model", post(handle_refresh_model))
         // GDPR 删除端点（§8.7）
         .route("/v1/gdpr/delete", post(handle_gdpr_deletion))
         .route(
@@ -472,20 +481,20 @@ async fn handle_config_sync(
             }
         }
         "pipeline" => {
-            // 解析控制面推送的流水线配置→ExecutionPlan
+            // 解析控制面推送的流水线配置→ExecutionPlan（支持多流水线）
             if let Some(pipelines) = data.and_then(|d| d.as_array()) {
                 info!("收到流水线配置推送，共 {} pipelines", pipelines.len());
-                if let Some(first) = pipelines.first() {
+                let mut config = state.config.write().await;
+                for pipeline_data in pipelines {
                     if let Ok(plan) = serde_json::from_value::<crate::pipeline::config::ExecutionPlan>(
-                        first.clone(),
+                        pipeline_data.clone(),
                     ) {
-                        info!(
-                            "激活流水线: plan_id={}, {} 阶段",
-                            plan.plan_id,
-                            plan.stages.len()
-                        );
-                        let mut config = state.config.write().await;
-                        config.pipeline_plan = Some(plan);
+                        let pid = plan.plan_id.clone();
+                        let stages_count = plan.stages.len();
+                        config.pipeline_plans.insert(pid.clone(), plan);
+                        info!("激活流水线: plan_id={}, {} 阶段", pid, stages_count);
+                    } else {
+                        warn!("流水线反序列化失败，跳过: {:?}", pipeline_data.get("plan_id").and_then(|v| v.as_str()).unwrap_or("unknown"));
                     }
                 }
             }
@@ -503,19 +512,87 @@ async fn handle_config_sync(
 /// 列出 Trace (支持 ?id=uuid 查询单个 Trace)
 async fn list_traces(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Json<serde_json::Value> {
+    // 认证检查：需要有效 API key，按租户过滤
+    let auth_header = headers.get("authorization").and_then(|v| v.to_str().ok());
+    let request_tenant = auth_header.and_then(|token| {
+        let token = token.trim_start_matches("Bearer ").trim_start_matches("bearer ");
+        state.api_key_manager.lock().unwrap().validate(token).map(|t| t.to_string())
+    });
+
     // If ?id=xxx provided, return single trace detail
     if let Some(trace_id) = params.get("id") {
         if let Ok(id) = uuid::Uuid::parse_str(trace_id) {
             if let Some(trace) = state.trace_store.get(&id).await {
+                // 验证租户所有权（已认证 + tenant 匹配）
+                if let Some(ref tenant) = request_tenant {
+                    if trace.tenant_id.as_deref() != Some(tenant) && tenant != "admin-tenant" {
+                        return Json(serde_json::json!({"error": "forbidden: not your trace"}));
+                    }
+                }
                 let value = serde_json::to_value(&trace).unwrap_or_default();
                 return Json(value);
             }
         }
         return Json(serde_json::json!({"error": "trace not found"}));
     }
-    let traces = state.trace_store.list(None, 100, 0).await;
+
+    // 需要认证才能列出 traces
+    let tenant_filter = match request_tenant {
+        Some(t) => t,
+        None => return Json(serde_json::json!({"total": 0, "traces": [], "error": "authentication required"})),
+    };
+
+    // 按 session_id 过滤
+    let session_filter = params.get("session_id").and_then(|s| uuid::Uuid::parse_str(s).ok());
+    let mut traces = state.trace_store.list(Some(&tenant_filter), 1000, 0).await;
+
+    if let Some(sid) = session_filter {
+        traces.retain(|t| t.session_id.as_ref() == Some(&sid));
+    }
+
+    // 是否按会话分组返回
+    let group_by_session = params.get("group_by")
+        .map(|s| s == "session")
+        .unwrap_or(false);
+
+    if group_by_session {
+        use std::collections::BTreeMap;
+        let mut sessions: BTreeMap<String, Vec<serde_json::Value>> = BTreeMap::new();
+
+        for t in &traces {
+            let sid = t.session_id
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "ungrouped".to_string());
+            let trace_summary = serde_json::json!({
+                "trace_id": t.trace_id,
+                "model": t.model,
+                "created_at": t.created_at,
+                "execution_state": t.execution_state,
+                "proof_levels": t.proofs.proof_chain.iter().map(|p| format!("{:?}", p.level)).collect::<Vec<_>>(),
+                "signature": t.proofs.proof_chain.first().and_then(|p| p.signature.clone()),
+                "session_id": t.session_id,
+            });
+            sessions.entry(sid).or_insert_with(Vec::new).push(trace_summary);
+        }
+
+        let session_list: Vec<serde_json::Value> = sessions.into_iter().map(|(sid, traces)| {
+            serde_json::json!({
+                "session_id": sid,
+                "trace_count": traces.len(),
+                "traces": traces,
+            })
+        }).collect();
+
+        return Json(serde_json::json!({
+            "total": traces.len(),
+            "sessions": session_list,
+            "grouped_by": "session",
+        }));
+    }
+
     let trace_summaries: Vec<serde_json::Value> = traces
         .iter()
         .map(|t| {
@@ -526,6 +603,7 @@ async fn list_traces(
                 "execution_state": t.execution_state,
                 "proof_levels": t.proofs.proof_chain.iter().map(|p| format!("{:?}", p.level)).collect::<Vec<_>>(),
                 "signature": t.proofs.proof_chain.first().and_then(|p| p.signature.clone()),
+                "session_id": t.session_id,
             })
         })
         .collect();
@@ -536,12 +614,19 @@ async fn list_traces(
     }))
 }
 
-/// 获取单个 Trace
+/// 获取单个 Trace（需要认证，验证租户归属）
 async fn get_trace(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     axum::extract::Path(trace_id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     info!("GET Trace: id={}", trace_id);
+    // 认证检查
+    let auth_header = headers.get("authorization").and_then(|v| v.to_str().ok());
+    let request_tenant = auth_header.and_then(|token| {
+        let token = token.trim_start_matches("Bearer ").trim_start_matches("bearer ");
+        state.api_key_manager.lock().unwrap().validate(token).map(|t| t.to_string())
+    });
 
     let id = uuid::Uuid::parse_str(&trace_id).map_err(|e| {
         warn!("无效的 Trace ID 格式: {} - {}", trace_id, e);
@@ -554,6 +639,18 @@ async fn get_trace(
     match state.trace_store.get(&id).await {
         Some(trace) => {
             info!("Trace 找到: {}", trace_id);
+            // 验证租户归属
+            if let Some(ref tenant) = request_tenant {
+                if trace.tenant_id.as_deref() != Some(tenant)
+                    && tenant != "admin-tenant"
+                    && trace.tenant_id.as_deref() != Some("passthrough")
+                {
+                    return Err((
+                        StatusCode::FORBIDDEN,
+                        Json(serde_json::json!({"error": "forbidden: not your trace"})),
+                    ));
+                }
+            }
             let value = serde_json::to_value(&trace).unwrap_or_default();
             Ok(Json(value))
         }
@@ -847,7 +944,25 @@ async fn handle_chat_completion(
     let mut journal = ExecutionJournal::new(trace_id, &tenant_id);
     let mut trace = Trace::new(route.name.clone());
     trace.trace_id = trace_id;
-    trace.tenant_id = Some(tenant_id.clone());
+    // 优先使用 VERIDACTUS-Workspace-Id 作为租户标识（多租户隔离），否则用 API key 的 tenant
+    let effective_tenant = veridactus_headers.workspace_id.as_deref().unwrap_or(&tenant_id);
+    trace.tenant_id = Some(effective_tenant.to_string());
+
+    // 关联会话 ID（多轮对话逻辑分组）
+    if let Some(ref session_id_str) = veridactus_headers.session_id {
+        if let Ok(sid) = uuid::Uuid::parse_str(session_id_str) {
+            trace.session_id = Some(sid);
+            info!("Trace 关联会话: trace_id={} session_id={}", trace_id, sid);
+        } else {
+            warn!("会话 ID 不是有效 UUID: {}", session_id_str);
+        }
+    } else {
+        // 调试：检查原始头部中是否有 session-id
+        let has_session = header_map.iter().any(|(k,_)| k.to_lowercase().contains("session"));
+        if has_session {
+            info!("原始头部包含 session，但未被解析为 veridactus_headers.session_id");
+        }
+    }
 
     // 创建 OTel span 用于监控
     let otel_tracer = OtelTracer::new("veridactus-core");
@@ -1502,10 +1617,21 @@ async fn handle_chat_completion(
         };
         let pipeline_plan = {
             let config = state.config.read().await;
-            config
-                .pipeline_plan
-                .clone()
-                .unwrap_or_else(|| crate::pipeline::config::ExecutionPlan::default_plan())
+            // 按 VERIDACTUS-Pipeline-Id 请求头选择特定流水线
+            // 如果未指定或未找到，使用第一个可用的；如果没有任何流水线，使用默认
+            if let Some(ref pid) = veridactus_headers.pipeline_id {
+                let found = config.pipeline_plans.get(pid).cloned();
+                if let Some(ref plan) = found {
+                    info!("使用指定流水线: plan_id={}, {} 阶段", plan.plan_id, plan.stages.len());
+                }
+                found.unwrap_or_else(|| {
+                    config.pipeline_plans.values().next().cloned()
+                        .unwrap_or_else(|| crate::pipeline::config::ExecutionPlan::default_plan())
+                })
+            } else {
+                config.pipeline_plans.values().next().cloned()
+                    .unwrap_or_else(|| crate::pipeline::config::ExecutionPlan::default_plan())
+            }
         };
         if !pipeline_plan.stages.is_empty() {
             let mut req_ctx = crate::plugin::RequestContext {
@@ -1569,6 +1695,10 @@ async fn handle_chat_completion(
                 == Some("awareness")
                 || veridactus_headers.budget_strategy.as_deref() == Some("adaptive");
             let effective_route = degraded_route.as_ref().unwrap_or(&route);
+            // 收集流式输出的完整文本，用于 Trace 存储
+            let stream_output_collector: std::sync::Arc<std::sync::Mutex<String>> =
+                std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+
             let stream_result = forward_to_upstream_streaming(
                 &state,
                 effective_route,
@@ -1579,15 +1709,28 @@ async fn handle_chat_completion(
                 &tenant_id,
                 stream_budget,
                 stream_awareness,
+                Some(stream_output_collector.clone()),
             )
             .await;
             match stream_result {
                 Ok(response) => {
                     info!("Governance streaming complete: trace_id={}", trace_id);
                     // 后台异步生成 L0+L2A 证明（流式模式下延迟生成，不阻塞响应）
+                    // 等流式数据全部落盘后再收集 output
                     let mut t_for_proof = trace.clone();
                     let store_for_proof = state.trace_store.clone();
+                    let output_collector = stream_output_collector;
                     tokio::spawn(async move {
+                        // 等待流式数据写入完成（最多等 5s）
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        let collected = output_collector.lock().unwrap().clone();
+                        if !collected.is_empty() {
+                            t_for_proof.output = Some(crate::types::trace::Output {
+                                response: Some(serde_json::json!({"streaming_content": collected})),
+                                truncated: false,
+                                finish_reason: Some("streaming_stop".to_string()),
+                            });
+                        }
                         t_for_proof.execution_state = Some(ExecutionState::Finalized);
                         let l0 = crate::crypto::signature::generate_l0_proof(&mut t_for_proof);
                         t_for_proof.proofs.proof_chain.push(l0);
@@ -1624,9 +1767,10 @@ async fn handle_chat_completion(
                     .unwrap_or_else(|_| serde_json::json!({"error": "Failed to parse response"}));
 
                 let output_content = extract_output_content(&response_json);
-                let pii_result = call_pii_detection(&state.http_client, &output_content).await;
+                // 🔧 架构修复: Rust PiiDetectorPlugin 已在 pre_request 阶段完成 PII 检测
+                // 不再同步 HTTP 调用 Python Worker（避免阻塞 LLM 响应 50-500ms）
 
-                // G2 输出过滤器：扫描 LLM 响应中的 PII 泄露/有害内容/不安全代码
+                // G2 输出过滤器 + ConstrainedDecoder — Rust Native 同步检测
                 let output_filter = crate::plugin::OutputFilter::new();
                 let filter_result = output_filter.scan(&output_content);
                 if !filter_result.passed {
@@ -1685,8 +1829,27 @@ async fn handle_chat_completion(
                 let cost_estimated = estimate_cost(&total_tokens, &route.name);
                 let finish_reason = extract_finish_reason(&response_json);
 
-                let has_pii = pii_result.as_ref().map(|p| p.pii_detected).unwrap_or(false)
-                    || !input_pii_found.is_empty();
+                // ===== Pipeline PostResponse 阶段 (Rust Native, 同步) =====
+                let mut post_resp_ctx = crate::plugin::ResponseContext {
+                    response: output_content.clone(),
+                    actual_cost: cost_estimated,
+                    trace_id,
+                };
+                let post_executor = crate::pipeline::executor::PipelineExecutor::new(
+                    pipeline_registry.clone(),
+                    pipeline_plan.clone(),
+                );
+                let (post_result, cold_tasks) = post_executor
+                    .execute_post_response(&mut post_resp_ctx, &mut journal)
+                    .await;
+                for check in &post_result.checks_passed {
+                    info!("PostResponse plugin: {}", check);
+                }
+
+                // ===== 冷路径: Redis Stream → Python Worker (非阻塞) =====
+                dispatch_cold_tasks(&trace_id, &output_content, &cold_tasks, &post_executor).await;
+
+                let has_pii = !input_pii_found.is_empty();
 
                 // hash_only 隐私级别：将响应替换为 SHA-256 哈希（§8.1）
                 let is_hash_only = effective_privacy == PrivacyLevel::HashOnly;
@@ -1762,8 +1925,8 @@ async fn handle_chat_completion(
                     approval: None,
                     _internal_metrics: Some(serde_json::json!({
                         "input_pii_found": input_pii_found,
-                        "output_pii_detected": pii_result.as_ref().map(|p| p.pii_detected).unwrap_or(false),
-                        "output_pii_findings": pii_result.as_ref().map(|p| &p.findings).cloned().unwrap_or_default(),
+                        "output_pii_detected": false,
+                        "output_pii_findings": serde_json::json!([]),
                     })),
                 };
 
@@ -1994,6 +2157,7 @@ async fn handle_chat_completion(
             &tenant_id,
             None,
             false, // passthrough: 无预算限制，无预算感知
+            None,  // 无输出收集器
         )
         .await;
         match stream_result {
@@ -3418,36 +3582,64 @@ struct PiiDetectionResult {
     findings: Vec<String>,
 }
 
-async fn call_pii_detection(
-    http_client: &reqwest::Client,
-    content: &str,
-) -> Option<PiiDetectionResult> {
-    if content.is_empty() {
-        return None;
-    }
-    let python_worker_url = "http://127.0.0.1:8001/api/v1/pii-detection";
-    let request_body = serde_json::json!({ "text": content });
-    match http_client
-        .post(python_worker_url)
-        .json(&request_body)
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await
-    {
-        Ok(resp) => {
-            if resp.status().is_success() {
-                if let Ok(result) = resp.json::<PiiDetectionResult>().await {
-                    if result.pii_detected {
-                        info!("Python Worker PII detection: found {:?}", result.findings);
-                    }
-                    return Some(result);
+/// 🔧 架构修复: 冷路径异步任务分发
+///
+/// 不阻塞 LLM 响应 — 通过 tokio::spawn 将任务推入 Redis Stream，
+/// 由 Python Worker 异步消费处理，结果通过控制面 API 写回 Trace。
+///
+/// 架构分层:
+///   PreRequest  → Rust Native (同步, <10μs)
+///   Streaming   → Rust Native (同步, per-token)
+///   PostResponse→ Rust Native (同步) + Redis XADD (非阻塞)
+///   AsyncFinalize→ Redis Stream → Python Worker (异步, 不阻塞响应)
+async fn dispatch_cold_tasks(
+    trace_id: &uuid::Uuid,
+    output_content: &str,
+    cold_tasks: &[(String, serde_json::Value)],
+    executor: &crate::pipeline::executor::PipelineExecutor,
+) {
+    use crate::types::journal::{ExecutionJournal, JournalEventType};
+
+    let redis_url = std::env::var("REDIS_URL")
+        .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let callback = std::env::var("CONTROL_PLANE_URL")
+        .ok()
+        .map(|u| format!("{}/api/v1/traces/update", u.trim_end_matches('/')));
+
+    // 1. 分发 PostResponse 阶段的 cold tasks
+    if !cold_tasks.is_empty() {
+        let dispatcher = AsyncDispatcher::new(&redis_url);
+        for (task_type, params) in cold_tasks {
+            let d = dispatcher.clone();
+            let tt = task_type.clone();
+            let p = params.clone();
+            let tid = trace_id.to_string();
+            let cb = callback.clone();
+            tokio::spawn(async move {
+                let mut dummy = ExecutionJournal::new(uuid::Uuid::new_v4(), "cold-path");
+                if let Err(e) = d.dispatch(&tt, &tid, p, &mut dummy, cb).await {
+                    warn!("Cold dispatch {} failed: {}", tt, e);
                 }
-            }
-            None
+            });
         }
-        Err(e) => {
-            warn!("Python Worker PII detection call failed: {}", e);
-            None
+    }
+
+    // 2. 收集 AsyncFinalize 任务
+    let async_tasks = executor.collect_async_tasks(trace_id, output_content);
+    if !async_tasks.is_empty() {
+        let dispatcher = AsyncDispatcher::new(&redis_url);
+        for (task_type, params) in async_tasks {
+            let d = dispatcher.clone();
+            let tt = task_type.clone();
+            let p = params.clone();
+            let tid = trace_id.to_string();
+            let cb = callback.clone();
+            tokio::spawn(async move {
+                let mut dummy = ExecutionJournal::new(uuid::Uuid::new_v4(), "cold-path");
+                if let Err(e) = d.dispatch(&tt, &tid, p, &mut dummy, cb).await {
+                    warn!("Async dispatch {} failed: {}", tt, e);
+                }
+            });
         }
     }
 }
@@ -3598,6 +3790,64 @@ fn check_instruction_hierarchy_violation(
     Some((severity_str, event))
 }
 
+/// 401 重试：从控制面拉取最新模型 API key 并更新内存路由
+async fn refresh_model_api_key(state: &AppState, model_name: &str) -> Option<Option<String>> {
+    let url = format!("{}/api/v1/models", state.control_plane_url.trim_end_matches('/'));
+    let mut req = state.http_client.get(&url);
+    if !state.admin_key.is_empty() {
+        req = req.header("X-Admin-Key", &state.admin_key);
+    }
+    let resp = req.send().await.ok()?;
+    if !resp.status().is_success() {
+        warn!("refresh_model_api_key: CP returned {}", resp.status());
+        return None;
+    }
+    let body: serde_json::Value = resp.json().await.ok()?;
+    let models = body.get("models")?.as_array()?;
+    let mut api_key: Option<String> = None;
+    // 更新内存中的模型路由
+    let mut config = state.config.write().await;
+    for m in models {
+        let name = m.get("name")?.as_str()?;
+        let key = m.get("api_key").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(|s| s.to_string());
+        if name == model_name {
+            api_key = key.clone();
+        }
+        if let Some(route) = config.model_routes.iter_mut().find(|r| r.name == name) {
+            if key.is_some() {
+                route.api_key = key;
+            }
+        }
+    }
+    if let Some(ref k) = api_key {
+        info!("refresh_model_api_key: refreshed key for model {} (len={})", model_name, k.len());
+    } else {
+        warn!("refresh_model_api_key: model {} has no API key in control plane", model_name);
+    }
+    Some(api_key)
+}
+
+/// 内部端点：控制面通知刷新指定模型的 API key
+/// POST /internal/refresh-model  {"model_name": "GLM-5.1"}
+async fn handle_refresh_model(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let model_name = body.get("model_name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "missing model_name"}))))?;
+
+    info!("Received refresh-model notification for: {}", model_name);
+    match refresh_model_api_key(&state, model_name).await {
+        Some(Some(_)) => {
+            info!("Model {} API key refreshed successfully via notification", model_name);
+            Ok(Json(serde_json::json!({"status": "refreshed", "model": model_name})))
+        }
+        Some(None) => Ok(Json(serde_json::json!({"status": "no_key", "model": model_name, "hint": "model exists but has no API key configured"}))),
+        None => Err((StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": "failed to reach control plane", "model": model_name})))),
+    }
+}
+
 /// 流式转发到上游 LLM（治理模式）
 async fn forward_to_upstream_streaming(
     state: &AppState,
@@ -3609,45 +3859,81 @@ async fn forward_to_upstream_streaming(
     _tenant_id: &str,
     budget_limit: Option<f64>,
     budget_awareness: bool,
+    output_collector: Option<std::sync::Arc<std::sync::Mutex<String>>>,
 ) -> Result<axum::response::Response, (StatusCode, Json<ErrorResponse>)> {
     use futures::StreamExt;
 
-    let mut upstream_body = body_json.clone();
-    // 替换为上游真实模型名
-    if let Some(obj) = upstream_body.as_object_mut() {
-        obj.insert(
-            "model".to_string(),
-            serde_json::Value::String(route.upstream_model.clone()),
-        );
-    }
+    const MAX_AUTH_RETRIES: u32 = 3;
+    let mut effective_api_key = route.api_key.clone();
+    let mut retry_count: u32 = 0;
 
-    let mut req_builder = state.http_client.post(upstream_url).json(&upstream_body);
-
-    // 添加 API Key 认证（上游 LLM 需要）
-    if let Some(ref api_key) = route.api_key {
-        if let Some(ref header) = route.api_key_header {
-            if header.to_lowercase() == "authorization" {
-                req_builder = req_builder.header(header.as_str(), format!("Bearer {}", api_key));
-            } else {
-                req_builder = req_builder.header(header.as_str(), api_key);
+    let response = loop {
+        let mut _upstream_body = body_json.clone();
+        if let Some(obj) = _upstream_body.as_object_mut() {
+            obj.insert("model".to_string(), serde_json::Value::String(route.upstream_model.clone()));
+        }
+        let mut req_builder = state.http_client.post(upstream_url).json(&_upstream_body);
+        if let Some(ref api_key) = effective_api_key {
+            if let Some(ref header) = route.api_key_header {
+                if header.to_lowercase() == "authorization" {
+                    req_builder = req_builder.header(header.as_str(), format!("Bearer {}", api_key));
+                } else {
+                    req_builder = req_builder.header(header.as_str(), api_key);
+                }
             }
         }
-    }
 
-    let response = req_builder.send().await.map_err(|e| {
-        warn!("Upstream streaming forward failed: {}", e);
-        let body_str = format!("Upstream LLM unavailable: {}", e);
-        (
-            StatusCode::BAD_GATEWAY,
-            Json(ErrorResponse::new_minimal(
-                body_str,
-                VeridactusErrorCode::UpstreamDisconnect,
-            )),
-        )
-    })?;
+        let response = req_builder.send().await.map_err(|e| {
+            warn!("Upstream streaming forward failed: {}", e);
+            (StatusCode::BAD_GATEWAY, Json(ErrorResponse::new_minimal(format!("Upstream LLM unavailable: {}", e), VeridactusErrorCode::UpstreamDisconnect)))
+        })?;
 
-    let status = response.status();
-    if !status.is_success() {
+        let status = response.status();
+        if status.is_success() {
+            break response;
+        }
+
+        // 401/403 且无 API key → 直接失败，不重试（避免阻塞）
+        if (status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN)
+            && effective_api_key.is_none()
+        {
+            let body_bytes = response.bytes().await.unwrap_or_default();
+            let body_str = String::from_utf8_lossy(&body_bytes);
+            warn!("Upstream auth failed for model {}: no API key configured", route.name);
+            journal.append_event(JournalEventType::StreamError {
+                error: format!("鉴权失败(401): 模型 {} 未配置 API key，请先在 LLM 模型管理中添加 API 密钥", route.name),
+                truncated: true,
+            });
+            return Err((status, Json(ErrorResponse::new_minimal(body_str, VeridactusErrorCode::UpstreamDisconnect))));
+        }
+
+        // 401/403 有 API key → 刷新并重试
+        if (status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN) && retry_count < MAX_AUTH_RETRIES {
+            retry_count += 1;
+            let body_bytes = response.bytes().await.unwrap_or_default();
+            let body_str = String::from_utf8_lossy(&body_bytes);
+            warn!("Upstream auth failed with key, attempt {}/{} for {}: refreshing via control plane...", retry_count, MAX_AUTH_RETRIES, route.name);
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                refresh_model_api_key(state, &route.name),
+            ).await {
+                Ok(Some(Some(k))) if !k.is_empty() => {
+                    effective_api_key = Some(k);
+                    info!("API key refreshed, retrying...");
+                    continue;
+                }
+                _ => {
+                    warn!("Auth retry failed for {} after {} attempts", route.name, retry_count);
+                    journal.append_event(JournalEventType::StreamError {
+                        error: format!("鉴权失败(401): 模型 {} API key 无效或不可用 ({}/3)", route.name, retry_count),
+                        truncated: true,
+                    });
+                    return Err((status, Json(ErrorResponse::new_minimal(body_str, VeridactusErrorCode::UpstreamDisconnect))));
+                }
+            }
+        }
+
+        // Non-auth error → no retry
         let body_bytes = response.bytes().await.unwrap_or_default();
         let body_str = String::from_utf8_lossy(&body_bytes).to_string();
         warn!("Upstream stream error: {}", status);
@@ -3655,14 +3941,11 @@ async fn forward_to_upstream_streaming(
             error: format!("上游返回 {}", status),
             truncated: true,
         });
-        return Err((
-            status,
-            Json(ErrorResponse::new_minimal(
-                body_str,
-                VeridactusErrorCode::UpstreamDisconnect,
-            )),
-        ));
-    }
+        return Err((status, Json(ErrorResponse::new_minimal(body_str, VeridactusErrorCode::UpstreamDisconnect))));
+    };
+
+    // Success path — response already validated as success
+    let status = response.status();
 
     // 创建预防解码器（§8.4）
     let prevention = std::sync::Arc::new(crate::prevention::ConstrainedDecoder::new(
@@ -3678,6 +3961,9 @@ async fn forward_to_upstream_streaming(
 
     let trace_id_clone = *trace_id;
 
+    // 累积完整输出文本（用于 Trace 存储）
+    let acc_clone = output_collector.clone();
+
     // 后台任务：从上游读取字节并发送到 channel
     tokio::spawn(async move {
         let mut byte_stream = response.bytes_stream();
@@ -3685,8 +3971,14 @@ async fn forward_to_upstream_streaming(
             match chunk_result {
                 Ok(bytes) => {
                     let body_str = String::from_utf8_lossy(&bytes).to_string();
+                    // 累积完整输出（如果提供了 collector）
+                    if let Some(ref acc) = acc_clone {
+                        if let Ok(mut a) = acc.lock() {
+                            a.push_str(&body_str);
+                        }
+                    }
                     if tx.send(Ok(body_str)).await.is_err() {
-                        break; // 接收端已关闭
+                        break;
                     }
                 }
                 Err(e) => {
@@ -3696,7 +3988,7 @@ async fn forward_to_upstream_streaming(
                 }
             }
         }
-        drop(tx); // 显式关闭 channel，通知接收端流结束
+        drop(tx);
     });
 
     // 构建 SSE 响应

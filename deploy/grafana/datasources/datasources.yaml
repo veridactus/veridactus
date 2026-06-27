@@ -1,0 +1,16 @@
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://veridactus-core:8080/v1/metrics/realtime
+    isDefault: true
+    editable: true
+
+  - name: ClickHouse
+    type: grafana-clickhouse-datasource
+    access: proxy
+    url: http://clickhouse:8123
+    jsonData:
+      defaultDatabase: veridactus
+    editable: true

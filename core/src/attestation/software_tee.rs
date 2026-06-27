@@ -118,6 +118,7 @@ impl SoftwareAttestation {
             verification_key_hash: None,
             proof_aggregation_root: None,
             canonicalization_method: "rfc8785".to_string(),
+            canonical_json: None,
         }
     }
 
