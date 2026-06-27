@@ -116,9 +116,12 @@ export default function ChatPage() {
     <div className="flex h-full font-sans antialiased" style={{background:'#0B0F19'}}>
       {/* === Sidebar (ChatGPT-style collapsible) === */}
       <div className={`flex-shrink-0 border-r border-white/[0.06] bg-[#0a0e1a] flex flex-col h-full transition-all duration-300 overflow-hidden ${sidebar?'w-[260px]':'w-0 border-r-0'}`}>
-        <div className="p-3">
-          <button onClick={newChat} className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] text-white text-[13px] font-medium cursor-pointer transition-all duration-150">
+        <div className="flex items-center justify-between p-3 pb-2">
+          <button onClick={newChat} className="flex-1 flex items-center gap-2.5 py-2.5 px-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] text-white text-[13px] font-medium cursor-pointer transition-all duration-150">
             <Plus size={15}/> 新建对话
+          </button>
+          <button onClick={()=>setSidebar(false)} className="ml-1.5 p-1.5 rounded-lg hover:bg-white/[0.06] text-[#5a6a8a] hover:text-white transition-colors flex-shrink-0" title="收起侧栏">
+            <PanelLeftClose size={14}/>
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
