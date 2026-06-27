@@ -311,3 +311,25 @@ type ErrorDetail struct {
 	RequestID string `json:"request_id,omitempty"`
 	Details   any    `json:"details,omitempty"`
 }
+
+// Conversation 聊天会话
+type Conversation struct {
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	UserID      string `json:"user_id"`
+	Title       string `json:"title"`
+	Model       string `json:"model"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+// Message 聊天消息
+type Message struct {
+	ID             string `json:"id"`
+	ConversationID string `json:"conversation_id"`
+	Role           string `json:"role"`
+	Content        string `json:"content"`
+	Model          string `json:"model,omitempty"`
+	Tokens         int    `json:"tokens"`
+	CreatedAt      string `json:"created_at"`
+}

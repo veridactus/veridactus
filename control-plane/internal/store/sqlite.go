@@ -1117,3 +1117,29 @@ func (s *SQLiteStore) ListUserMemberships(ctx context.Context, userID string) ([
 	}
 	return members, nil
 }
+
+// ==================== 聊天会话 (SQLite 精简实现，仅供开发环境) ====================
+func (s *SQLiteStore) ListConversations(ctx context.Context, userID string) ([]model.Conversation, error) {
+	return nil, fmt.Errorf("conversations not supported in SQLite dev mode, use postgres")
+}
+func (s *SQLiteStore) CreateConversation(ctx context.Context, conv *model.Conversation) error {
+	return fmt.Errorf("conversations not supported in SQLite dev mode, use postgres")
+}
+func (s *SQLiteStore) GetConversation(ctx context.Context, id string) (*model.Conversation, error) {
+	return nil, fmt.Errorf("conversations not supported in SQLite dev mode, use postgres")
+}
+func (s *SQLiteStore) UpdateConversation(ctx context.Context, id string, updates map[string]interface{}) error {
+	return fmt.Errorf("conversations not supported in SQLite dev mode, use postgres")
+}
+func (s *SQLiteStore) DeleteConversation(ctx context.Context, id string) error {
+	return fmt.Errorf("conversations not supported in SQLite dev mode, use postgres")
+}
+func (s *SQLiteStore) ListMessages(ctx context.Context, conversationID string, limit int) ([]model.Message, error) {
+	return nil, fmt.Errorf("conversations not supported in SQLite dev mode, use postgres")
+}
+func (s *SQLiteStore) CreateMessage(ctx context.Context, msg *model.Message) error {
+	return fmt.Errorf("conversations not supported in SQLite dev mode, use postgres")
+}
+func (s *SQLiteStore) DeleteMessagesByConversation(ctx context.Context, conversationID string) error {
+	return fmt.Errorf("conversations not supported in SQLite dev mode, use postgres")
+}

@@ -119,6 +119,17 @@ type StoreFacade interface {
 
 	// ==================== 审计 ====================
 	GetAuditEvents(ctx context.Context, workspaceID string, period string) ([]map[string]interface{}, error)
+
+	// ==================== 聊天会话 ====================
+	ListConversations(ctx context.Context, userID string) ([]model.Conversation, error)
+	CreateConversation(ctx context.Context, conv *model.Conversation) error
+	GetConversation(ctx context.Context, id string) (*model.Conversation, error)
+	UpdateConversation(ctx context.Context, id string, updates map[string]interface{}) error
+	DeleteConversation(ctx context.Context, id string) error
+	// 消息
+	ListMessages(ctx context.Context, conversationID string, limit int) ([]model.Message, error)
+	CreateMessage(ctx context.Context, msg *model.Message) error
+	DeleteMessagesByConversation(ctx context.Context, conversationID string) error
 }
 
 // StoreConfig 存储配置

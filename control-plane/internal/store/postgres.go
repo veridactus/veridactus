@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -707,6 +708,12 @@ func getPostgresMigrations() []string {
 		`CREATE TABLE IF NOT EXISTS data_plane_configs (id TEXT PRIMARY KEY, key TEXT NOT NULL, value TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT NOW())`,
 		`CREATE TABLE IF NOT EXISTS settings (key TEXT NOT NULL, workspace_id TEXT NOT NULL DEFAULT 'default', value TEXT NOT NULL, PRIMARY KEY (key, workspace_id))`,
 		`CREATE TABLE IF NOT EXISTS invoices (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), org_id TEXT REFERENCES organizations(id), stripe_invoice_id TEXT, stripe_payment_intent_id TEXT, amount_usd_micro BIGINT NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'usd', status TEXT NOT NULL DEFAULT 'draft', description TEXT, period_start TIMESTAMPTZ, period_end TIMESTAMPTZ, paid_at TIMESTAMPTZ, metadata TEXT DEFAULT '{}', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		// ==================== 聊天会话 ====================
+		`CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, workspace_id TEXT, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL DEFAULT '新对话', model TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT DEFAULT '', tokens INTEGER DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id, created_at)`,
 	}
 }
 
@@ -723,3 +730,55 @@ func (s *PostgresStore) ListUserMemberships(ctx context.Context, userID string) 
 	return members, nil
 }
 func (s *PostgresStore) GetUserByPhone(ctx context.Context, phone string) (*model.User, error) { return nil, nil }
+
+// ==================== 聊天会话 ====================
+
+func (s *PostgresStore) ListConversations(ctx context.Context, userID string) ([]model.Conversation, error) {
+	return listHelper[model.Conversation](ctx, s.db,
+		`SELECT id, COALESCE(workspace_id,''), user_id, title, model, created_at::text, updated_at::text FROM conversations WHERE user_id=$1 ORDER BY updated_at DESC`,
+		func(c *model.Conversation, scan func(...interface{}) error) error { return scan(&c.ID, &c.WorkspaceID, &c.UserID, &c.Title, &c.Model, &c.CreatedAt, &c.UpdatedAt) },
+		userID)
+}
+func (s *PostgresStore) CreateConversation(ctx context.Context, conv *model.Conversation) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO conversations (id, workspace_id, user_id, title, model, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		conv.ID, conv.WorkspaceID, conv.UserID, conv.Title, conv.Model, conv.CreatedAt, conv.UpdatedAt)
+	return err
+}
+func (s *PostgresStore) GetConversation(ctx context.Context, id string) (*model.Conversation, error) {
+	var c model.Conversation
+	err := s.db.QueryRowContext(ctx, `SELECT id, COALESCE(workspace_id,''), user_id, title, model, created_at::text, updated_at::text FROM conversations WHERE id=$1`, id).
+		Scan(&c.ID, &c.WorkspaceID, &c.UserID, &c.Title, &c.Model, &c.CreatedAt, &c.UpdatedAt)
+	if err != nil { return nil, err }
+	return &c, nil
+}
+func (s *PostgresStore) UpdateConversation(ctx context.Context, id string, updates map[string]interface{}) error {
+	sets, args := []string{}, []interface{}{}
+	i := 1
+	for k, v := range updates {
+		sets = append(sets, fmt.Sprintf("%s=$%d", k, i)); args = append(args, v); i++
+	}
+	args = append(args, id)
+	_, err := s.db.ExecContext(ctx, fmt.Sprintf(`UPDATE conversations SET %s, updated_at=NOW() WHERE id=$%d`, strings.Join(sets, ","), i), args...)
+	return err
+}
+func (s *PostgresStore) DeleteConversation(ctx context.Context, id string) error {
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM messages WHERE conversation_id=$1`, id)
+	_, err := s.db.ExecContext(ctx, `DELETE FROM conversations WHERE id=$1`, id)
+	return err
+}
+func (s *PostgresStore) ListMessages(ctx context.Context, conversationID string, limit int) ([]model.Message, error) {
+	if limit <= 0 { limit = 100 }
+	return listHelper[model.Message](ctx, s.db,
+		fmt.Sprintf(`SELECT id, conversation_id, role, content, COALESCE(model,''), tokens, created_at::text FROM messages WHERE conversation_id=$1 ORDER BY created_at ASC LIMIT %d`, limit),
+		func(m *model.Message, scan func(...interface{}) error) error { return scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.Model, &m.Tokens, &m.CreatedAt) },
+		conversationID)
+}
+func (s *PostgresStore) CreateMessage(ctx context.Context, msg *model.Message) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO messages (id, conversation_id, role, content, model, tokens, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		msg.ID, msg.ConversationID, msg.Role, msg.Content, msg.Model, msg.Tokens, msg.CreatedAt)
+	return err
+}
+func (s *PostgresStore) DeleteMessagesByConversation(ctx context.Context, conversationID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM messages WHERE conversation_id=$1`, conversationID)
+	return err
+}

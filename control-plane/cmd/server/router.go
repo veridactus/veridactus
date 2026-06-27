@@ -157,6 +157,9 @@ func (srv *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/settings/", srv.handleSettings())
 	mux.HandleFunc("/api/v1/traces", srv.handleTraces())
 	mux.HandleFunc("/api/v1/traces/", srv.handleTraces())
+	// 聊天会话
+	mux.HandleFunc("/api/v1/conversations", srv.handleConversations())
+	mux.HandleFunc("/api/v1/conversations/", srv.handleConversationByID())
 
 	// ==================== Stripe 计费 ====================
 	mux.HandleFunc("/api/v1/billing/checkout", srv.handleStripeCheckout())
@@ -763,6 +766,108 @@ func (srv *Server) notifyDataPlaneModelRefresh(modelName string) {
 		logInfo("notifyDataPlane: model refresh notified", "model", modelName)
 	} else {
 		logWarn("notifyDataPlane: unexpected response", "model", modelName, "status", resp.StatusCode)
+	}
+}
+
+// ==================== 聊天会话 ====================
+
+func (srv *Server) handleConversations() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID := auth.GetUserID(r.Context())
+		if userID == "" { jsonError(w, http.StatusUnauthorized, "unauthorized", ""); return }
+		switch r.Method {
+		case http.MethodGet:
+			convs, err := srv.store.ListConversations(r.Context(), userID)
+			if err != nil { jsonError(w, http.StatusInternalServerError, "db_error", err.Error()); return }
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"conversations": convs})
+		case http.MethodPost:
+			var req struct {
+				Title string `json:"title"`
+				Model string `json:"model"`
+			}
+			if err := decodeJSON(r, &req); err != nil { jsonError(w, http.StatusBadRequest, "invalid_json", err.Error()); return }
+			if req.Title == "" { req.Title = "新对话" }
+			now := timeNow().UTC().Format(time.RFC3339)
+			conv := &model.Conversation{
+				ID:        uuid.New().String(),
+				UserID:    userID,
+				Title:     req.Title,
+				Model:     req.Model,
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+			if err := srv.store.CreateConversation(r.Context(), conv); err != nil {
+				jsonError(w, http.StatusInternalServerError, "create_failed", err.Error()); return
+			}
+			jsonResponse(w, http.StatusCreated, conv)
+		default:
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "only GET/POST")
+		}
+	}
+}
+func (srv *Server) handleConversationByID() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 支持 /api/v1/conversations/{id}/messages 子路由
+		path := strings.TrimPrefix(r.URL.Path, "/api/v1/conversations/")
+		path = strings.TrimSuffix(path, "/")
+		parts := strings.SplitN(path, "/", 2)
+		id := parts[0]
+		isMessages := len(parts) > 1 && parts[1] == "messages"
+		if id == "" { jsonError(w, http.StatusBadRequest, "missing_id", ""); return }
+
+		if isMessages && r.Method == http.MethodPost {
+			var req struct {
+				ID        string `json:"id"`
+				Role      string `json:"role"`
+				Content   string `json:"content"`
+				Model     string `json:"model"`
+				Tokens    int    `json:"tokens"`
+				Timestamp int64  `json:"timestamp"`
+			}
+			if err := decodeJSON(r, &req); err != nil { jsonError(w, http.StatusBadRequest, "invalid_json", ""); return }
+			now := timeNow().UTC().Format(time.RFC3339)
+			msg := &model.Message{
+				ID:             req.ID,
+				ConversationID: id,
+				Role:           req.Role,
+				Content:        req.Content,
+				Model:          req.Model,
+				Tokens:         req.Tokens,
+				CreatedAt:      now,
+			}
+			if msg.ID == "" { msg.ID = uuid.New().String() }
+			if err := srv.store.CreateMessage(r.Context(), msg); err != nil {
+				jsonError(w, http.StatusInternalServerError, "create_failed", err.Error()); return
+			}
+			// 更新会话时间戳
+			srv.store.UpdateConversation(r.Context(), id, map[string]interface{}{"updated_at": now})
+			jsonResponse(w, http.StatusCreated, msg)
+			return
+		}
+
+		switch r.Method {
+		case http.MethodGet:
+			conv, err := srv.store.GetConversation(r.Context(), id)
+			if err != nil { jsonError(w, http.StatusNotFound, "not_found", ""); return }
+			msgs, _ := srv.store.ListMessages(r.Context(), id, 200)
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"conversation": conv, "messages": msgs})
+		case http.MethodPut:
+			var req struct {
+				Title string `json:"title"`
+			}
+			if err := decodeJSON(r, &req); err != nil { jsonError(w, http.StatusBadRequest, "invalid_json", ""); return }
+			if err := srv.store.UpdateConversation(r.Context(), id, map[string]interface{}{"title": req.Title}); err != nil {
+				jsonError(w, http.StatusInternalServerError, "update_failed", err.Error()); return
+			}
+			jsonResponse(w, http.StatusOK, map[string]string{"status": "updated"})
+		case http.MethodDelete:
+			if err := srv.store.DeleteConversation(r.Context(), id); err != nil {
+				jsonError(w, http.StatusInternalServerError, "delete_failed", err.Error()); return
+			}
+			jsonResponse(w, http.StatusOK, map[string]string{"status": "deleted"})
+		default:
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "only GET/PUT/DELETE/POST")
+		}
 	}
 }
 
