@@ -57,18 +57,8 @@ export function transformTraceDetail(raw: any): TraceDetail {
           finish_reason: raw.output.finish_reason || undefined,
         }
       : undefined,
-    proofs: raw.proofs
-      ? {
-          proof_chain: (raw.proofs.proof_chain || []).map((p: any) => ({
-            level: p.level || '',
-            proof_type: p.type || p.proof_type || 'sha256',
-            signature: p.signature || undefined,
-            timestamp: p.timestamp || undefined,
-            digest: p.signature || undefined,
-          })),
-          aggregated_root: raw.proofs.aggregated_root || undefined,
-        }
-      : undefined,
+    // ⚠️ proofs 必须保持原始结构（用于 L0 签名验证的 JCS 规范化一致性）
+    proofs: raw.proofs || undefined,
     constraints_applied: raw.constraints_applied || undefined,
     observations: transformObservations(raw.observations),
     supply_chain: raw.supply_chain || undefined,
