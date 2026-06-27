@@ -99,11 +99,13 @@ export default function CryptoVerify({ trace, auditSignature }: CryptoVerifyProp
       // 1. 克隆并剥离内部字段
       const clone = JSON.parse(JSON.stringify(trace));
 
-      // 2. 清空 proof_chain 中的 signature
+      // 2. 清空 proof_chain 中的 signature（设为 null，不删除 key）
+      // ⚠️ 不能 delete！Rust serde_json 序列化 Option::None 为 null（保留 key）
+      // JCS 规范化对 key 存在性敏感 → 删除 key vs null → 哈希不同
       if (clone.proofs?.proof_chain) {
         for (const entry of clone.proofs.proof_chain) {
-          delete entry.signature;
-          delete entry.signature_pq;
+          entry.signature = null;
+          entry.signature_pq = null;
         }
       }
 
