@@ -11,6 +11,7 @@ export default function VaultDetail() {
   const { traceId } = useParams<{ traceId: string }>();
   const navigate = useNavigate();
   const [trace, setTrace] = useState<TraceDetail | null>(null);
+  const [rawTrace, setRawTrace] = useState<Record<string,any> | null>(null); // 原始数据用于 L0 验证
   const [loading, setLoading] = useState(true);
 
   const leftRef = useRef<HTMLDivElement>(null);
@@ -19,9 +20,9 @@ export default function VaultDetail() {
 
   useEffect(() => {
     if (!traceId) return;
-    getTraceDetail(traceId)
-      .then(setTrace)
-      .catch(() => {})
+    // 同时获取转换后数据 + 原始数据（用于 L0 签名验证）
+    getTraceDetail(traceId).then(setTrace).catch(() => {});
+    fetch('/v1/traces/' + traceId).then(r=>r.json()).then(setRawTrace).catch(() => {})
       .finally(() => setLoading(false));
   }, [traceId]);
 
@@ -130,8 +131,8 @@ export default function VaultDetail() {
         </div>
       </div>
 
-      {/* Crypto Verify */}
-      {trace && <CryptoVerify trace={trace} auditSignature={trace.signature} />}
+      {/* Crypto Verify — 使用原始数据（未经前端转换器修改）确保 JCS 一致性 */}
+      {rawTrace && <CryptoVerify trace={rawTrace} auditSignature={rawTrace.proofs?.proof_chain?.find((p:any)=>p.level==='L0')?.signature} />}
     </motion.div>
   );
 }
