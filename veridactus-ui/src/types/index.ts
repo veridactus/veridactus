@@ -61,6 +61,7 @@ export interface Pipeline {
   plan_id: string;
   tenant: string;
   stages: StageConfig[];
+  status?: string;
   created_at: string;
 }
 

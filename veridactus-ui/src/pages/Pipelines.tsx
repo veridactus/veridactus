@@ -10,7 +10,7 @@ import { toast } from '../components/ui/Toast';
 import {
   GitBranch, Plus, Play, CheckCircle, Zap, Clock, Shield,
   ChevronRight, Trash2, Copy, Star, MoreVertical, Sparkles,
-  ArrowUpRight, ArrowDownRight, AlertCircle, Loader2, Settings
+  ArrowUpRight, ArrowDownRight, AlertCircle, Loader2, Settings, Send
 } from 'lucide-react';
 
 const examplePipelines = [
@@ -55,10 +55,11 @@ interface PipelineCardProps {
   index: number;
   onEdit: (id: string) => void;
   onAdvancedEdit: (id: string) => void;
+  onPublish: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
-function PipelineCard({ pipeline, index, onEdit, onAdvancedEdit, onDelete }: PipelineCardProps) {
+function PipelineCard({ pipeline, index, onEdit, onAdvancedEdit, onDelete, onPublish }: PipelineCardProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -135,15 +136,16 @@ function PipelineCard({ pipeline, index, onEdit, onAdvancedEdit, onDelete }: Pip
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{
-                padding: '4px 10px', borderRadius: 20, fontSize: 10, fontWeight: 700,
-                background: 'rgba(0,212,170,0.1)', color: '#00d4aa',
-                border: '1px solid rgba(0,212,170,0.2)',
-              }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <CheckCircle size={10} /> Active
-                </span>
-              </span>
+              {/* 动态状态徽章: draft=黄, published=蓝, active=绿 */}
+              {((status:string) => {
+                const cfg: Record<string,{bg:string;color:string;border:string;label:string}> = {
+                  draft: {bg:'rgba(253,203,110,0.1)',color:'#fdcb6e',border:'rgba(253,203,110,0.2)',label:'草稿'},
+                  published: {bg:'rgba(108,92,231,0.1)',color:'#6c5ce7',border:'rgba(108,92,231,0.2)',label:'已发布'},
+                  active: {bg:'rgba(0,212,170,0.1)',color:'#00d4aa',border:'rgba(0,212,170,0.2)',label:'Active'},
+                };
+                const c = cfg[status] || cfg.draft;
+                return <span key={status} style={{padding:'4px 10px',borderRadius:20,fontSize:10,fontWeight:700,background:c.bg,color:c.color,border:`1px solid ${c.border}`}}><CheckCircle size={10}/> {c.label}</span>;
+              })(pipeline.status || 'draft')}
 
               <div ref={menuRef} style={{ position: 'relative' }}>
                 <motion.button
@@ -197,6 +199,16 @@ function PipelineCard({ pipeline, index, onEdit, onAdvancedEdit, onDelete }: Pip
                       >
                         <Settings size={14} style={{ color: '#74b9ff' }} /> 高级配置
                       </button>
+                      {(pipeline.status !== 'published') && (
+                        <button
+                          onClick={() => { onPublish(pipeline.plan_id!); setShowMenu(false); }}
+                          style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:'transparent',border:'none',cursor:'pointer',borderRadius:8,color:'var(--text-primary)',fontSize:13,transition:'background 0.15s'}}
+                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,212,170,0.1)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <Send size={14} style={{ color: '#00d4aa' }} /> 发布上线
+                        </button>
+                      )}
                       <button
                         onClick={() => { setShowMenu(false); onDelete(pipeline.plan_id!); }}
                         style={{
@@ -431,6 +443,12 @@ export default function Pipelines() {
               onEdit={handleEdit}
               onAdvancedEdit={handleAdvancedEdit}
               onDelete={(id: string) => setDeleteId(id)}
+              onPublish={async (id: string) => {
+                try {
+                  await fetch('/api/v1/pipelines/' + id + '/publish', { method: 'POST' });
+                  setPipelines(prev => prev.map(p => p.plan_id === id ? {...p, status:'published'} : p));
+                } catch {}
+              }}
             />
           ))}
         </div>
