@@ -119,6 +119,7 @@ type StoreFacade interface {
 
 	// ==================== 审计 ====================
 	GetAuditEvents(ctx context.Context, workspaceID string, period string) ([]map[string]interface{}, error)
+	ListDpTraces(ctx context.Context, limit int) ([]map[string]interface{}, error)
 
 	// ==================== 聊天会话 ====================
 	ListConversations(ctx context.Context, userID string) ([]model.Conversation, error)

@@ -782,3 +782,22 @@ func (s *PostgresStore) DeleteMessagesByConversation(ctx context.Context, conver
 	_, err := s.db.ExecContext(ctx, `DELETE FROM messages WHERE conversation_id=$1`, conversationID)
 	return err
 }
+
+// ListDpTraces 从 Rust DP 的 dp_traces 表读取 trace 记录（用于管理端展示）
+func (s *PostgresStore) ListDpTraces(ctx context.Context, limit int) ([]map[string]interface{}, error) {
+	if limit <= 0 { limit = 50 }
+	rows, err := s.db.QueryContext(ctx, `SELECT trace_id, tenant_id, trace_data->'model' as model, created_at FROM dp_traces ORDER BY created_at DESC LIMIT $1`, limit)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	var traces []map[string]interface{}
+	for rows.Next() {
+		var traceID, tenantID, model string
+		var createdAt time.Time
+		if err := rows.Scan(&traceID, &tenantID, &model, &createdAt); err != nil { continue }
+		traces = append(traces, map[string]interface{}{
+			"trace_id": traceID, "tenant_id": tenantID, "model": model,
+			"created_at": createdAt.Format(time.RFC3339),
+		})
+	}
+	return traces, nil
+}

@@ -1143,3 +1143,4 @@ func (s *SQLiteStore) CreateMessage(ctx context.Context, msg *model.Message) err
 func (s *SQLiteStore) DeleteMessagesByConversation(ctx context.Context, conversationID string) error {
 	return fmt.Errorf("conversations not supported in SQLite dev mode, use postgres")
 }
+func (s *SQLiteStore) ListDpTraces(ctx context.Context, limit int) ([]map[string]interface{}, error) { return nil, nil }

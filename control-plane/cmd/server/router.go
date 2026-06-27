@@ -1002,10 +1002,12 @@ func (srv *Server) handleSettings() http.HandlerFunc {
 func (srv *Server) handleTraces() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet { jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "only GET"); return }
-		jsonResponse(w, http.StatusOK, map[string]interface{}{
-			"total": 0, "traces": []interface{}{},
-			"hint": "traces are stored in data plane (port 8080)",
-		})
+		dpTraces, err := srv.store.ListDpTraces(r.Context(), 50)
+		if err != nil {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"total": 0, "traces": []interface{}{}})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"total": len(dpTraces), "traces": dpTraces})
 	}
 }
 func (srv *Server) handleConfigPoll() http.HandlerFunc {
