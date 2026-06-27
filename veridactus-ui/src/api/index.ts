@@ -31,7 +31,7 @@ export class ApiError extends Error {
 
 // ==================== Admin Key ====================
 
-/// 用于控制面管理 API 的 Admin Key（从构建时环境变量或 localStorage 获取）
+/// 用于控制面管理 API 的 Admin Key（从 URL 参数或 localStorage 获取）
 function getAdminKey(): string | null {
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search);
@@ -45,13 +45,22 @@ function getAdminKey(): string | null {
   return null;
 }
 
+/** 获取 JWT token（优先 localStorage，回退 cookie） */
+function getJwtToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try { return localStorage.getItem('veridactus_token'); } catch { return null; }
+}
+
 // ==================== 内部请求工具 ====================
 
 async function fetchJSON(url: string, isCpApi = false): Promise<any> {
   const headers: Record<string, string> = {};
   if (isCpApi) {
     const adminKey = getAdminKey();
-    if (adminKey) headers['X-Admin-Key'] = adminKey;
+    if (adminKey) { headers['X-Admin-Key'] = adminKey; }
+    // 同时传 JWT token — 已登录用户通过 JWT 鉴权，无需 admin key
+    const jwt = getJwtToken();
+    if (jwt) { headers['Authorization'] = `Bearer ${jwt}`; }
   }
   const res = await fetch(url, { headers });
   if (!res.ok) {
@@ -71,6 +80,9 @@ async function cpFetch(url: string, method: string, body?: any): Promise<any> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const adminKey = getAdminKey();
   if (adminKey) headers['X-Admin-Key'] = adminKey;
+  // 同时传 JWT token — 已登录用户通过 JWT 鉴权，无需 admin key
+  const jwt = getJwtToken();
+  if (jwt) { headers['Authorization'] = `Bearer ${jwt}`; }
   const res = await fetch(url, {
     method,
     headers,
