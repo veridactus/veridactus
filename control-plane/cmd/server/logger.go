@@ -72,6 +72,18 @@ func structuredLog(level LogLevel, msg string, fields map[string]interface{}) {
 	fmt.Fprintln(os.Stdout, string(jsonBytes))
 }
 
+// logFatal 输出 FATAL 级别日志并退出
+func logFatal(msg string, fields ...interface{}) {
+	m := make(map[string]interface{})
+	for i := 0; i+1 < len(fields); i += 2 {
+		if k, ok := fields[i].(string); ok {
+			m[k] = fields[i+1]
+		}
+	}
+	structuredLog(LevelError, msg, m)
+	os.Exit(1)
+}
+
 // 便捷方法
 func logInfo(msg string, fields ...interface{}) {
 	m := make(map[string]interface{})

@@ -26,7 +26,10 @@ import redis.asyncio as aioredis
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-logging.basicConfig(level=logging.INFO)
+_log_level = os.getenv("WORKER_LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, _log_level, logging.INFO),
+                    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+                    datefmt='%Y-%m-%dT%H:%M:%S')
 logger = logging.getLogger("veridactus-worker")
 
 # 全局 Redis 连接

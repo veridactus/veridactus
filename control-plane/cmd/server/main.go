@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -32,31 +31,28 @@ func main() {
 	corsOrigin := getEnv("CORS_ORIGINS", "") // 默认仅允许同源，生产设置具体域名
 
 	// PostgreSQL 为生产默认后端，未配置时给出明确错误
-	if storeBackend == "postgres" {
-		pgHost := getEnv("PG_HOST", "")
-		if pgHost == "" {
-			log.Println("INFO: PG_HOST not set, using localhost")
-		}
+	if storeBackend == "postgres" && getEnv("PG_HOST", "") == "" {
+		logInfo("PG_HOST not set, using localhost")
 	}
 
 	// 初始化 JWT
 	auth.InitJWT(jwtSecret)
 	if jwtSecret == "" {
 		if getEnv("VERIDACTUS_ENV", "") == "development" {
-			log.Println("WARN: JWT_SECRET not set, using random key (tokens invalid on restart)")
+			logWarn("JWT_SECRET not set, using random key (tokens invalid on restart)")
 		} else {
-			log.Fatalln("FATAL: JWT_SECRET must be set for non-development environments")
+			logFatal("JWT_SECRET must be set for non-development environments")
 		}
 	}
 
 	// 初始化 Casbin RBAC 引擎
 	if err := auth.InitRBAC(); err != nil {
-		log.Fatalf("FATAL: Casbin RBAC initialization failed: %v", err)
+		logFatal("Casbin RBAC initialization failed", "error", err)
 	}
 
 	// 初始化主密钥（加密服务依赖，必须在任何加密操作前调用）
 	if err := crypto.InitMasterKey(); err != nil {
-		log.Fatalf("FATAL: Master key initialization failed: %v", err)
+		logFatal("Master key initialization failed", "error", err)
 	}
 
 	// ==================== 存储初始化 ====================
@@ -73,10 +69,10 @@ func main() {
 
 	st, err := store.NewStore(cfg)
 	if err != nil {
-		log.Fatalf("FATAL: store init failed: %v", err)
+		logFatal("store init failed", "error", err)
 	}
 	defer st.Close()
-	log.Printf("Storage initialized: backend=%s", storeBackend)
+	logInfo("Storage initialized", "backend", storeBackend)
 
 	// ==================== 路由注册 ====================
 	srv := NewServer(st, jwtSecret, adminKey)
@@ -108,9 +104,9 @@ func main() {
 	}()
 
 	go func() {
-		log.Printf("VERIDACTUS Control Plane v2.0 started on :%s (mode=%s)", port, storeBackend)
+		logInfo("Control Plane started", "port", port, "store_backend", storeBackend)
 		if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			logFatal("server listen error", "error", err)
 		}
 	}()
 
@@ -118,11 +114,11 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down...")
+	logInfo("Shutting down...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	httpServer.Shutdown(ctx)
-	log.Println("Shutdown complete")
+	logInfo("Shutdown complete")
 }
 
 func waitAndPushConfig(st store.StoreFacade) {
@@ -131,14 +127,13 @@ func waitAndPushConfig(st store.StoreFacade) {
 		resp, err := c.Get(dpURL + "/health")
 		if err == nil && resp.StatusCode == 200 {
 			resp.Body.Close()
-			log.Println("Data plane ready")
+			logInfo("Data plane ready")
 			return
 		}
 		if resp != nil { resp.Body.Close() }
-		log.Printf("Waiting for data plane (%d/30)...", i+1)
 		time.Sleep(2 * time.Second)
 	}
-	log.Println("WARN: Data plane not ready")
+	logWarn("Data plane not ready after 30 attempts")
 }
 
 // ==================== 工具函数 ====================
