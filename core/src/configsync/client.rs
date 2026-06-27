@@ -87,7 +87,7 @@ pub struct ModelConfig {
     #[serde(rename = "is_default")]
     pub is_default: bool,
     #[serde(rename = "supported_versions")]
-    pub supported_versions: Vec<String>,
+    pub supported_versions: Option<Vec<String>>,
     pub status: String,
 }
 
