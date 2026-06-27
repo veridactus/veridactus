@@ -133,6 +133,7 @@ type Pipeline struct {
 	Description string       `json:"description"`
 	Tenant      string       `json:"tenant"`
 	Stages      []StageConfig `json:"stages"`
+	Status      string       `json:"status"` // draft | published | active
 	Created     string       `json:"created_at"`
 }
 

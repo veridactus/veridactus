@@ -606,16 +606,43 @@ func (srv *Server) handlePipelineByID() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := extractPathID(r.URL.Path, "/api/v1/pipelines/")
 		if id == "" { jsonError(w, http.StatusBadRequest, "missing_id", ""); return }
+		// 支持子路径: /api/v1/pipelines/{id}/publish
+		rawPath := strings.TrimPrefix(r.URL.Path, "/api/v1/pipelines/")
+		pathParts := strings.SplitN(rawPath, "/", 2)
+		id = pathParts[0]
+		publishRoute := len(pathParts) > 1 && pathParts[1] == "publish"
+
+		if publishRoute && r.Method == http.MethodPost {
+			if err := srv.store.UpdatePipeline(r.Context(), id, &model.Pipeline{Status: "published"}); err != nil {
+				jsonError(w, http.StatusInternalServerError, "publish_failed", err.Error()); return
+			}
+			_ = srv.store.IncrementConfigVersion(r.Context(), "pipeline")
+			jsonResponse(w, http.StatusOK, map[string]string{"status": "published"})
+			return
+		}
+
 		switch r.Method {
 		case http.MethodGet:
 			p, err := srv.store.GetPipeline(r.Context(), id)
 			if err != nil { jsonError(w, http.StatusNotFound, "not_found", err.Error()); return }
-			// 显式所有权校验：确保 pipeline 属于用户的工作空间
 			if !srv.canAccessResource(r, p.WorkspaceID) {
 				jsonError(w, http.StatusForbidden, "forbidden", "access denied to this pipeline")
 				return
 			}
 			jsonResponse(w, http.StatusOK, p)
+		case http.MethodPut:
+			var p model.Pipeline
+			if err := decodeJSON(r, &p); err != nil { jsonError(w, http.StatusBadRequest, "invalid_body", err.Error()); return }
+			if err := srv.store.UpdatePipeline(r.Context(), id, &p); err != nil {
+				jsonError(w, http.StatusInternalServerError, "update_failed", err.Error()); return
+			}
+			_ = srv.store.IncrementConfigVersion(r.Context(), "pipeline")
+			jsonResponse(w, http.StatusOK, p)
+		case http.MethodDelete:
+			if err := srv.store.DeletePipeline(r.Context(), id); err != nil {
+				jsonError(w, http.StatusInternalServerError, "delete_failed", err.Error()); return
+			}
+			jsonResponse(w, http.StatusOK, map[string]string{"status": "deleted"})
 		default:
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "")
 		}

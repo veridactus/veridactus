@@ -345,10 +345,10 @@ func (s *PostgresStore) RevokeUserRefreshTokens(ctx context.Context, uid string)
 // Pipeline/Plugin/Policy/ApiKey/Model - 委托给通用实现
 func (s *PostgresStore) ListPipelines(ctx context.Context, wsID string) ([]model.Pipeline, error) {
 	return listHelper[model.Pipeline](ctx, s.db,
-		`SELECT plan_id, COALESCE(org_id,''), COALESCE(workspace_id,''), COALESCE(name,''), COALESCE(description,''), tenant, stages, created_at FROM pipelines WHERE workspace_id=$1 OR workspace_id IS NULL OR workspace_id=''`,
+		`SELECT plan_id, COALESCE(org_id,''), COALESCE(workspace_id,''), COALESCE(name,''), COALESCE(description,''), tenant, stages, COALESCE(status,'draft'), created_at FROM pipelines WHERE workspace_id=$1 OR workspace_id IS NULL OR workspace_id=''`,
 		func(p *model.Pipeline, scan func(...interface{}) error) error {
 			var stagesJSON string
-			err := scan(&p.PlanID, &p.OrgID, &p.WorkspaceID, &p.Name, &p.Description, &p.Tenant, &stagesJSON, &p.Created)
+			err := scan(&p.PlanID, &p.OrgID, &p.WorkspaceID, &p.Name, &p.Description, &p.Tenant, &stagesJSON, &p.Status, &p.Created)
 			if err == nil {
 				p.ID = p.PlanID
 				json.Unmarshal([]byte(stagesJSON), &p.Stages)
@@ -359,8 +359,8 @@ func (s *PostgresStore) ListPipelines(ctx context.Context, wsID string) ([]model
 func (s *PostgresStore) GetPipeline(ctx context.Context, id string) (*model.Pipeline, error) {
 	var p model.Pipeline
 	var stagesJSON string
-	err := s.db.QueryRowContext(ctx, `SELECT plan_id, COALESCE(org_id,''), COALESCE(workspace_id,''), COALESCE(name,''), COALESCE(description,''), tenant, stages, created_at FROM pipelines WHERE plan_id=$1`, id).
-		Scan(&p.PlanID, &p.OrgID, &p.WorkspaceID, &p.Name, &p.Description, &p.Tenant, &stagesJSON, &p.Created)
+	err := s.db.QueryRowContext(ctx, `SELECT plan_id, COALESCE(org_id,''), COALESCE(workspace_id,''), COALESCE(name,''), COALESCE(description,''), tenant, stages, COALESCE(status,'draft'), created_at FROM pipelines WHERE plan_id=$1`, id).
+		Scan(&p.PlanID, &p.OrgID, &p.WorkspaceID, &p.Name, &p.Description, &p.Tenant, &stagesJSON, &p.Status, &p.Created)
 	if err != nil { return nil, err }
 	p.ID = p.PlanID
 	json.Unmarshal([]byte(stagesJSON), &p.Stages)
@@ -368,15 +368,16 @@ func (s *PostgresStore) GetPipeline(ctx context.Context, id string) (*model.Pipe
 }
 func (s *PostgresStore) CreatePipeline(ctx context.Context, p *model.Pipeline) error {
 	stagesJSON, _ := json.Marshal(p.Stages)
-	_, err := s.db.ExecContext(ctx, `INSERT INTO pipelines (plan_id, org_id, workspace_id, name, description, tenant, stages, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		p.PlanID, p.OrgID, p.WorkspaceID, p.Name, p.Description, p.Tenant, string(stagesJSON), p.Created)
+	if p.Status == "" { p.Status = "draft" }
+	_, err := s.db.ExecContext(ctx, `INSERT INTO pipelines (plan_id, org_id, workspace_id, name, description, tenant, stages, status, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		p.PlanID, p.OrgID, p.WorkspaceID, p.Name, p.Description, p.Tenant, string(stagesJSON), p.Status, p.Created)
 	if err != nil { return err }
 	return s.IncrementConfigVersion(ctx, "pipeline")
 }
 func (s *PostgresStore) UpdatePipeline(ctx context.Context, id string, p *model.Pipeline) error {
 	stagesJSON, _ := json.Marshal(p.Stages)
-	_, err := s.db.ExecContext(ctx, `UPDATE pipelines SET name=$1, description=$2, tenant=$3, stages=$4, workspace_id=$5 WHERE plan_id=$6`,
-		p.Name, p.Description, p.Tenant, string(stagesJSON), p.WorkspaceID, id)
+	_, err := s.db.ExecContext(ctx, `UPDATE pipelines SET name=COALESCE(NULLIF($1,''),name), description=COALESCE(NULLIF($2,''),description), tenant=COALESCE(NULLIF($3,''),tenant), stages=$4, workspace_id=COALESCE(NULLIF($5,''),workspace_id), status=COALESCE(NULLIF($6,''),status) WHERE plan_id=$7`,
+		p.Name, p.Description, p.Tenant, string(stagesJSON), p.WorkspaceID, p.Status, id)
 	if err != nil { return err }
 	return s.IncrementConfigVersion(ctx, "pipeline")
 }
@@ -696,6 +697,7 @@ func getPostgresMigrations() []string {
 		`CREATE TABLE IF NOT EXISTS wallets (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL UNIQUE REFERENCES workspaces(id), balance_usd_micro BIGINT NOT NULL DEFAULT 0, overdraft_limit_micro BIGINT NOT NULL DEFAULT 0, last_credit_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
 		`CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), wallet_id TEXT NOT NULL REFERENCES wallets(id), type TEXT NOT NULL, amount_usd_micro BIGINT NOT NULL, balance_after_micro BIGINT NOT NULL, description TEXT, trace_id TEXT, metadata TEXT DEFAULT '{}', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
 		`CREATE TABLE IF NOT EXISTS pipelines (plan_id TEXT PRIMARY KEY, org_id TEXT REFERENCES organizations(id), workspace_id TEXT REFERENCES workspaces(id), name TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', tenant TEXT NOT NULL, stages TEXT NOT NULL, created_at TEXT NOT NULL)`,
+		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='pipelines' AND column_name='status') THEN ALTER TABLE pipelines ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'; END IF; END $$`,
 		`CREATE TABLE IF NOT EXISTS plugins (id TEXT PRIMARY KEY, org_id TEXT, workspace_id TEXT, name TEXT NOT NULL, type TEXT NOT NULL, version TEXT, description TEXT, config TEXT DEFAULT '{}')`,
 		`CREATE TABLE IF NOT EXISTS policies (id TEXT PRIMARY KEY, org_id TEXT REFERENCES organizations(id), workspace_id TEXT REFERENCES workspaces(id), name TEXT NOT NULL, type TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS apikeys (id TEXT PRIMARY KEY, org_id TEXT, workspace_id TEXT, name TEXT NOT NULL, key TEXT NOT NULL UNIQUE, tenant_id TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, last_used TEXT)`,
