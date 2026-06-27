@@ -10,18 +10,39 @@ interface Message {
   id: string; role: 'user'|'assistant'|'system'; content: string;
   model?: string; tokens?: number; cost?: number; safety?: 'safe'|'flagged'|'blocked'; timestamp: number;
 }
-const MODELS = [
-  { id:'glm-5.1', name:'GLM-5.1', provider:'Zhipu', color:'#6c5ce7' },
-  { id:'deepseek-r1:14b', name:'DeepSeek R1', provider:'Local', color:'#00d4aa' },
-  { id:'gpt-4o', name:'GPT-4o', provider:'Azure', color:'#74b9ff' },
+interface AvailableModel { id: string; name: string; provider: string; color: string; is_default: boolean; }
+const MODEL_COLORS = ['#6c5ce7','#00d4aa','#74b9ff','#fdcb6e','#ff7675','#a29bfe','#fd79a8','#00cec9'];
+const FALLBACK_MODELS: AvailableModel[] = [
+  { id:'glm-5.1', name:'GLM-5.1', provider:'Zhipu', color:'#6c5ce7', is_default:true },
 ];
 function generateId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2); }
+/** 从 Rust 数据面 /models 获取模型列表，失败回退到控制面 /api/v1/models，再失败用兜底 */
+async function fetchAvailableModels(): Promise<AvailableModel[]> {
+  try {
+    const r = await fetch('/models'); if (!r.ok) throw new Error();
+    const data = await r.json();
+    return (data.data || []).map((m: any, i: number) => ({
+      id: m.id, name: m.id, provider: m.owned_by || '',
+      color: MODEL_COLORS[i % MODEL_COLORS.length], is_default: !!m.is_default,
+    }));
+  } catch { /* fallthrough */ }
+  try {
+    const r = await fetch('/api/v1/models');
+    if (!r.ok) throw new Error();
+    const data = await r.json();
+    return (data.models || []).map((m: any, i: number) => ({
+      id: m.name, name: m.name, provider: '',
+      color: MODEL_COLORS[i % MODEL_COLORS.length], is_default: !!m.is_default,
+    }));
+  } catch { return FALLBACK_MODELS; }
+}
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [selectedModel, setSelectedModel] = useState(MODELS[0]);
-  const [compareModel, setCompareModel] = useState(MODELS[1]);
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>(FALLBACK_MODELS);
+  const [selectedModel, setSelectedModel] = useState<AvailableModel>(FALLBACK_MODELS[0]);
+  const [compareModel, setCompareModel] = useState<AvailableModel>(FALLBACK_MODELS[0]);
   const [compareMode, setCompareMode] = useState(false);
   const [comparePrompt, setComparePrompt] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -31,7 +52,19 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController|null>(null);
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({behavior:'smooth'}); }, [messages]);
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+  useEffect(() => {
+    fetchAvailableModels().then(models => {
+      setAvailableModels(models);
+      if (models.length > 0) {
+        const def = models.find(m => m.is_default) || models[0];
+        setSelectedModel(def);
+        setCompareModel(models.length > 1 ? models[1] : models[0]);
+      }
+    });
+  }, []);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || isStreaming) return;
@@ -96,7 +129,7 @@ export default function ChatPage() {
             <AnimatePresence>{showModelMenu && (
               <motion.div initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}} exit={{opacity:0}}
                 className="absolute top-full right-0 mt-1 bg-[rgba(19,22,51,0.98)] border border-[rgba(108,92,231,0.3)] rounded-xl p-2 min-w-[200px] z-[100] shadow-[0_20px_40px_rgba(0,0,0,0.5)]">
-                {MODELS.map(m=>(<div key={m.id} onClick={()=>{setSelectedModel(m);setShowModelMenu(false)}}
+                {availableModels.map(m=>(<div key={m.id} onClick={()=>{setSelectedModel(m);setShowModelMenu(false)}}
                   className={`flex items-center gap-2.5 p-2.5 rounded-lg cursor-pointer text-sm text-white transition-all ${m.id===selectedModel.id?'bg-[rgba(108,92,231,0.15)]':'bg-transparent'}`}>
                   <span className="w-2 h-2 rounded-full" style={{background:m.color}}/><span className="flex-1">{m.name}</span><span className="text-[10px] text-[#8892b0]">{m.provider}</span>
                 </div>))}
@@ -111,7 +144,7 @@ export default function ChatPage() {
             <AnimatePresence>{showCompareMenu && (
               <motion.div initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}} exit={{opacity:0}}
                 className="absolute top-full right-0 mt-1 bg-[rgba(19,22,51,0.98)] border border-[rgba(0,212,170,0.3)] rounded-xl p-2 min-w-[200px] z-[100] shadow-[0_20px_40px_rgba(0,0,0,0.5)]">
-                {MODELS.filter(m=>m.id!==selectedModel.id).map(m=>(<div key={m.id} onClick={()=>{setCompareModel(m);setShowCompareMenu(false)}}
+                {availableModels.filter(m=>m.id!==selectedModel.id).map(m=>(<div key={m.id} onClick={()=>{setCompareModel(m);setShowCompareMenu(false)}}
                   className={`flex items-center gap-2.5 p-2.5 rounded-lg cursor-pointer text-sm text-white transition-all ${m.id===compareModel.id?'bg-[rgba(0,212,170,0.15)]':'bg-transparent'}`}>
                   <span className="w-2 h-2 rounded-full" style={{background:m.color}}/><span className="flex-1">{m.name}</span><span className="text-[10px] text-[#8892b0]">{m.provider}</span>
                 </div>))}

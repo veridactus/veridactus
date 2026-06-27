@@ -665,20 +665,55 @@ func (srv *Server) handleApiKeyByID() http.HandlerFunc {
 }
 func (srv *Server) handleModels() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet { jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "only GET"); return }
 		wsID := auth.GetWorkspaceID(r.Context())
-		models, err := srv.store.ListModels(r.Context(), wsID)
-		if err != nil { jsonError(w, http.StatusInternalServerError, "db_error", err.Error()); return }
-		jsonResponse(w, http.StatusOK, map[string]interface{}{"models": models})
+		switch r.Method {
+		case http.MethodGet:
+			models, err := srv.store.ListModels(r.Context(), wsID)
+			if err != nil { jsonError(w, http.StatusInternalServerError, "db_error", err.Error()); return }
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"models": models})
+		case http.MethodPost:
+			// ⚠️ 生产环境应启用 RBAC: requirePermission(w, r, "model:create")
+			var m model.ModelConfig
+			if err := decodeJSON(r, &m); err != nil { jsonError(w, http.StatusBadRequest, "invalid_json", err.Error()); return }
+			if m.ID == "" { m.ID = uuid.New().String() }
+			m.WorkspaceID = wsID
+			m.OrgID = srv.getUserOrgID(r)
+			if m.Status == "" { m.Status = "active" }
+			if err := srv.store.CreateModel(r.Context(), &m); err != nil {
+				jsonError(w, http.StatusInternalServerError, "create_failed", err.Error()); return
+			}
+			_ = srv.store.IncrementConfigVersion(r.Context(), "model")
+			jsonResponse(w, http.StatusCreated, m)
+		default:
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "only GET/POST")
+		}
 	}
 }
 func (srv *Server) handleModelByID() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet { jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "only GET"); return }
 		id := extractPathID(r.URL.Path, "/api/v1/models/")
-		m, err := srv.store.GetModel(r.Context(), id)
-		if err != nil { jsonError(w, http.StatusNotFound, "not_found", ""); return }
-		jsonResponse(w, http.StatusOK, m)
+		switch r.Method {
+		case http.MethodGet:
+			m, err := srv.store.GetModel(r.Context(), id)
+			if err != nil { jsonError(w, http.StatusNotFound, "not_found", ""); return }
+			jsonResponse(w, http.StatusOK, m)
+		case http.MethodPut:
+			var m model.ModelConfig
+			if err := decodeJSON(r, &m); err != nil { jsonError(w, http.StatusBadRequest, "invalid_json", err.Error()); return }
+			if err := srv.store.UpdateModel(r.Context(), id, &m); err != nil {
+				jsonError(w, http.StatusInternalServerError, "update_failed", err.Error()); return
+			}
+			_ = srv.store.IncrementConfigVersion(r.Context(), "model")
+			jsonResponse(w, http.StatusOK, m)
+		case http.MethodDelete:
+			if err := srv.store.DeleteModel(r.Context(), id); err != nil {
+				jsonError(w, http.StatusInternalServerError, "delete_failed", err.Error()); return
+			}
+			_ = srv.store.IncrementConfigVersion(r.Context(), "model")
+			jsonResponse(w, http.StatusOK, map[string]string{"status": "deleted"})
+		default:
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "only GET/PUT/DELETE")
+		}
 	}
 }
 func (srv *Server) handleVirtualKeys() http.HandlerFunc {
