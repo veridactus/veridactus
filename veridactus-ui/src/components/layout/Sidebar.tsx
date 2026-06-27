@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LayoutDashboard, GitBranch, Activity, Key, Settings, Shield, Boxes, Globe, Sun, Moon, Cpu, MessageCircle, Database, Eye, Palette, Menu, X, User, Building, LogOut, ChevronRight } from 'lucide-react';
 import { useI18n } from '../../i18n';
-import { useThemeStore } from '../../store';
+import { useThemeStore, useNavSidebarStore } from '../../store';
 import { getUserPlan, getToken, clearToken } from '../../auth/AuthGuard';
 
 function parseUser() {
@@ -13,6 +13,7 @@ function parseUser() {
 export default function Sidebar() {
   const { t, locale, setLocale } = useI18n();
   const { theme, toggleTheme } = useThemeStore();
+  const { navCollapsed } = useNavSidebarStore();
   const navigate = useNavigate();
   const plan = getUserPlan();
   const isEnterprise = plan === 'enterprise';
@@ -154,9 +155,28 @@ export default function Sidebar() {
         )}
       </AnimatePresence>
 
-      {/* Desktop sidebar */}
-      <aside className="sidebar hidden lg:flex" style={{ backdropFilter: 'blur(20px)' }}>
-        {sidebarContent}
+      {/* Desktop sidebar — icon-only when collapsed */}
+      <aside className={`sidebar hidden lg:flex transition-all duration-300 ${navCollapsed?'!w-[64px]':''}`} style={{ backdropFilter: 'blur(20px)' }}>
+        {navCollapsed ? (
+          <div className="flex flex-col items-center pt-3 gap-1 w-full">
+            <div className="w-9 h-9 rounded-btn flex items-center justify-center mb-2" style={{ background: 'linear-gradient(135deg, #6c5ce7, #00d4aa)' }}>
+              <Boxes size={18} color="white" />
+            </div>
+            {navItems.map((item: any, idx: number) => {
+              if (item.type === 'divider') return <div key={`div-${idx}`} className="w-8 h-px my-1" style={{ background: 'rgba(255,255,255,0.06)' }} />;
+              const Icon = item.icon;
+              return (
+                <NavLink key={item.id} to={item.to as string} onClick={() => setMobileOpen(false)} className="nav-item !p-2 !justify-center w-full" title={item.label}>
+                  {({ isActive }: any) => <Icon size={18} color={isActive ? '#00d4aa' : undefined} />}
+                </NavLink>
+              );
+            })}
+            <div className="mt-auto flex flex-col items-center gap-2 py-4">
+              <button onClick={() => setLocale(locale === 'zh' ? 'en' : 'zh')} className="p-1.5 rounded-lg hover:bg-[var(--bg-glass)] text-[var(--text-tertiary)]" title={t('app.switch_lang')}><Globe size={14} /></button>
+              <button onClick={toggleTheme} className="p-1.5 rounded-lg hover:bg-[var(--bg-glass)] text-[var(--text-tertiary)]" title={theme === 'dark' ? t('app.light_mode') : t('app.dark_mode')}>{theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}</button>
+            </div>
+          </div>
+        ) : sidebarContent}
       </aside>
 
       {/* Mobile sidebar */}

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Shield, Zap, ChevronDown, Plus, Trash2, MessageSquare, PanelLeftClose, PanelLeft } from 'lucide-react';
 import SafetyShield from './SafetyShield';
 import { getStoredToken } from '../../auth/useAuth';
+import { useNavSidebarStore } from '../../store';
 
 // ==================== Types ====================
 interface Message { id: string; role: 'user'|'assistant'; content: string; model?: string; tokens?: number; timestamp: number; }
@@ -36,6 +37,7 @@ export default function ChatPage() {
   const [convs, setConvs] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string|null>(()=>load<string|null>(CACHE_CONV,null));
   const [sidebar, setSidebar] = useState(true);
+  const { navCollapsed, toggleNav } = useNavSidebarStore();
   const [hoverDel, setHoverDel] = useState<string|null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController|null>(null);
@@ -142,8 +144,8 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <header className="flex items-center justify-between h-12 px-4 border-b border-white/[0.05] bg-[#0b0f19]/90 backdrop-blur-md flex-shrink-0">
           <div className="flex items-center gap-2.5">
-            <button onClick={()=>setSidebar(!sidebar)} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-[#5a6a8a] hover:text-white transition-colors">
-              {sidebar?<PanelLeftClose size={16}/>:<PanelLeft size={16}/>}
+            <button onClick={toggleNav} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-[#5a6a8a] hover:text-white transition-colors" title={navCollapsed?'展开导航':'收起导航'}>
+              {navCollapsed?<PanelLeft size={16}/>:<PanelLeftClose size={16}/>}
             </button>
             <Shield size={16} color="#6c5ce7"/>
             <span className="font-semibold text-[13px] text-white tracking-tight">VERIDACTUS <span className="text-[#6c5ce7] font-medium">Chat</span></span>
