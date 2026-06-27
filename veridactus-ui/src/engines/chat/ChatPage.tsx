@@ -122,8 +122,8 @@ export default function ChatPage() {
           <button onClick={newChat} className="flex-1 flex items-center gap-2.5 py-2.5 px-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] text-white text-[13px] font-medium cursor-pointer transition-all duration-150">
             <Plus size={15}/> 新建对话
           </button>
-          <button onClick={()=>setSidebar(false)} className="ml-1.5 p-1.5 rounded-lg hover:bg-white/[0.06] text-[#5a6a8a] hover:text-white transition-colors flex-shrink-0" title="收起侧栏">
-            <PanelLeftClose size={14}/>
+          <button onClick={toggleNav} className="ml-1.5 p-1.5 rounded-lg hover:bg-white/[0.06] text-[#5a6a8a] hover:text-white transition-colors flex-shrink-0" title={navCollapsed?'展开导航':'收起导航'}>
+            {navCollapsed?<PanelLeft size={14}/>:<PanelLeftClose size={14}/>}
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
@@ -144,8 +144,8 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <header className="flex items-center justify-between h-12 px-4 border-b border-white/[0.05] bg-[#0b0f19]/90 backdrop-blur-md flex-shrink-0">
           <div className="flex items-center gap-2.5">
-            <button onClick={toggleNav} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-[#5a6a8a] hover:text-white transition-colors" title={navCollapsed?'展开导航':'收起导航'}>
-              {navCollapsed?<PanelLeft size={16}/>:<PanelLeftClose size={16}/>}
+            <button onClick={()=>setSidebar(!sidebar)} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-[#5a6a8a] hover:text-white transition-colors" title={sidebar?'收起对话栏':'展开对话栏'}>
+              {sidebar?<PanelLeftClose size={16}/>:<PanelLeft size={16}/>}
             </button>
             <Shield size={16} color="#6c5ce7"/>
             <span className="font-semibold text-[13px] text-white tracking-tight">VERIDACTUS <span className="text-[#6c5ce7] font-medium">Chat</span></span>
