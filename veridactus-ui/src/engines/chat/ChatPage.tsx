@@ -83,11 +83,12 @@ export default function ChatPage() {
       while(true){
         const {done,value}=await reader.read(); if(done)break;
         const chunk = decoder.decode(value,{stream:true});
-        for(const line of chunk.split('\n').filter(l=>l.startsWith('data: '))){
-          const data = line.slice(6).trim();
+        for(const line of chunk.split('\n')){
+          // SSE 数据可能有多重 "data: " 前缀（代理层/数据面封装），全部移除
+          const data = line.replace(/^(data: )+/, '').trim();
+          if(!data) continue;
           if(data==='[DONE]'){ doneFlag = true; break; }
           if(data.startsWith('[VERIDACTUS:BUDGET_EXCEEDED]')){ fullContent+='\n\n⚠️ _预算已耗尽_'; doneFlag = true; break; }
-          if(!data) continue;
           try { fullContent += JSON.parse(data).choices?.[0]?.delta?.content||''; } catch {}
         }
         if(doneFlag) break;
