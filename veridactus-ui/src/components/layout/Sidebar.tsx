@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, GitBranch, Activity, Key, Settings, Shield, Boxes, Globe, Sun, Moon, Cpu, MessageCircle, Database, Eye, Palette, Menu, X, User, Building, LogOut, ChevronRight, PanelLeftClose } from 'lucide-react';
+import { LayoutDashboard, GitBranch, Activity, Key, Settings, Shield, Boxes, Globe, Sun, Moon, Cpu, MessageCircle, Database, Eye, Palette, Menu, X, User, Building, LogOut, ChevronRight } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { useThemeStore } from '../../store';
 import { getUserPlan, getToken, clearToken } from '../../auth/AuthGuard';
@@ -17,23 +17,9 @@ export default function Sidebar() {
   const plan = getUserPlan();
   const isEnterprise = plan === 'enterprise';
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [desktopCollapsed, setDesktopCollapsed] = useState(() => {
-    try { return localStorage.getItem('v_sidebar_collapsed')==='1'; } catch { return false; }
-  });
   const user = parseUser();
   const token = getToken();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-
-  const toggleDesktop = () => {
-    const next = !desktopCollapsed;
-    setDesktopCollapsed(next);
-    try { localStorage.setItem('v_sidebar_collapsed', next?'1':'0'); } catch {}
-    document.documentElement.style.setProperty('--sidebar-width', next ? '64px' : '260px');
-  };
-  // Sync CSS variable on mount
-  useEffect(() => {
-    document.documentElement.style.setProperty('--sidebar-width', desktopCollapsed ? '64px' : '260px');
-  }, []);
 
   const baseItems = [
     { to: '/chat', icon: MessageCircle, label: 'Chat 沙箱', id: 'chat' },
@@ -64,19 +50,14 @@ export default function Sidebar() {
   const sidebarContent = (
     <>
       <div className="sidebar-header">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-btn flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #6c5ce7, #00d4aa)' }}>
-              <Boxes size={20} color="white" />
-            </div>
-            {!desktopCollapsed && <div>
-              <h1 className="text-base font-bold text-[var(--text-primary)] tracking-tight">{t('app.title')}</h1>
-              <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">{t('app.subtitle')}</p>
-            </div>}
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-btn flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #6c5ce7, #00d4aa)' }}>
+            <Boxes size={20} color="white" />
           </div>
-          <button onClick={toggleDesktop} className="hidden lg:flex p-1.5 rounded-lg hover:bg-[var(--bg-glass)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors" title={desktopCollapsed?'展开':'收起'}>
-            <PanelLeftClose size={14} style={{transform:desktopCollapsed?'rotate(180deg)':'none'}}/>
-          </button>
+          <div>
+            <h1 className="text-base font-bold text-[var(--text-primary)] tracking-tight">{t('app.title')}</h1>
+            <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">{t('app.subtitle')}</p>
+          </div>
         </div>
       </div>
 
@@ -173,27 +154,9 @@ export default function Sidebar() {
         )}
       </AnimatePresence>
 
-      {/* Desktop sidebar — supports collapsed icon-only mode */}
-      <aside className={`sidebar hidden lg:flex transition-all duration-300 ${desktopCollapsed?'!w-[64px]':''}`} style={{ backdropFilter: 'blur(20px)' }}>
-        {desktopCollapsed ? (
-          <div className="flex flex-col items-center pt-3 gap-1">
-            <div className="w-9 h-9 rounded-btn flex items-center justify-center flex-shrink-0 mb-2" style={{ background: 'linear-gradient(135deg, #6c5ce7, #00d4aa)' }}>
-              <Boxes size={18} color="white" />
-            </div>
-            {navItems.map((item: any)=>{
-              if(item.type==='divider') return <div key={item.id||Math.random()} className="w-8 h-px my-1" style={{background:'rgba(255,255,255,0.06)'}}/>;
-              const Icon=item.icon;
-              return <NavLink key={item.id} to={item.to as string} onClick={()=>setMobileOpen(false)} className="nav-item !p-2 !justify-center" title={item.label}>
-                {({isActive}:any)=><Icon size={18} color={isActive?'#00d4aa':undefined}/>}
-              </NavLink>;
-            })}
-            <div className="mt-auto flex flex-col items-center gap-2 py-4">
-              <button onClick={()=>setLocale(locale==='zh'?'en':'zh')} className="p-1.5 rounded-lg hover:bg-[var(--bg-glass)] text-[var(--text-tertiary)]" title={t('app.switch_lang')}><Globe size={14}/></button>
-              <button onClick={toggleTheme} className="p-1.5 rounded-lg hover:bg-[var(--bg-glass)] text-[var(--text-tertiary)]" title={theme==='dark'?t('app.light_mode'):t('app.dark_mode')}>{theme==='dark'?<Sun size={14}/>:<Moon size={14}/>}</button>
-              <button onClick={toggleDesktop} className="p-1.5 rounded-lg hover:bg-[var(--bg-glass)] text-[var(--text-tertiary)] mt-2" title="展开"><PanelLeftClose size={13} style={{transform:'rotate(180deg)'}}/></button>
-            </div>
-          </div>
-        ) : sidebarContent}
+      {/* Desktop sidebar */}
+      <aside className="sidebar hidden lg:flex" style={{ backdropFilter: 'blur(20px)' }}>
+        {sidebarContent}
       </aside>
 
       {/* Mobile sidebar */}
