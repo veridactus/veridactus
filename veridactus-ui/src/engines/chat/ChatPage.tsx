@@ -15,30 +15,25 @@ const MODEL_COLORS = ['#6c5ce7','#00d4aa','#74b9ff','#fdcb6e','#ff7675','#a29bfe
 const FALLBACK_MODELS: AvailableModel[] = [
   { id:'glm-5.1', name:'GLM-5.1', provider:'Zhipu', color:'#6c5ce7', is_default:true },
 ];
+const CHAT_STORAGE_KEY = 'veridactus_chat_messages';
+
 function generateId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2); }
-/** 从 Rust 数据面 /models 获取模型列表，失败回退到控制面 /api/v1/models，再失败用兜底 */
+/** 从 localStorage 加载/保存聊天记录 */
+function loadMessages(): Message[] {
+  try { const raw = localStorage.getItem(CHAT_STORAGE_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; }
+}
+function saveMessages(msgs: Message[]) {
+  try { localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(msgs.slice(-80))); } catch {} // 最多保留 80 条
+}
 async function fetchAvailableModels(): Promise<AvailableModel[]> {
-  try {
-    const r = await fetch('/models'); if (!r.ok) throw new Error();
-    const data = await r.json();
-    return (data.data || []).map((m: any, i: number) => ({
-      id: m.id, name: m.id, provider: m.owned_by || '',
-      color: MODEL_COLORS[i % MODEL_COLORS.length], is_default: !!m.is_default,
-    }));
-  } catch { /* fallthrough */ }
-  try {
-    const r = await fetch('/api/v1/models');
-    if (!r.ok) throw new Error();
-    const data = await r.json();
-    return (data.models || []).map((m: any, i: number) => ({
-      id: m.name, name: m.name, provider: '',
-      color: MODEL_COLORS[i % MODEL_COLORS.length], is_default: !!m.is_default,
-    }));
-  } catch { return FALLBACK_MODELS; }
+  try { const r = await fetch('/models'); if (!r.ok) throw new Error(); const data = await r.json();
+    return (data.data || []).map((m: any, i: number) => ({ id: m.id, name: m.id, provider: m.owned_by || '', color: MODEL_COLORS[i % MODEL_COLORS.length], is_default: !!m.is_default })); } catch {}
+  try { const r = await fetch('/api/v1/models'); if (!r.ok) throw new Error(); const data = await r.json();
+    return (data.models || []).map((m: any, i: number) => ({ id: m.name, name: m.name, provider: '', color: MODEL_COLORS[i % MODEL_COLORS.length], is_default: !!m.is_default })); } catch { return FALLBACK_MODELS; }
 }
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => loadMessages());
   const [input, setInput] = useState('');
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>(FALLBACK_MODELS);
   const [selectedModel, setSelectedModel] = useState<AvailableModel>(FALLBACK_MODELS[0]);
@@ -52,9 +47,8 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController|null>(null);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  // 每次 message 变化自动滚动 + 持久化到 localStorage
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); saveMessages(messages); }, [messages]);
   useEffect(() => {
     fetchAvailableModels().then(models => {
       setAvailableModels(models);
@@ -71,33 +65,38 @@ export default function ChatPage() {
     const token = getStoredToken();
     const userMsg: Message = { id:generateId(), role:'user', content:input.trim(), timestamp:Date.now() };
     const assistantMsg: Message = { id:generateId(), role:'assistant', content:'', model:selectedModel.id, timestamp:Date.now() };
-    setMessages(prev=>[...prev,userMsg,assistantMsg]); setInput(''); setIsStreaming(true);
+    const newMessages = [...messages, userMsg, assistantMsg];
+    setMessages(newMessages); setInput(''); setIsStreaming(true);
     const controller = new AbortController(); abortRef.current = controller;
     try {
       const res = await fetch('/v1/chat/completions', {
         method:'POST', signal:controller.signal,
         headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},
-        body:JSON.stringify({model:selectedModel.id, messages:messages.concat(userMsg).map(m=>({role:m.role,content:m.content})),stream:true,max_tokens:1024}),
+        body:JSON.stringify({model:selectedModel.id, messages:messages.concat(userMsg).map(m=>({role:m.role,content:m.content})),stream:true,max_tokens:4096}),
       });
       if(!res.ok) throw new Error(`HTTP ${res.status}`);
       const budgetRem = res.headers.get('VERIDACTUS-Budget-Remaining');
       if(budgetRem) setBudgetRemaining(parseFloat(budgetRem));
       const reader = res.body?.getReader(); if(!reader) throw new Error('No reader');
       const decoder = new TextDecoder(); let fullContent = '';
-      while(true){ const {done,value}=await reader.read(); if(done)break;
+      let doneFlag = false;
+      while(true){
+        const {done,value}=await reader.read(); if(done)break;
         const chunk = decoder.decode(value,{stream:true});
         for(const line of chunk.split('\n').filter(l=>l.startsWith('data: '))){
           const data = line.slice(6).trim();
-          if(data==='[DONE]') break;
-          if(data.startsWith('[VERIDACTUS:BUDGET_EXCEEDED]')){ fullContent+='\n\n⚠️ _预算已耗尽_'; break; }
-          try { const delta = JSON.parse(data).choices?.[0]?.delta?.content||''; fullContent+=delta;
-            const updateContent=fullContent;
-            requestAnimationFrame(()=>{ setMessages(prev=>prev.map(m=>m.id===assistantMsg.id?{...m,content:updateContent}:m)); });
-          } catch {}
+          if(data==='[DONE]'){ doneFlag = true; break; }
+          if(data.startsWith('[VERIDACTUS:BUDGET_EXCEEDED]')){ fullContent+='\n\n⚠️ _预算已耗尽_'; doneFlag = true; break; }
+          if(!data) continue;
+          try { fullContent += JSON.parse(data).choices?.[0]?.delta?.content||''; } catch {}
         }
+        if(doneFlag) break;
+        // 🔧 直接 setMessages，不用 requestAnimationFrame（React 18 中 RAF 可能不触发渲染）
+        const snapshot = fullContent;
+        setMessages(prev => prev.map(m => m.id===assistantMsg.id ? {...m, content: snapshot} : m));
       }
-      setMessages(prev=>prev.map(m=>m.id===assistantMsg.id?{...m,content:fullContent,tokens:Math.ceil(fullContent.length/4),safety:'safe'}:m));
-    } catch(err:any){ if(err.name!=='AbortError') setMessages(prev=>prev.map(m=>m.id===assistantMsg.id?{...m,content:`❌ ${err.message}`}:m)); }
+      setMessages(prev => prev.map(m => m.id===assistantMsg.id ? {...m, content: fullContent, tokens: Math.ceil(fullContent.length/4), safety:'safe'} : m));
+    } catch(err:any){ if(err.name!=='AbortError') setMessages(prev => prev.map(m => m.id===assistantMsg.id ? {...m, content:`❌ ${err.message}`} : m)); }
     finally { setIsStreaming(false); abortRef.current=null; }
   },[input,isStreaming,messages,selectedModel]);
 
