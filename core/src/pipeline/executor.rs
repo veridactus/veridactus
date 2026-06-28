@@ -213,11 +213,14 @@ impl PipelineExecutor {
                 Ok(Action::Continue) => checks_passed.push(plugin_cfg.name.clone()),
                 Ok(Action::Block) => {
                     checks_failed.push(plugin_cfg.name.clone());
-                    return (PipelineResult::block(
-                        format!("PostResponse blocked by {}", plugin_cfg.name),
-                        checks_passed,
-                        checks_failed,
-                    ), cold_tasks);
+                    return (
+                        PipelineResult::block(
+                            format!("PostResponse blocked by {}", plugin_cfg.name),
+                            checks_passed,
+                            checks_failed,
+                        ),
+                        cold_tasks,
+                    );
                 }
                 Ok(Action::Flag) => {
                     checks_passed.push(format!("{} (flagged)", plugin_cfg.name));
@@ -286,11 +289,11 @@ impl PipelineExecutor {
                     .and_then(|v| v.as_str())
                     .unwrap_or(&plugin_cfg.name);
 
-            let params = serde_json::json!({
-                "trace_id": trace_id.to_string(),
-                "response": response_content,
-                "plugin_config": plugin_cfg.config,
-            });
+                let params = serde_json::json!({
+                    "trace_id": trace_id.to_string(),
+                    "response": response_content,
+                    "plugin_config": plugin_cfg.config,
+                });
 
                 Some((task_type.to_string(), params))
             })
