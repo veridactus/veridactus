@@ -8,8 +8,8 @@ use std::path::Path;
 use tracing::{info, warn};
 
 use crate::plugin::{
-    AsyncContext, GovernancePlugin, PluginMetadata, PluginType, RequestContext,
-    ResponseContext, StreamChunkContext,
+    AsyncContext, GovernancePlugin, PluginMetadata, PluginType, RequestContext, ResponseContext,
+    StreamChunkContext,
 };
 use crate::types::journal::ExecutionJournal;
 use crate::types::Action;
@@ -26,7 +26,11 @@ impl WasmPlugin {
     pub fn load(path: impl Into<String>) -> Result<Self, String> {
         let path_str: String = path.into();
         let path = Path::new(&path_str);
-        let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("wasm-plugin").to_string();
+        let name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("wasm-plugin")
+            .to_string();
 
         if !path.exists() {
             return Err(format!("WASM module not found: {}", path_str));
@@ -35,11 +39,20 @@ impl WasmPlugin {
         let (has_runtime, desc) = Self::try_load_wasmtime(path, &path_str);
         Ok(Self {
             metadata: PluginMetadata {
-                name, plugin_type: PluginType::Wasm, version: "1.0".into(),
-                description: desc, author: None,
-                supported_protocol_versions: crate::types::VersionRange { min: "0.2.0".into(), max: "0.3.0".into() },
+                name,
+                plugin_type: PluginType::Wasm,
+                version: "1.0".into(),
+                description: desc,
+                author: None,
+                supported_protocol_versions: crate::types::VersionRange {
+                    min: "0.2.0".into(),
+                    max: "0.3.0".into(),
+                },
             },
-            module_path: path_str, memory_pages: 256, fuel: 10_000_000, has_runtime,
+            module_path: path_str,
+            memory_pages: 256,
+            fuel: 10_000_000,
+            has_runtime,
         })
     }
 
