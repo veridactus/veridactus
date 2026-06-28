@@ -553,19 +553,27 @@ mod tests {
         let mut registry = PluginRegistry::new();
         registry.register(Box::new(AllowPlugin));
         let plan = ExecutionPlan {
-            plan_id: "test-cold".into(), tenant: Some("test".into()),
+            plan_id: "test-cold".into(),
+            tenant: Some("test".into()),
             stages: vec![crate::pipeline::config::StageConfig {
-                placement: Placement::PostResponse, parallel: false,
+                placement: Placement::PostResponse,
+                parallel: false,
                 plugins: vec![PluginConfig {
-                    name: "allow-plugin".to_string(), r#type: PluginType::Native,
-                    config: serde_json::json!({"async_task": "certified_guarantee"}), depends_on: vec![], endpoint: None, required_capabilities: vec![],
+                    name: "allow-plugin".to_string(),
+                    r#type: PluginType::Native,
+                    config: serde_json::json!({"async_task": "certified_guarantee"}),
+                    depends_on: vec![],
+                    endpoint: None,
+                    required_capabilities: vec![],
                 }],
                 on_version_mismatch: crate::pipeline::config::VersionMismatchPolicy::Skip,
             }],
         };
         let executor = PipelineExecutor::new(Arc::new(registry), plan);
         let mut ctx = ResponseContext {
-            response: "test".into(), actual_cost: 0.0, trace_id: Uuid::new_v4(),
+            response: "test".into(),
+            actual_cost: 0.0,
+            trace_id: Uuid::new_v4(),
         };
         let mut journal = ExecutionJournal::new(Uuid::new_v4(), "test");
         let (result, cold_tasks) = executor.execute_post_response(&mut ctx, &mut journal).await;
