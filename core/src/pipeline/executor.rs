@@ -452,15 +452,44 @@ mod tests {
     impl GovernancePlugin for AllowPlugin {
         fn metadata(&self) -> PluginMetadata {
             PluginMetadata {
-                name: "allow-plugin".into(), plugin_type: PluginType::Native, version: "1.0".into(),
-                description: "always allows".into(), author: None,
-                supported_protocol_versions: VersionRange { min: "0.2.0".into(), max: "0.2.1".into() },
+                name: "allow-plugin".into(),
+                plugin_type: PluginType::Native,
+                version: "1.0".into(),
+                description: "always allows".into(),
+                author: None,
+                supported_protocol_versions: VersionRange {
+                    min: "0.2.0".into(),
+                    max: "0.2.1".into(),
+                },
             }
         }
-        async fn on_request(&self, _ctx: &mut RequestContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-        async fn on_stream_chunk(&self, _ctx: &mut StreamChunkContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-        async fn on_response(&self, _ctx: &mut ResponseContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-        async fn on_async_finalize(&self, _ctx: &mut AsyncContext) -> Result<serde_json::Value, String> { Ok(serde_json::json!({})) }
+        async fn on_request(
+            &self,
+            _ctx: &mut RequestContext,
+            _journal: &mut ExecutionJournal,
+        ) -> Result<Action, String> {
+            Ok(Action::Continue)
+        }
+        async fn on_stream_chunk(
+            &self,
+            _ctx: &mut StreamChunkContext,
+            _journal: &mut ExecutionJournal,
+        ) -> Result<Action, String> {
+            Ok(Action::Continue)
+        }
+        async fn on_response(
+            &self,
+            _ctx: &mut ResponseContext,
+            _journal: &mut ExecutionJournal,
+        ) -> Result<Action, String> {
+            Ok(Action::Continue)
+        }
+        async fn on_async_finalize(
+            &self,
+            _ctx: &mut AsyncContext,
+        ) -> Result<serde_json::Value, String> {
+            Ok(serde_json::json!({}))
+        }
     }
 
     struct BlockPlugin;
@@ -468,26 +497,64 @@ mod tests {
     impl GovernancePlugin for BlockPlugin {
         fn metadata(&self) -> PluginMetadata {
             PluginMetadata {
-                name: "block-plugin".into(), plugin_type: PluginType::Native, version: "1.0".into(),
-                description: "always blocks".into(), author: None,
-                supported_protocol_versions: VersionRange { min: "0.2.0".into(), max: "0.2.1".into() },
+                name: "block-plugin".into(),
+                plugin_type: PluginType::Native,
+                version: "1.0".into(),
+                description: "always blocks".into(),
+                author: None,
+                supported_protocol_versions: VersionRange {
+                    min: "0.2.0".into(),
+                    max: "0.2.1".into(),
+                },
             }
         }
-        async fn on_request(&self, _ctx: &mut RequestContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Block) }
-        async fn on_stream_chunk(&self, _ctx: &mut StreamChunkContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-        async fn on_response(&self, _ctx: &mut ResponseContext, _journal: &mut ExecutionJournal) -> Result<Action, String> { Ok(Action::Continue) }
-        async fn on_async_finalize(&self, _ctx: &mut AsyncContext) -> Result<serde_json::Value, String> { Ok(serde_json::json!({})) }
+        async fn on_request(
+            &self,
+            _ctx: &mut RequestContext,
+            _journal: &mut ExecutionJournal,
+        ) -> Result<Action, String> {
+            Ok(Action::Block)
+        }
+        async fn on_stream_chunk(
+            &self,
+            _ctx: &mut StreamChunkContext,
+            _journal: &mut ExecutionJournal,
+        ) -> Result<Action, String> {
+            Ok(Action::Continue)
+        }
+        async fn on_response(
+            &self,
+            _ctx: &mut ResponseContext,
+            _journal: &mut ExecutionJournal,
+        ) -> Result<Action, String> {
+            Ok(Action::Continue)
+        }
+        async fn on_async_finalize(
+            &self,
+            _ctx: &mut AsyncContext,
+        ) -> Result<serde_json::Value, String> {
+            Ok(serde_json::json!({}))
+        }
     }
 
     fn make_plan(name: &str, plugins: Vec<&str>) -> ExecutionPlan {
         ExecutionPlan {
-            plan_id: name.into(), tenant: Some("test".into()),
+            plan_id: name.into(),
+            tenant: Some("test".into()),
             stages: vec![crate::pipeline::config::StageConfig {
-                placement: Placement::PreRequest, parallel: false,
-                plugins: plugins.iter().map(|n| PluginConfig {
-                    name: n.to_string(), r#type: PluginType::Native,
-                    config: serde_json::json!({}), depends_on: vec![], endpoint: None, required_capabilities: vec![],
-                }).collect(),
+                placement: Placement::PreRequest,
+                parallel: false,
+                plugins: plugins
+                    .iter()
+                    .map(|n| PluginConfig {
+                        name: n.to_string(),
+                        r#type: PluginType::Native,
+                        config: serde_json::json!({}),
+                        depends_on: vec![],
+                        endpoint: None,
+                        required_capabilities: vec![],
+                    })
+                    .collect(),
                 on_version_mismatch: crate::pipeline::config::VersionMismatchPolicy::Skip,
             }],
         }
