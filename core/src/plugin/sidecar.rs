@@ -179,9 +179,13 @@ impl GovernancePlugin for SidecarPlugin {
         match self.call_sidecar("pre_request", request).await {
             Ok(body) => Ok(Self::parse_action(&body)),
             Err(e) => {
-                if self.fail_on_error { Err(e) }
-                else {
-                    warn!("Sidecar plugin {} pre_request failed (flagged): {}", self.metadata.name, e);
+                if self.fail_on_error {
+                    Err(e)
+                } else {
+                    warn!(
+                        "Sidecar plugin {} pre_request failed (flagged): {}",
+                        self.metadata.name, e
+                    );
                     Ok(Action::Flag)
                 }
             }
@@ -223,19 +227,20 @@ impl GovernancePlugin for SidecarPlugin {
         match self.call_sidecar("post_response", request).await {
             Ok(body) => Ok(Self::parse_action(&body)),
             Err(e) => {
-                if self.fail_on_error { Err(e) }
-                else {
-                    warn!("Sidecar plugin {} post_response failed (flagged): {}", self.metadata.name, e);
+                if self.fail_on_error {
+                    Err(e)
+                } else {
+                    warn!(
+                        "Sidecar plugin {} post_response failed (flagged): {}",
+                        self.metadata.name, e
+                    );
                     Ok(Action::Flag)
                 }
             }
         }
     }
 
-    async fn on_async_finalize(
-        &self,
-        ctx: &mut AsyncContext,
-    ) -> Result<serde_json::Value, String> {
+    async fn on_async_finalize(&self, ctx: &mut AsyncContext) -> Result<serde_json::Value, String> {
         let request = serde_json::json!({
             "trace_id": ctx.trace_id.to_string(),
             "task_type": ctx.task_type,
