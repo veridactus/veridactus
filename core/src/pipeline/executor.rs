@@ -380,19 +380,30 @@ impl PipelineExecutor {
                     plugin_ctx.plugin_config = Some(parsed);
                 }
 
-                match plugin.on_request(&mut plugin_ctx, &mut plugin_journal).await {
+                match plugin
+                    .on_request(&mut plugin_ctx, &mut plugin_journal)
+                    .await
+                {
                     Ok(Action::Continue) => {
-                        if let Ok(mut p) = passed_ref.lock() { p.push(name.clone()); }
+                        if let Ok(mut p) = passed_ref.lock() {
+                            p.push(name.clone());
+                        }
                     }
                     Ok(Action::Block) => {
-                        if let Ok(mut f) = failed_ref.lock() { f.push(name.clone()); }
+                        if let Ok(mut f) = failed_ref.lock() {
+                            f.push(name.clone());
+                        }
                         blocked_ref.store(true, std::sync::atomic::Ordering::Relaxed);
                     }
                     Ok(Action::Flag | Action::Degrade) => {
-                        if let Ok(mut p) = passed_ref.lock() { p.push(format!("{} (flagged)", name)); }
+                        if let Ok(mut p) = passed_ref.lock() {
+                            p.push(format!("{} (flagged)", name));
+                        }
                     }
                     Err(e) => {
-                        if let Ok(mut f) = failed_ref.lock() { f.push(format!("{}: {}", name, e)); }
+                        if let Ok(mut f) = failed_ref.lock() {
+                            f.push(format!("{}: {}", name, e));
+                        }
                         blocked_ref.store(true, std::sync::atomic::Ordering::Relaxed);
                     }
                 }
@@ -406,8 +417,12 @@ impl PipelineExecutor {
         // journal events from parallel plugins are merged in batch
         // 因为每个 plugin 有自己的 journal clone，这里只记录总体结果
 
-        if let Ok(p) = passed.lock() { checks_passed.extend(p.iter().cloned()); }
-        if let Ok(f) = failed.lock() { checks_failed.extend(f.iter().cloned()); }
+        if let Ok(p) = passed.lock() {
+            checks_passed.extend(p.iter().cloned());
+        }
+        if let Ok(f) = failed.lock() {
+            checks_failed.extend(f.iter().cloned());
+        }
 
         blocked.load(std::sync::atomic::Ordering::Relaxed)
     }
