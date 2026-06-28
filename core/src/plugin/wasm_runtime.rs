@@ -93,36 +93,63 @@ impl WasmPlugin {
 }
 
 fn code_to_action(code: i32) -> Action {
-    match code { 1 => Action::Block, 2 => Action::Degrade, 3 => Action::Flag, _ => Action::Continue }
+    match code {
+        1 => Action::Block,
+        2 => Action::Degrade,
+        3 => Action::Flag,
+        _ => Action::Continue,
+    }
 }
 
 #[async_trait]
 impl GovernancePlugin for WasmPlugin {
-    fn metadata(&self) -> PluginMetadata { self.metadata.clone() }
+    fn metadata(&self) -> PluginMetadata {
+        self.metadata.clone()
+    }
 
-    async fn on_request(&self, ctx: &mut RequestContext, _j: &mut ExecutionJournal) -> Result<Action, String> {
+    async fn on_request(
+        &self,
+        ctx: &mut RequestContext,
+        _j: &mut ExecutionJournal,
+    ) -> Result<Action, String> {
         let json = serde_json::to_string(&serde_json::json!({
             "headers": ctx.headers, "body": ctx.body,
             "trace_id": ctx.trace_id.to_string(), "tenant_id": ctx.tenant_id,
-        })).unwrap_or_default();
+        }))
+        .unwrap_or_default();
         match self.call_guest("on_request", &json) {
             Ok(c) => Ok(code_to_action(c)),
-            Err(_) => { warn!("WASM {} on_request failed", self.metadata.name); Ok(Action::Flag) }
+            Err(_) => {
+                warn!("WASM {} on_request failed", self.metadata.name);
+                Ok(Action::Flag)
+            }
         }
     }
 
-    async fn on_stream_chunk(&self, _c: &mut StreamChunkContext, _j: &mut ExecutionJournal) -> Result<Action, String> {
+    async fn on_stream_chunk(
+        &self,
+        _c: &mut StreamChunkContext,
+        _j: &mut ExecutionJournal,
+    ) -> Result<Action, String> {
         Ok(Action::Continue) // streaming 阶段 WASM 跳过
     }
 
-    async fn on_response(&self, ctx: &mut ResponseContext, _j: &mut ExecutionJournal) -> Result<Action, String> {
+    async fn on_response(
+        &self,
+        ctx: &mut ResponseContext,
+        _j: &mut ExecutionJournal,
+    ) -> Result<Action, String> {
         let json = serde_json::to_string(&serde_json::json!({
             "response": ctx.response, "actual_cost": ctx.actual_cost,
             "trace_id": ctx.trace_id.to_string(),
-        })).unwrap_or_default();
+        }))
+        .unwrap_or_default();
         match self.call_guest("on_response", &json) {
             Ok(c) => Ok(code_to_action(c)),
-            Err(_) => { warn!("WASM {} on_response failed", self.metadata.name); Ok(Action::Flag) }
+            Err(_) => {
+                warn!("WASM {} on_response failed", self.metadata.name);
+                Ok(Action::Flag)
+            }
         }
     }
 
@@ -130,7 +157,8 @@ impl GovernancePlugin for WasmPlugin {
         let json = serde_json::to_string(&serde_json::json!({
             "trace_id": ctx.trace_id.to_string(),
             "task_type": ctx.task_type, "params": ctx.params,
-        })).unwrap_or_default();
+        }))
+        .unwrap_or_default();
         match self.call_guest("on_async_finalize", &json) {
             Ok(_) => Ok(serde_json::json!({"status":"completed"})),
             Err(e) => Err(e),
@@ -143,7 +171,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_wasm_load_nonexistent() { assert!(WasmPlugin::load("/nonexistent.wasm").is_err()); }
+    fn test_wasm_load_nonexistent() {
+        assert!(WasmPlugin::load("/nonexistent.wasm").is_err());
+    }
 
     #[test]
     fn test_code_actions() {
