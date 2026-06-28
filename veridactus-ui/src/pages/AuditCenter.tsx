@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+// VERIDACTUS 审计指挥舱 — 企业级风险大盘 + Trace 全息视角 + 会话分组
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import GlassCard from '../components/ui/GlassCard';
@@ -7,43 +8,41 @@ import ExecutionContract from '../components/viz/ExecutionContract';
 import ObservationsPanel from '../components/viz/ObservationsPanel';
 import StateMachineTimeline from '../components/viz/StateMachineTimeline';
 import { useI18n } from '../i18n';
-import { 
-  getTracesFromDataPlane, 
-  getTraceDetail,
-  replayTrace,
-  verifyTraceSignature,
-  getReplayBranches,
-  createReplayBranch,
-  deleteReplayBranch,
-  batchExportTraces,
-  batchDeleteTraces,
-  getRealtimeMetrics,
+import { ConfirmDialog } from '../components/ui/Dialog';
+import { MetricCard, VerificationBadge } from './AuditComponents';
+import {
+  getTracesFromDataPlane, getTracesGroupedBySession, getTraceDetail, replayTrace, verifyTraceSignature,
+  getReplayBranches, createReplayBranch, deleteReplayBranch,
+  batchExportTraces, batchDeleteTraces, getRealtimeMetrics,
 } from '../api';
-import type { TraceSummary, TraceDetail, VerificationResult, ReplayResult, ReplayBranch, RealTimeMetrics } from '../types';
-import { 
-  Activity, Search, Shield, Clock, ChevronRight, Hash, FileText, Settings, Lock, Zap, 
-  AlertTriangle, RefreshCw, Play, CheckCircle, XCircle, GitBranch, Trash2, Download, 
-  Plus, BarChart3, Monitor, Check, AlertCircle
+import type { TraceSummary, TraceDetail, VerificationResult, ReplayResult, ReplayBranch, RealTimeMetrics, SessionGroup } from '../types';
+import {
+  Activity, Search, Shield, ChevronRight, ChevronDown, FileText, Lock, Zap, GitBranch,
+  AlertTriangle, RefreshCw, Play, CheckCircle, XCircle, Trash2, Download,
+  Plus, BarChart3, Monitor, MessageSquare, Clock,
 } from 'lucide-react';
+
+type PanelView = 'traces' | 'sessions' | 'branches' | 'metrics';
 
 export default function AuditCenter() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [traces, setTraces] = useState<TraceSummary[]>([]);
+  const [sessionGroups, setSessionGroups] = useState<SessionGroup[]>([]);
   const [selectedTrace, setSelectedTrace] = useState<TraceDetail | null>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // 新状态
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
   const [replayResult, setReplayResult] = useState<ReplayResult | null>(null);
   const [branches, setBranches] = useState<ReplayBranch[]>([]);
   const [metrics, setMetrics] = useState<RealTimeMetrics | null>(null);
   const [selectedTraces, setSelectedTraces] = useState<string[]>([]);
-  const [showBranchPanel, setShowBranchPanel] = useState(false);
-  const [showMetricsPanel, setShowMetricsPanel] = useState(false);
+  const [activePanel, setActivePanel] = useState<PanelView>('traces');
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
+  const [deleteBranchId, setDeleteBranchId] = useState<string | null>(null);
+  const [deleteTracesCount, setDeleteTracesCount] = useState<number>(0);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isReplaying, setIsReplaying] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
@@ -51,56 +50,26 @@ export default function AuditCenter() {
   const [replayError, setReplayError] = useState<string | null>(null);
 
   const loadTraces = async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
-      const data = await getTracesFromDataPlane();
-      setTraces(data);
+      const [tracesList, sessions] = await Promise.all([
+        getTracesFromDataPlane(),
+        getTracesGroupedBySession(),
+      ]);
+      setTraces(tracesList);
+      setSessionGroups(sessions);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load traces';
-      setError(message);
-      console.error('Failed to load traces:', err);
-    } finally {
-      setLoading(false);
-    }
+      setError(err instanceof Error ? err.message : 'Failed to load traces');
+    } finally { setLoading(false); }
   };
+  const loadBranches = async () => { try { setBranches((await getReplayBranches()).branches); } catch {} };
+  const loadMetrics = async () => { try { setMetrics(await getRealtimeMetrics()); } catch {} };
 
-  const loadBranches = async () => {
-    try {
-      const data = await getReplayBranches();
-      setBranches(data.branches);
-    } catch (err) {
-      console.error('Failed to load branches:', err);
-    }
-  };
-
-  const loadMetrics = async () => {
-    try {
-      const data = await getRealtimeMetrics();
-      setMetrics(data);
-    } catch (err) {
-      console.error('Failed to load metrics:', err);
-    }
-  };
-
+  useEffect(() => { loadTraces(); loadBranches(); loadMetrics(); const iv = setInterval(loadMetrics, 5000); return () => clearInterval(iv); }, []);
   useEffect(() => {
-    loadTraces();
-    loadBranches();
-    loadMetrics();
-    
-    const interval = setInterval(loadMetrics, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const traceId = searchParams.get('trace');
-    if (traceId) {
-      getTraceDetail(traceId)
-        .then(setSelectedTrace)
-        .catch(err => console.error('Failed to load trace detail:', err));
-    } else {
-      setSelectedTrace(null);
-    }
+    const tid = searchParams.get('trace');
+    if (tid) getTraceDetail(tid).then(setSelectedTrace).catch(console.error);
+    else setSelectedTrace(null);
   }, [searchParams]);
 
   const filtered = traces.filter(t =>
@@ -108,420 +77,289 @@ export default function AuditCenter() {
     t.model?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const filteredSessions = sessionGroups.filter(s =>
+    s.session_id.toLowerCase().includes(search.toLowerCase()) ||
+    s.traces.some(t => t.model?.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const toggleSession = (sid: string) => {
+    setExpandedSessions(prev => {
+      const next = new Set(prev);
+      if (next.has(sid)) next.delete(sid); else next.add(sid);
+      return next;
+    });
+  };
+
   const handleVerify = async () => {
     if (!selectedTrace) return;
     setIsVerifying(true);
-    try {
-      const result = await verifyTraceSignature(selectedTrace.trace_id);
-      setVerificationResult(result);
-    } catch (err) {
-      console.error('Verification failed:', err);
-      setVerificationResult({
-        trace_id: selectedTrace.trace_id,
-        l0_passed: false,
-        overall_passed: false,
-        error: err instanceof Error ? err.message : 'Verification failed'
-      });
-    } finally {
-      setIsVerifying(false);
-    }
+    try { setVerificationResult(await verifyTraceSignature(selectedTrace.trace_id)); } catch (err) {
+      setVerificationResult({ trace_id: selectedTrace.trace_id, l0_passed: false, overall_passed: false, error: err instanceof Error ? err.message : 'Verification failed' });
+    } finally { setIsVerifying(false); }
   };
-
-  const handleReplay = async (mode: string = 'replay') => {
+  const handleReplay = async (mode = 'replay') => {
     if (!selectedTrace) return;
-    setIsReplaying(true);
-    setReplayError(null);
-    try {
-      const result = await replayTrace(selectedTrace.trace_id, mode);
-      setReplayResult(result);
-      setReplayError(null);
-    } catch (err) {
-      console.error('Replay failed:', err);
-      setReplayError(err instanceof Error ? err.message : 'Failed to replay trace');
-      setReplayResult(null);
-    } finally {
-      setIsReplaying(false);
-    }
+    setIsReplaying(true); setReplayError(null);
+    try { setReplayResult(await replayTrace(selectedTrace.trace_id, mode)); } catch (err) {
+      setReplayError(err instanceof Error ? err.message : 'Replay failed'); setReplayResult(null);
+    } finally { setIsReplaying(false); }
   };
-
   const handleCreateBranch = async () => {
-    if (!newBranchName.trim()) {
-      setBranchError('Branch name is required');
-      return;
-    }
-    try {
-      await createReplayBranch(newBranchName.trim());
-      setNewBranchName('');
-      setBranchError('');
-      loadBranches();
-    } catch (err) {
-      setBranchError(err instanceof Error ? err.message : 'Failed to create branch');
-    }
-  };
-
-  const handleDeleteBranch = async (branchId: string) => {
-    if (confirm('Are you sure you want to delete this branch?')) {
-      try {
-        await deleteReplayBranch(branchId);
-        loadBranches();
-      } catch (err) {
-        console.error('Failed to delete branch:', err);
-      }
-    }
+    if (!newBranchName.trim()) { setBranchError('Branch name is required'); return; }
+    try { await createReplayBranch(newBranchName.trim()); setNewBranchName(''); setBranchError(''); loadBranches(); }
+    catch (err) { setBranchError(err instanceof Error ? err.message : 'Failed to create branch'); }
   };
 
   const handleExportSelected = async () => {
-    if (selectedTraces.length === 0) return;
+    if (!selectedTraces.length) return;
     try {
-      const result = await batchExportTraces(selectedTraces);
-      const blob = new Blob([JSON.stringify(result.traces, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `traces-${Date.now()}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Export failed:', err);
-    }
+      const r = await batchExportTraces(selectedTraces);
+      const blob = new Blob([JSON.stringify(r.traces, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `traces-${Date.now()}.json`; a.click(); URL.revokeObjectURL(a.href);
+    } catch {}
+  };
+  const confirmDeleteBranch = async () => {
+    if (!deleteBranchId) return;
+    try { await deleteReplayBranch(deleteBranchId); loadBranches(); } catch {} finally { setDeleteBranchId(null); }
+  };
+  const confirmDeleteTraces = async () => {
+    if (!selectedTraces.length) return;
+    try { await batchDeleteTraces(selectedTraces); setSelectedTraces([]); loadTraces(); } catch {} finally { setDeleteTracesCount(0); }
   };
 
-  const handleDeleteSelected = async () => {
-    if (selectedTraces.length === 0) return;
-    if (confirm(`Are you sure you want to delete ${selectedTraces.length} traces?`)) {
-      try {
-        await batchDeleteTraces(selectedTraces);
-        setSelectedTraces([]);
-        loadTraces();
-      } catch (err) {
-        console.error('Delete failed:', err);
-      }
-    }
-  };
+  const toggleSelectAll = () => setSelectedTraces(selectedTraces.length === filtered.length ? [] : filtered.map(t => t.trace_id));
+  const toggleSelect = (id: string) => setSelectedTraces(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
 
-  const toggleSelectAll = () => {
-    if (selectedTraces.length === filtered.length) {
-      setSelectedTraces([]);
-    } else {
-      setSelectedTraces(filtered.map(t => t.trace_id));
-    }
-  };
-
-  const toggleSelect = (traceId: string) => {
-    setSelectedTraces(prev => 
-      prev.includes(traceId) 
-        ? prev.filter(id => id !== traceId)
-        : [...prev, traceId]
-    );
-  };
+  const panelButtonClass = (panel: PanelView) =>
+    `flex-1 py-2 px-3 rounded-lg border text-xs font-medium flex items-center justify-center gap-1 cursor-pointer transition-colors ${
+      activePanel === panel
+        ? 'border-purple-500/30 bg-purple-500/20 text-[var(--text-primary)]'
+        : 'border-white/[0.06] text-[var(--text-tertiary)] hover:border-white/[0.12]'
+    }`;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)' }}>{t('audit.title')}</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 4 }}>{t('audit.subtitle')}</p>
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">{t('audit.title')}</h1>
+        <p className="text-sm text-[var(--text-secondary)] mt-1">{t('audit.subtitle')}</p>
       </div>
 
       {/* 批量操作栏 */}
       {selectedTraces.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          style={{
-            display: 'flex',
-            gap: 12,
-            padding: 12,
-            background: 'rgba(108,92,231,0.1)',
-            borderRadius: 10,
-            marginBottom: 16,
-          }}
-        >
-          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-            Selected {selectedTraces.length} trace(s)
-          </span>
-          <button
-            onClick={handleExportSelected}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              background: 'rgba(0,212,170,0.2)',
-              border: '1px solid rgba(0,212,170,0.3)',
-              borderRadius: 8,
-              color: '#00d4aa',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-3 p-3 rounded-btn mb-4 bg-purple-500/10">
+          <span className="text-sm text-[var(--text-secondary)]">Selected {selectedTraces.length} trace(s)</span>
+          <button onClick={handleExportSelected}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer bg-emerald-500/20 border-emerald-500/30 text-emerald-400">
             <Download size={14} /> Export
           </button>
-          <button
-            onClick={handleDeleteSelected}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              background: 'rgba(255,118,117,0.2)',
-              border: '1px solid rgba(255,118,117,0.3)',
-              borderRadius: 8,
-              color: '#ff7675',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
+          <button onClick={() => setDeleteTracesCount(selectedTraces.length)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer bg-red-500/20 border-red-500/30 text-red-400">
             <Trash2 size={14} /> Delete
           </button>
         </motion.div>
       )}
 
-      <div style={{ display: 'flex', gap: 20, height: 'calc(100vh - 250px)' }}>
-        {/* 左侧面板 - Trace列表和分支管理 */}
-        <div style={{ width: 380, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ position: 'relative' }}>
-            <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-            <input className="input-field" placeholder={t('audit.search')} value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 34 }} />
+      {/* 主布局 */}
+      <div className="flex gap-5 min-h-[400px]">
+        {/* 左侧面板 */}
+        <div className="w-[380px] flex-shrink-0 flex flex-col gap-3">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
+            <input className="input-field !pl-[34px]" placeholder={t('audit.search')} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-
-          {/* 切换面板按钮 */}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => { setShowBranchPanel(false); setShowMetricsPanel(false); }}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                borderRadius: 8,
-                border: '1px solid rgba(108,92,231,0.3)',
-                background: !showBranchPanel && !showMetricsPanel ? 'rgba(108,92,231,0.2)' : 'transparent',
-                color: 'var(--text-primary)',
-                cursor: 'pointer',
-                fontSize: 12,
-              }}
-            >
-              Traces ({filtered.length})
+          {/* 面板切换按钮 */}
+          <div className="flex gap-2">
+            <button onClick={() => setActivePanel('traces')} className={panelButtonClass('traces')}>
+              Traces
             </button>
-            <button
-              onClick={() => { setShowBranchPanel(!showBranchPanel); setShowMetricsPanel(false); }}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                borderRadius: 8,
-                border: '1px solid rgba(108,92,231,0.3)',
-                background: showBranchPanel ? 'rgba(108,92,231,0.2)' : 'transparent',
-                color: 'var(--text-primary)',
-                cursor: 'pointer',
-                fontSize: 12,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 4,
-              }}
-            >
+            <button onClick={() => setActivePanel('sessions')} className={panelButtonClass('sessions')}>
+              <MessageSquare size={14} /> Sessions
+            </button>
+            <button onClick={() => setActivePanel('branches')} className={panelButtonClass('branches')}>
               <GitBranch size={14} /> Branches
             </button>
-            <button
-              onClick={() => { setShowMetricsPanel(!showMetricsPanel); setShowBranchPanel(false); }}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                borderRadius: 8,
-                border: '1px solid rgba(108,92,231,0.3)',
-                background: showMetricsPanel ? 'rgba(108,92,231,0.2)' : 'transparent',
-                color: 'var(--text-primary)',
-                cursor: 'pointer',
-                fontSize: 12,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 4,
-              }}
-            >
+            <button onClick={() => setActivePanel('metrics')} className={panelButtonClass('metrics')}>
               <BarChart3 size={14} /> Metrics
             </button>
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {/* Trace列表 */}
-            {!showBranchPanel && !showMetricsPanel && (
-              <>
-                {/* 全选 checkbox */}
-                {filtered.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', padding: '0 8px' }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedTraces.length === filtered.length && filtered.length > 0}
-                      onChange={toggleSelectAll}
-                      style={{ marginRight: 8 }}
-                    />
-                    <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Select All</span>
+          <div className="flex-1 overflow-y-auto flex flex-col gap-2">
+            {/* ====== Trace 列表视图 ====== */}
+            {activePanel === 'traces' && <>
+              {filtered.length > 0 && (
+                <div className="flex items-center px-2">
+                  <input type="checkbox" checked={selectedTraces.length === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="mr-2" />
+                  <span className="text-[11px] text-[var(--text-tertiary)]">Select All</span>
+                </div>
+              )}
+              {loading ? <div className="text-center py-10 text-sm text-[var(--text-tertiary)]">{t('app.loading')}</div>
+              : error ? (
+                <GlassCard className="text-center p-8">
+                  <AlertTriangle size={32} className="mx-auto mb-3" style={{ color: '#ff7675' }} />
+                  <p className="text-sm text-[#ff7675] mb-4">{error}</p>
+                  <button onClick={loadTraces}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border text-xs cursor-pointer bg-purple-500/20 border-purple-500/30 text-purple-300">
+                    <RefreshCw size={14} /> Retry
+                  </button>
+                </GlassCard>
+              ) : filtered.length === 0 ? (
+                <GlassCard className="text-center p-8">
+                  <Activity size={32} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm text-[var(--text-tertiary)]">{t('audit.no_traces')}</p>
+                </GlassCard>
+              ) : filtered.map(t => (
+                <GlassCard key={t.trace_id} className="p-3.5 cursor-pointer relative"
+                  style={{ borderColor: selectedTrace?.trace_id === t.trace_id ? 'rgba(108,92,231,0.5)' : undefined }}
+                  onClick={() => { getTraceDetail(t.trace_id).then(setSelectedTrace); setSearchParams({ trace: t.trace_id }); }}>
+                  <input type="checkbox" checked={selectedTraces.includes(t.trace_id)} onChange={e => { e.stopPropagation(); toggleSelect(t.trace_id); }}
+                    className="absolute top-3.5 right-3.5" />
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-[13px] font-semibold text-[var(--text-primary)]">{t.model || 'Unknown'}</p>
+                      <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5 font-mono">{t.trace_id?.slice(0, 12)}...</p>
+                      {t.session_id && <p className="text-[10px] text-purple-400/60 mt-0.5 font-mono">Session: {t.session_id.slice(0, 8)}...</p>}
+                    </div>
+                    <ChevronRight size={14} className="text-[var(--text-tertiary)]" />
                   </div>
-                )}
+                  <div className="flex gap-1.5 mt-2 flex-wrap">
+                    {t.proof_levels?.map(pl => <ProofLevelBadge key={pl} level={pl} size="small" />)}
+                    <span className="text-[10px] text-[var(--text-tertiary)] ml-auto self-center">{t.created_at ? new Date(t.created_at).toLocaleString() : ''}</span>
+                  </div>
+                </GlassCard>
+              ))}
+            </>}
 
-                {loading ? (
-                  <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-tertiary)', fontSize: 13 }}>{t('app.loading')}</div>
-                ) : error ? (
-                  <GlassCard style={{ textAlign: 'center', padding: 32 }}>
-                    <AlertTriangle size={32} style={{ color: '#ff7675', margin: '0 auto 12px' }} />
-                    <p style={{ color: '#ff7675', fontSize: 13, marginBottom: 16 }}>{error}</p>
-                    <button
-                      onClick={loadTraces}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '8px 16px',
-                        background: 'rgba(108,92,231,0.2)',
-                        border: '1px solid rgba(108,92,231,0.3)',
-                        borderRadius: 8,
-                        color: '#a29bfe',
-                        cursor: 'pointer',
-                        fontSize: 12,
-                      }}
-                    >
-                      <RefreshCw size={14} /> Retry
-                    </button>
-                  </GlassCard>
-                ) : filtered.length === 0 ? (
-                  <GlassCard style={{ textAlign: 'center', padding: 32 }}>
-                    <Activity size={32} style={{ opacity: 0.3, margin: '0 auto 12px' }} />
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>{t('audit.no_traces')}</p>
-                  </GlassCard>
-                ) : (
-                  filtered.map((trace, i) => (
+            {/* ====== 会话分组视图 ====== */}
+            {activePanel === 'sessions' && <>
+              {loading ? <div className="text-center py-10 text-sm text-[var(--text-tertiary)]">{t('app.loading')}</div>
+              : filteredSessions.length === 0 ? (
+                <GlassCard className="text-center p-8">
+                  <MessageSquare size={32} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm text-[var(--text-tertiary)]">No session groups found</p>
+                  <p className="text-[11px] text-[var(--text-tertiary)] mt-1">Traces from multi-turn conversations will appear here</p>
+                </GlassCard>
+              ) : filteredSessions.map(session => {
+                const isExpanded = expandedSessions.has(session.session_id);
+                const isUngrouped = session.session_id === 'ungrouped';
+                const sessionLabel = isUngrouped
+                  ? 'Independent Traces (no session)'
+                  : `Session ${session.session_id.slice(0, 8)}...`;
+                return (
+                  <div key={session.session_id}>
                     <GlassCard
-                      key={trace.trace_id}
-                      style={{ 
-                        padding: 14, 
-                        cursor: 'pointer', 
-                        borderColor: selectedTrace?.trace_id === trace.trace_id ? 'rgba(108,92,231,0.5)' : undefined,
-                        position: 'relative',
-                      }}
-                      onClick={() => { 
-                        getTraceDetail(trace.trace_id).then(setSelectedTrace); 
-                        setSearchParams({ trace: trace.trace_id });
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedTraces.includes(trace.trace_id)}
-                        onChange={(e) => { e.stopPropagation(); toggleSelect(trace.trace_id); }}
-                        style={{ position: 'absolute', top: 14, right: 14 }}
-                      />
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div>
-                          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{trace.model || t('app.unknown')}</p>
-                          <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{trace.trace_id?.slice(0, 12)}...</p>
+                      className={`p-3.5 cursor-pointer transition-colors ${isExpanded ? 'border-purple-500/30' : ''}`}
+                      onClick={() => toggleSession(session.session_id)}>
+                      <div className="flex items-center gap-3">
+                        {isExpanded
+                          ? <ChevronDown size={16} className="text-purple-400 flex-shrink-0" />
+                          : <ChevronRight size={16} className="text-[var(--text-tertiary)] flex-shrink-0" />
+                        }
+                        <MessageSquare size={14} className={isUngrouped ? 'text-[var(--text-tertiary)]' : 'text-purple-400'} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold text-[var(--text-primary)] truncate">
+                            {sessionLabel}
+                          </p>
+                          <div className="flex items-center gap-3 mt-0.5">
+                            <span className="text-[11px] text-purple-400/70">{session.trace_count} trace(s)</span>
+                            {session.traces.length > 0 && (
+                              <span className="text-[10px] text-[var(--text-tertiary)] flex items-center gap-1">
+                                <Clock size={10} />
+                                {session.traces[0].created_at ? new Date(session.traces[0].created_at).toLocaleDateString() : ''}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <ChevronRight size={14} color="var(--text-tertiary)" />
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                        {trace.proof_levels?.map(pl => <ProofLevelBadge key={pl} level={pl} size="small" />)}
-                        <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 'auto', alignSelf: 'center' }}>
-                          {trace.created_at ? new Date(trace.created_at).toLocaleString() : ''}
-                        </span>
                       </div>
                     </GlassCard>
-                  ))
-                )}
-              </>
-            )}
+                    {/* 展开的 Trace 列表 */}
+                    <AnimatePresence>
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="overflow-hidden">
+                          <div className="ml-6 mt-1 flex flex-col gap-1 border-l-2 border-purple-500/20 pl-3">
+                            {session.traces.map(t => (
+                              <GlassCard key={t.trace_id} className="p-3 cursor-pointer"
+                                style={{ borderColor: selectedTrace?.trace_id === t.trace_id ? 'rgba(108,92,231,0.5)' : undefined }}
+                                onClick={() => { getTraceDetail(t.trace_id).then(setSelectedTrace); setSearchParams({ trace: t.trace_id }); }}>
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className="text-[12px] font-semibold text-[var(--text-primary)]">{t.model || 'Unknown'}</p>
+                                    <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5 font-mono">{t.trace_id?.slice(0, 12)}...</p>
+                                  </div>
+                                  <ChevronRight size={12} className="text-[var(--text-tertiary)]" />
+                                </div>
+                                <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                                  {t.proof_levels?.map(pl => <ProofLevelBadge key={pl} level={pl} size="small" />)}
+                                  <span className="text-[9px] text-[var(--text-tertiary)] ml-auto">{t.created_at ? new Date(t.created_at).toLocaleTimeString() : ''}</span>
+                                </div>
+                              </GlassCard>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </>}
 
-            {/* 分支管理面板 */}
-            {showBranchPanel && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    type="text"
-                    placeholder="New branch name"
-                    value={newBranchName}
-                    onChange={(e) => setNewBranchName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleCreateBranch()}
-                    style={{
-                      flex: 1,
-                      padding: '8px 12px',
-                      borderRadius: 8,
-                      border: '1px solid rgba(108,92,231,0.3)',
-                      background: 'rgba(0,0,0,0.2)',
-                      color: 'var(--text-primary)',
-                      fontSize: 12,
-                    }}
-                  />
-                  <button
-                    onClick={handleCreateBranch}
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: 8,
-                      background: 'rgba(108,92,231,0.2)',
-                      border: '1px solid rgba(108,92,231,0.3)',
-                      color: '#a29bfe',
-                      cursor: 'pointer',
-                      fontSize: 12,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                    }}
-                  >
+            {/* ====== 分支管理面板 ====== */}
+            {activePanel === 'branches' && (
+              <div className="flex flex-col gap-3">
+                <div className="flex gap-2">
+                  <input type="text" placeholder="New branch name" value={newBranchName} onChange={e => setNewBranchName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleCreateBranch()}
+                    className="flex-1 py-2 px-3 rounded-lg border text-xs text-[var(--text-primary)] border-purple-500/30 bg-black/20" />
+                  <button onClick={handleCreateBranch}
+                    className="py-2 px-3 rounded-lg border text-xs flex items-center gap-1 cursor-pointer bg-purple-500/20 border-purple-500/30 text-purple-300">
                     <Plus size={14} />
                   </button>
                 </div>
-                {branchError && (
-                  <p style={{ color: '#ff7675', fontSize: 11 }}>{branchError}</p>
-                )}
-                {branches.length === 0 ? (
-                  <GlassCard style={{ textAlign: 'center', padding: 24 }}>
-                    <GitBranch size={32} style={{ opacity: 0.3, margin: '0 auto 8px' }} />
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>No branches yet</p>
+                {branchError && <p className="text-red-400 text-[11px]">{branchError}</p>}
+                {!branches.length ? (
+                  <GlassCard className="text-center p-6">
+                    <GitBranch size={32} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-xs text-[var(--text-tertiary)]">No branches yet</p>
                   </GlassCard>
-                ) : (
-                  branches.map(branch => (
-                    <GlassCard key={branch.branch_id} style={{ padding: 12 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{branch.name}</p>
-                          <p style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: "'JetBrains Mono', monospace" }}>
-                            {branch.branch_id.slice(0, 8)}...
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteBranch(branch.branch_id)}
-                          style={{
-                            padding: 4,
-                            borderRadius: 4,
-                            background: 'rgba(255,118,117,0.1)',
-                            border: 'none',
-                            color: '#ff7675',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                ) : branches.map(b => (
+                  <GlassCard key={b.branch_id} className="p-3">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-[13px] font-semibold text-[var(--text-primary)]">{b.name}</p>
+                        <p className="text-[10px] text-[var(--text-tertiary)] font-mono">{b.branch_id.slice(0, 8)}...</p>
                       </div>
-                      <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 10, color: 'var(--text-tertiary)' }}>
-                        <span>Snapshots: {branch.snapshot_count}</span>
-                        <span>{new Date(branch.created_at).toLocaleDateString()}</span>
-                      </div>
-                    </GlassCard>
-                  ))
-                )}
+                      <button onClick={() => setDeleteBranchId(b.branch_id)}
+                        className="p-1 rounded text-red-400 cursor-pointer bg-red-500/10">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                    <div className="flex gap-3 mt-2 text-[10px] text-[var(--text-tertiary)]">
+                      <span>Snapshots: {b.snapshot_count}</span><span>{new Date(b.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </GlassCard>
+                ))}
               </div>
             )}
 
-            {/* 实时指标面板 */}
-            {showMetricsPanel && metrics && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Monitor size={16} style={{ color: '#a29bfe' }} />
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Real-time Metrics</span>
-                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 'auto' }}>
-                    {new Date(metrics.timestamp).toLocaleTimeString()}
-                  </span>
+            {/* ====== 实时指标面板 ====== */}
+            {activePanel === 'metrics' && metrics && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <Monitor size={16} className="text-purple-300" />
+                  <span className="text-[13px] font-semibold text-[var(--text-primary)]">Real-time Metrics</span>
+                  <span className="text-[10px] text-[var(--text-tertiary)] ml-auto">{new Date(metrics.timestamp).toLocaleTimeString()}</span>
                 </div>
-                <GlassCard style={{ padding: 16 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <GlassCard className="p-4">
+                  <div className="flex flex-col gap-3">
                     <MetricCard label="Total Requests" value={metrics.requests_total.toLocaleString()} icon={Activity} color="#00d4aa" />
-                    <MetricCard label="Avg Latency" value={metrics.average_latency_ms.toFixed(2) + 'ms'} icon={Clock} color="#74b9ff" />
-                    <MetricCard label="Constraint Violations" value={metrics.constraint_violations_total.toLocaleString()} icon={AlertCircle} color="#ffeaa7" />
+                    <MetricCard label="Avg Latency" value={metrics.average_latency_ms.toFixed(2) + 'ms'} icon={RefreshCw as any} color="#74b9ff" />
+                    <MetricCard label="Constraint Violations" value={metrics.constraint_violations_total.toLocaleString()} icon={AlertTriangle} color="#ffeaa7" />
                     <MetricCard label="Guardrail Activations" value={metrics.guardrail_activations_total.toLocaleString()} icon={Shield} color="#fd79a8" />
                     <MetricCard label="ASI Risks Flagged" value={metrics.asi_risks_flagged_total.toLocaleString()} icon={XCircle} color="#ff7675" />
                   </div>
@@ -531,153 +369,64 @@ export default function AuditCenter() {
           </div>
         </div>
 
-        {/* 右侧面板 - Trace详情 */}
-        <div style={{ flex: 1, overflowY: 'auto', paddingRight: 8 }}>
+        {/* 右侧详情面板 */}
+        <div className="flex-1 overflow-y-auto pr-2">
           <AnimatePresence mode="wait">
             {selectedTrace ? (
-              <motion.div
-                key={selectedTrace.trace_id}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.25 }}
-                style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
-              >
-                {/* 操作按钮栏 */}
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  style={{ display: 'flex', gap: 12 }}
-                >
-                  <button
-                    onClick={() => handleReplay('replay')}
-                    disabled={isReplaying}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '10px 20px',
-                      background: 'rgba(108,92,231,0.2)',
-                      border: '1px solid rgba(108,92,231,0.3)',
-                      borderRadius: 10,
-                      color: '#a29bfe',
-                      cursor: isReplaying ? 'not-allowed' : 'pointer',
-                      fontSize: 13,
-                      fontWeight: 500,
-                    }}
-                  >
-                    {isReplaying ? <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Play size={16} />}
-                    {isReplaying ? 'Replaying...' : 'Replay'}
-                  </button>
-                  <button
-                    onClick={() => handleReplay('record')}
-                    disabled={isReplaying}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '10px 20px',
-                      background: 'rgba(0,212,170,0.2)',
-                      border: '1px solid rgba(0,212,170,0.3)',
-                      borderRadius: 10,
-                      color: '#00d4aa',
-                      cursor: isReplaying ? 'not-allowed' : 'pointer',
-                      fontSize: 13,
-                      fontWeight: 500,
-                    }}
-                  >
-                    <Zap size={16} /> Record
-                  </button>
-                  <button
-                    onClick={() => handleReplay('branch')}
-                    disabled={isReplaying}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '10px 20px',
-                      background: 'rgba(116,185,255,0.2)',
-                      border: '1px solid rgba(116,185,255,0.3)',
-                      borderRadius: 10,
-                      color: '#74b9ff',
-                      cursor: isReplaying ? 'not-allowed' : 'pointer',
-                      fontSize: 13,
-                      fontWeight: 500,
-                    }}
-                  >
-                    <GitBranch size={16} /> Branch Replay
-                  </button>
-                  <button
-                    onClick={handleVerify}
-                    disabled={isVerifying}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '10px 20px',
-                      background: 'rgba(253,121,168,0.2)',
-                      border: '1px solid rgba(253,121,168,0.3)',
-                      borderRadius: 10,
-                      color: '#fd79a8',
-                      cursor: isVerifying ? 'not-allowed' : 'pointer',
-                      fontSize: 13,
-                      fontWeight: 500,
-                    }}
-                  >
-                    {isVerifying ? <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle size={16} />}
+              <motion.div key={selectedTrace.trace_id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.25 }} className="flex flex-col gap-4">
+                {/* 操作按钮 */}
+                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3 flex-wrap">
+                  {[
+                    ['Replay', 'replay', 'bg-purple-500/20 border-purple-500/30 text-purple-300', Play],
+                    ['Record', 'record', 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400', Zap],
+                    ['Branch Replay', 'branch', 'bg-sky-500/20 border-sky-500/30 text-sky-400', GitBranch],
+                  ].map(([label, mode, className, Icon]) => (
+                    <button key={label as string} onClick={() => handleReplay(mode as string)} disabled={isReplaying}
+                      className={`inline-flex items-center gap-1.5 px-5 py-2.5 rounded-btn border text-[13px] font-medium cursor-pointer disabled:cursor-not-allowed ${className}`}>
+                      {isReplaying ? <RefreshCw size={16} className="animate-spin" /> : <Icon size={16} />}
+                      {isReplaying ? 'Replaying...' : label as string}
+                    </button>
+                  ))}
+                  <button onClick={handleVerify} disabled={isVerifying}
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-btn border text-[13px] font-medium cursor-pointer disabled:cursor-not-allowed bg-pink-500/20 border-pink-500/30 text-pink-400">
+                    {isVerifying ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle size={16} />}
                     {isVerifying ? 'Verifying...' : 'Verify Signature'}
                   </button>
                 </motion.div>
 
                 {/* 验证结果 */}
                 {verificationResult && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    style={{ marginTop: 8 }}
-                  >
-                    <GlassCard style={{ padding: 20, borderColor: verificationResult.overall_passed ? 'rgba(0,212,170,0.3)' : 'rgba(255,118,117,0.3)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                        {verificationResult.overall_passed ? (
-                          <CheckCircle size={32} style={{ color: '#00d4aa' }} />
-                        ) : (
-                          <XCircle size={32} style={{ color: '#ff7675' }} />
-                        )}
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                    <GlassCard className="p-5" style={{ borderColor: verificationResult.overall_passed ? 'rgba(0,212,170,0.3)' : 'rgba(255,118,117,0.3)' }}>
+                      <div className="flex items-center gap-3 mb-4">
+                        {verificationResult.overall_passed ? <CheckCircle size={32} className="text-emerald-400" /> : <XCircle size={32} className="text-red-400" />}
                         <div>
-                          <h3 style={{ fontSize: 14, fontWeight: 600, color: verificationResult.overall_passed ? '#00d4aa' : '#ff7675' }}>
+                          <h3 className={`text-sm font-semibold ${verificationResult.overall_passed ? 'text-emerald-400' : 'text-red-400'}`}>
                             {verificationResult.overall_passed ? 'Signature Verified' : 'Verification Failed'}
                           </h3>
-                          <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                            Trace: {verificationResult.trace_id.slice(0, 12)}...
-                          </p>
+                          <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">Trace: {verificationResult.trace_id.slice(0, 12)}...</p>
                         </div>
                       </div>
-                      {verificationResult.error && (
-                        <p style={{ color: '#ff7675', fontSize: 12, marginBottom: 12 }}>{verificationResult.error}</p>
-                      )}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                        <VerificationBadge level="L0" passed={verificationResult.l0_passed} />
-                        <VerificationBadge level="L1" passed={verificationResult.l1_passed} />
-                        <VerificationBadge level="L2A" passed={verificationResult.l2a_passed} />
-                        <VerificationBadge level="L2B" passed={verificationResult.l2b_passed} />
+                      {verificationResult.error && <p className="text-red-400 text-xs mb-3">{verificationResult.error}</p>}
+                      <div className="grid grid-cols-4 gap-3">
+                        {(['L0','L1','L2A','L2B'] as const).map(lv => (
+                          <VerificationBadge key={lv} level={lv} passed={verificationResult[`${lv.toLowerCase()}_passed` as keyof typeof verificationResult] as boolean|undefined} />
+                        ))}
                       </div>
                     </GlassCard>
                   </motion.div>
                 )}
 
-                {/* 重放错误提示 */}
+                {/* 重放错误 */}
                 {replayError && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    style={{ marginTop: 8 }}
-                  >
-                    <GlassCard style={{ padding: 16, borderColor: 'rgba(255,118,117,0.3)', background: 'rgba(255,118,117,0.05)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <AlertTriangle size={24} style={{ color: '#ff7675' }} />
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                    <GlassCard className="p-4 border-red-500/30 bg-red-500/5">
+                      <div className="flex items-center gap-3">
+                        <AlertTriangle size={24} className="text-red-400" />
                         <div>
-                          <h3 style={{ fontSize: 13, fontWeight: 600, color: '#ff7675' }}>Replay Failed</h3>
-                          <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>{replayError}</p>
+                          <h3 className="text-[13px] font-semibold text-red-400">Replay Failed</h3>
+                          <p className="text-xs text-[var(--text-secondary)] mt-1">{replayError}</p>
                         </div>
                       </div>
                     </GlassCard>
@@ -686,292 +435,125 @@ export default function AuditCenter() {
 
                 {/* 重放结果 */}
                 {replayResult && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    style={{ marginTop: 8 }}
-                  >
-                    <GlassCard style={{ padding: 20 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                        <Play size={32} style={{ color: '#a29bfe' }} />
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                    <GlassCard className="p-5">
+                      <div className="flex items-center gap-3 mb-4">
+                        <Play size={32} className="text-purple-300" />
                         <div>
-                          <h3 style={{ fontSize: 14, fontWeight: 600, color: '#a29bfe' }}>Replay Completed</h3>
-                          <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                            Mode: {replayResult.mode} | Duration: {replayResult.duration_ms}ms | Cache: {replayResult.cache_hit ? 'Hit' : 'Miss'}
-                          </p>
+                          <h3 className="text-sm font-semibold text-purple-300">Replay Completed</h3>
+                          <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">Mode: {replayResult.mode} | Duration: {replayResult.duration_ms}ms | Cache: {replayResult.cache_hit ? 'Hit' : 'Miss'}</p>
                         </div>
                       </div>
-                      <div style={{ background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 8 }}>
-                        <h4 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12 }}>Determinism Check</h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                          <div style={{ textAlign: 'center' }}>
-                            <p style={{ fontSize: 24, fontWeight: 700, color: replayResult.determinism.is_identical ? '#00d4aa' : '#ffeaa7' }}>
-                              {replayResult.determinism.is_identical ? 'Identical' : 'Different'}
-                            </p>
-                            <p style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>Output Match</p>
-                          </div>
-                          <div style={{ textAlign: 'center' }}>
-                            <p style={{ fontSize: 24, fontWeight: 700, color: '#a29bfe' }}>
-                              {(replayResult.determinism.similarity_score * 100).toFixed(1)}%
-                            </p>
-                            <p style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>Similarity</p>
-                          </div>
-                          <div style={{ textAlign: 'center' }}>
-                            <p style={{ fontSize: 24, fontWeight: 700, color: replayResult.determinism.hash_match ? '#00d4aa' : '#ff7675' }}>
-                              {replayResult.determinism.hash_match ? 'Match' : 'Mismatch'}
-                            </p>
-                            <p style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>Hash Check</p>
-                          </div>
+                      <div className="p-3 rounded-lg bg-black/20">
+                        <h4 className="text-xs font-semibold text-[var(--text-secondary)] mb-3">Determinism Check</h4>
+                        <div className="grid grid-cols-3 gap-3">
+                          {[
+                            [replayResult.determinism.is_identical ? 'Identical' : 'Different', replayResult.determinism.is_identical ? 'text-emerald-400' : 'text-yellow-400', 'Output Match'],
+                            [(replayResult.determinism.similarity_score * 100).toFixed(1) + '%', 'text-purple-300', 'Similarity'],
+                            [replayResult.determinism.hash_match ? 'Match' : 'Mismatch', replayResult.determinism.hash_match ? 'text-emerald-400' : 'text-red-400', 'Hash Check'],
+                          ].map(([v, color, l]) => (
+                            <div key={l as string} className="text-center">
+                              <p className={`text-2xl font-bold ${color}`}>{v as string}</p>
+                              <p className="text-[10px] text-[var(--text-tertiary)] mt-1">{l as string}</p>
+                            </div>
+                          ))}
                         </div>
-                        {replayResult.determinism.token_diff_count > 0 && (
-                          <div style={{ marginTop: 12, padding: 8, background: 'rgba(255,118,117,0.1)', borderRadius: 6 }}>
-                            <p style={{ fontSize: 11, color: '#ff7675' }}>
-                              Token differences: {replayResult.determinism.token_diff_count} | 
-                              Byte differences: {replayResult.determinism.byte_diff_count}
-                            </p>
-                          </div>
-                        )}
                       </div>
                     </GlassCard>
                   </motion.div>
                 )}
 
-                {/* 执行契约概览 */}
                 <ExecutionContract trace={selectedTrace} />
-
-                {/* 状态机时间线 */}
                 <StateMachineTimeline currentState={selectedTrace.execution_state} />
 
                 {/* Input/Output 双栏 */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                  >
-                    <GlassCard style={{ padding: 20 }}>
-                      <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Zap size={14} style={{ color: '#00d4aa' }} /> {t('audit.input')}
-                      </h3>
-                      <div style={{ fontSize: 11, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', maxHeight: 280, overflowY: 'auto', background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 8 }}>
-                        {selectedTrace.input?.prompt ? (
-                          <div>
-                            <p style={{ marginBottom: 8, color: 'var(--text-tertiary)', fontSize: 10 }}>Prompt:</p>
-                            {Array.isArray(selectedTrace.input.prompt) ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {selectedTrace.input.prompt.map((item: any, index: number) => (
-                                  <div key={index} style={{ background: 'rgba(255,255,255,0.05)', padding: 8, borderRadius: 6 }}>
-                                    <span style={{ fontSize: 10, color: '#a29bfe', marginRight: 8 }}>{item.role || 'user'}:</span>
-                                    <span>{item.content}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p style={{ marginBottom: 12 }}>{selectedTrace.input.prompt}</p>
-                            )}
-                            {selectedTrace.input.params && (
-                              <>
-                                <p style={{ marginBottom: 8, color: 'var(--text-tertiary)', fontSize: 10 }}>Params:</p>
-                                <pre>{JSON.stringify(selectedTrace.input.params, null, 2)}</pre>
-                              </>
-                            )}
-                          </div>
-                        ) : (
-                          <pre>{JSON.stringify(selectedTrace.input, null, 2)}</pre>
-                        )}
+                <div className="grid grid-cols-2 gap-4">
+                  {[
+                    { label: t('audit.input'), color: 'text-emerald-400', data: selectedTrace.input?.prompt ? (Array.isArray(selectedTrace.input.prompt) ? selectedTrace.input.prompt.map((it: any, i: number) => (
+                      <div key={i} className="p-2 rounded-md mb-2 bg-white/5">
+                        <span className="text-[10px] mr-2 text-purple-300">{it.role || 'user'}:</span><span>{it.content}</span>
                       </div>
-                    </GlassCard>
-                  </motion.div>
-
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.15 }}
-                  >
-                    <GlassCard style={{ padding: 20 }}>
-                      <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Zap size={14} style={{ color: '#a29bfe' }} /> {t('audit.output')}
-                      </h3>
-                      <div style={{ fontSize: 11, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', maxHeight: 280, overflowY: 'auto', background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 8 }}>
-                        {typeof selectedTrace.output?.response === 'string' ? (
-                          <p>{selectedTrace.output.response}</p>
-                        ) : selectedTrace.output?.response?.choices?.[0]?.message?.content ? (
-                          <div>
-                            <p>{selectedTrace.output.response.choices[0].message.content}</p>
-                            {selectedTrace.output.finish_reason && (
-                              <p style={{ marginTop: 12, color: 'var(--text-tertiary)', fontSize: 10 }}>
-                                Finish Reason: {selectedTrace.output.finish_reason}
-                              </p>
-                            )}
-                          </div>
-                        ) : (
-                          <pre>{JSON.stringify(selectedTrace.output, null, 2)}</pre>
-                        )}
-                      </div>
-                    </GlassCard>
-                  </motion.div>
+                    )) : <p className="mb-3">{selectedTrace.input.prompt}</p>) : undefined },
+                    { label: t('audit.output'), color: 'text-purple-300', data: typeof selectedTrace.output?.response === 'string' ? <p>{selectedTrace.output.response}</p>
+                      : selectedTrace.output?.response?.choices?.[0]?.message?.content ? <p>{selectedTrace.output.response.choices[0].message.content}</p> : undefined },
+                  ].map(({ label, color, data }, i) => (
+                    <motion.div key={label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.05 }}>
+                      <GlassCard className="p-5">
+                        <h3 className="text-[13px] font-semibold text-[var(--text-secondary)] mb-2.5 flex items-center gap-1.5">
+                          <Zap size={14} className={color} /> {label}
+                        </h3>
+                        <div className="text-[11px] text-[var(--text-primary)] whitespace-pre-wrap max-h-[280px] overflow-y-auto p-3 rounded-lg bg-black/20">
+                          {data || <pre>{JSON.stringify(i === 0 ? selectedTrace.input : selectedTrace.output, null, 2)}</pre>}
+                        </div>
+                      </GlassCard>
+                    </motion.div>
+                  ))}
                 </div>
 
-                {/* Observations 面板 */}
                 <ObservationsPanel observations={selectedTrace.observations} />
 
-                {/* 约束应用 */}
-                {selectedTrace.constraints_applied && typeof selectedTrace.constraints_applied === 'object' && Object.keys(selectedTrace.constraints_applied).length > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.25 }}
-                  >
-                    <GlassCard style={{ padding: 20 }}>
-                      <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Settings size={14} style={{ color: '#74b9ff' }} /> Constraints Applied
-                      </h3>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                        {Object.entries(selectedTrace.constraints_applied || {}).map(([key, value]: [string, any], i: number) => (
-                          <motion.div
-                            key={key}
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: 0.3 + i * 0.05 }}
-                            style={{
-                              padding: 10,
-                              borderRadius: 10,
-                              background: 'rgba(116, 185, 255, 0.1)',
-                              border: '1px solid rgba(116, 185, 255, 0.2)',
-                            }}
-                          >
-                            <span style={{ fontSize: 12, fontWeight: 600, color: '#74b9ff' }}>
-                              {key}
-                            </span>
-                            {value !== null && value !== undefined && (
-                              <span style={{
-                                fontSize: 10,
-                                marginLeft: 8,
-                                padding: '2px 6px',
-                                borderRadius: 4,
-                                background: typeof value === 'boolean' && value ? 'rgba(0,212,170,0.2)' : 'rgba(255,118,117,0.2)',
-                                color: typeof value === 'boolean' && value ? '#00d4aa' : '#ff7675',
-                              }}>
-                                {String(value)}
-                              </span>
-                            )}
-                          </motion.div>
-                        ))}
-                      </div>
-                    </GlassCard>
-                  </motion.div>
-                )}
-
                 {/* Proof Chain */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                >
-                  <GlassCard style={{ padding: 20 }}>
-                    <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Lock size={14} style={{ color: '#a29bfe' }} /> {t('audit.proof_chain')}
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+                  <GlassCard className="p-5">
+                    <h3 className="text-[13px] font-semibold text-[var(--text-secondary)] mb-3 flex items-center gap-1.5">
+                      <Lock size={14} className="text-purple-300" /> {t('audit.proof_chain')}
                     </h3>
-                    {((selectedTrace.proofs?.proof_chain || []).length || 0) > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {(selectedTrace.proofs?.proof_chain || []).length ? (
+                      <div className="flex flex-col gap-2">
                         {(selectedTrace.proofs?.proof_chain || []).map((p, i) => (
-                          <motion.div
-                            key={i}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
+                          <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: 0.35 + i * 0.1 }}
-                            style={{ padding: 14, borderRadius: 10, background: 'rgba(162, 155, 254, 0.08)', border: '1px solid rgba(162, 155, 254, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            className="p-3.5 rounded-btn flex justify-between items-center bg-purple-500/8 border border-purple-500/15">
+                            <div className="flex items-center gap-3">
                               <ProofLevelBadge level={p.level} />
                               <div>
-                                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{p.proof_type}</span>
-                                {p.digest && (
-                                  <p style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>
-                                    Digest: {p.digest.slice(0, 16)}...
-                                  </p>
-                                )}
+                                <span className="text-xs font-semibold text-[var(--text-primary)]">{p.proof_type}</span>
+                                {p.digest && <p className="text-[10px] text-[var(--text-tertiary)] font-mono mt-0.5">Digest: {p.digest.slice(0, 16)}...</p>}
                               </div>
                             </div>
-                            <div style={{ textAlign: 'right' }}>
-                              <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: "'JetBrains Mono', monospace", maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
-                                {p.signature?.slice(0, 32)}...
-                              </span>
-                              <span style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 4 }}>
-                                {p.signature ? `${p.signature.length} chars` : '-'}
-                              </span>
+                            <div className="text-right">
+                              <span className="text-[10px] text-[var(--text-tertiary)] font-mono block max-w-[250px] truncate">{p.signature?.slice(0, 32)}...</span>
+                              <span className="text-[9px] text-[var(--text-tertiary)] mt-1">{p.signature ? `${p.signature.length} chars` : '-'}</span>
                             </div>
                           </motion.div>
                         ))}
                       </div>
                     ) : (
-                      <div style={{ textAlign: 'center', padding: 24 }}>
-                        <Lock size={32} style={{ opacity: 0.2, marginBottom: 8 }} />
-                        <p style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>{t('audit.no_proofs')}</p>
+                      <div className="text-center py-6">
+                        <Lock size={32} className="mx-auto mb-2 opacity-20" />
+                        <p className="text-sm text-[var(--text-tertiary)]">{t('audit.no_proofs')}</p>
                       </div>
                     )}
                   </GlassCard>
                 </motion.div>
 
                 {/* Raw JSON */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
-                >
-                  <GlassCard style={{ padding: 20 }}>
-                    <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+                  <GlassCard className="p-5">
+                    <h3 className="text-[13px] font-semibold text-[var(--text-secondary)] mb-2.5 flex items-center gap-1.5">
                       <FileText size={14} /> {t('audit.raw_json')}
                     </h3>
-                    <pre style={{ fontSize: 11, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', maxHeight: 300, overflowY: 'auto', background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 8 }}>
+                    <pre className="text-[11px] text-[var(--text-primary)] whitespace-pre-wrap max-h-[300px] overflow-y-auto p-3 rounded-lg bg-black/20">
                       {JSON.stringify(selectedTrace, null, 2)}
                     </pre>
                   </GlassCard>
                 </motion.div>
               </motion.div>
             ) : (
-            <GlassCard style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 40 }}>
-              <Shield size={48} style={{ opacity: 0.2, marginBottom: 16 }} />
-              <h3 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>{t('audit.title')}</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 13, textAlign: 'center' }}>{t('audit.select_hint')}</p>
-            </GlassCard>
-          )}
-            </AnimatePresence>
+              <GlassCard className="flex flex-col items-center justify-center h-full p-10">
+                <Shield size={48} className="mb-4 opacity-20" />
+                <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">{t('audit.title')}</h3>
+                <p className="text-sm text-[var(--text-secondary)] text-center">{t('audit.select_hint')}</p>
+              </GlassCard>
+            )}
+          </AnimatePresence>
         </div>
       </div>
+
+      <ConfirmDialog open={!!deleteBranchId} onClose={() => setDeleteBranchId(null)} onConfirm={confirmDeleteBranch}
+        title="Delete Branch" message="Are you sure you want to delete this branch?" confirmText="Delete" danger />
+      <ConfirmDialog open={deleteTracesCount > 0} onClose={() => setDeleteTracesCount(0)} onConfirm={confirmDeleteTraces}
+        title="Batch Delete Traces" message={`Are you sure you want to delete ${deleteTracesCount} trace(s)?`} confirmText="Delete" danger />
     </motion.div>
-  );
-}
-
-// 辅助组件
-function MetricCard({ label, value, icon: Icon, color }: { label: string; value: string; icon: typeof Activity; color: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div style={{ padding: 8, borderRadius: 8, background: `${color}20` }}>
-        <Icon size={16} style={{ color }} />
-      </div>
-      <div>
-        <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{value}</p>
-        <p style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{label}</p>
-      </div>
-    </div>
-  );
-}
-
-function VerificationBadge({ level, passed }: { level: string; passed?: boolean }) {
-  return (
-    <div style={{ textAlign: 'center', padding: 10, borderRadius: 8, background: 'rgba(0,0,0,0.2)' }}>
-      {passed === true ? (
-        <CheckCircle size={20} style={{ color: '#00d4aa' }} />
-      ) : passed === false ? (
-        <XCircle size={20} style={{ color: '#ff7675' }} />
-      ) : (
-        <AlertCircle size={20} style={{ color: 'var(--text-tertiary)' }} />
-      )}
-      <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginTop: 4 }}>{level}</p>
-      <p style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>
-        {passed === true ? 'Passed' : passed === false ? 'Failed' : 'Not Available'}
-      </p>
-    </div>
   );
 }

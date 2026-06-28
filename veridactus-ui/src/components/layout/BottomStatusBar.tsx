@@ -9,7 +9,7 @@ export default function BottomStatusBar() {
 
   return (
     <div style={{
-      position: 'fixed', bottom: 0, left: 260, right: 0, height: 40,
+      position: 'fixed', bottom: 0, left: 'var(--sidebar-width)', right: 0, height: 40,
       background: 'var(--bg-secondary)', borderTop: '1px solid var(--border-default)',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '0 24px', fontSize: 12, color: 'var(--text-tertiary)', zIndex: 30,

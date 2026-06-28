@@ -26,15 +26,22 @@ export default function PluginsPage() {
   const [plugins, setPlugins] = useState<PluginMeta[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
-    getPlugins().then(setPlugins).catch(() => {}).finally(() => setLoading(false));
+    getPlugins()
+      .then(setPlugins)
+      .catch(err => { console.warn('Failed to load plugins:', err); setError('Failed to load plugins'); })
+      .finally(() => setLoading(false));
   }, []);
 
   const handleInstall = async (dp: typeof defaultPlugins[0]) => {
     try {
       const p = await registerPlugin({ name: dp.name, type: dp.type, version: dp.version, description: dp.description, config: dp.config });
       setPlugins(prev => [...prev, p]);
-    } catch {}
+    } catch (err) {
+      console.warn('Failed to install plugin:', dp.name, err);
+    }
   };
 
   return (

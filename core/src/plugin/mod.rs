@@ -18,9 +18,10 @@
 //!
 //! ## Plugin Types
 //!
-//! 1. **Native**: Compiled Rust plugins with highest performance
-//! 2. **WASM**: WebAssembly plugins for sandboxed execution
-//! 3. **gRPC**: External services for specialized processing
+//! 1. **Native**: Compiled Rust plugins with highest performance (<10μs)
+//! 2. **WASM**: WebAssembly plugins via wasmtime sandbox (50-200μs)
+//! 3. **Sidecar**: HTTP REST bridge to Python/external services (5-500ms)
+//! 4. **gRPC**: Deprecated — use Sidecar instead
 
 pub mod governance;
 pub mod guardrails;
@@ -28,6 +29,8 @@ pub mod output_filter;
 pub mod pii_detector;
 pub mod production_plugins;
 pub mod semantic_guard;
+pub mod sidecar;
+pub mod wasm_runtime;
 
 pub use governance::*;
 pub use guardrails::*;
@@ -35,3 +38,5 @@ pub use output_filter::*;
 pub use pii_detector::*;
 pub use production_plugins::*;
 pub use semantic_guard::*;
+pub use sidecar::*;
+pub use wasm_runtime::*;

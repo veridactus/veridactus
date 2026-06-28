@@ -286,6 +286,7 @@ pub fn generate_l2b_proof(trace_json: &str) -> crate::types::proof::ProofChainEn
         verification_key_hash: Some(proof.verification_key_hash.clone()),
         proof_aggregation_root: Some(proof.aggregation_root.clone()),
         canonicalization_method: "rfc8785".to_string(),
+        canonical_json: None,
     }
 }
 

@@ -87,6 +87,7 @@ pub fn generate_l0_proof(trace: &mut Trace) -> ProofChainEntry {
             verification_key_hash: None,
             proof_aggregation_root: None,
             canonicalization_method: "rfc8785".to_string(),
+            canonical_json: None,
         });
     }
 
@@ -126,6 +127,7 @@ pub fn generate_l0_proof(trace: &mut Trace) -> ProofChainEntry {
         verification_key_hash: None,
         proof_aggregation_root: None,
         canonicalization_method: "rfc8785".to_string(),
+        canonical_json: Some(canonical), // 保存规范 JSON 用于跨存储验证
     }
 }
 
@@ -151,31 +153,33 @@ pub fn verify_l0_signature(trace: &Trace) -> Result<(), String> {
         .as_ref()
         .ok_or_else(|| "L0 signature field empty".to_string())?;
 
-    // 克隆 Trace 用于验证
-    let mut trace_clone = trace.clone();
+    // 优先使用签名时保存的规范 JSON（避免 JSONB 存储反序列化差异）
+    if let Some(ref stored_canonical) = l0_proof.canonical_json {
+        let computed_signature = compute_sha256_hex(stored_canonical.as_bytes());
+        if computed_signature == *expected_signature {
+            return Ok(());
+        } else {
+            return Err(format!(
+                "L0 签名不匹配（存储规范 JSON 验证）\n期望: {}\n计算: {}",
+                expected_signature, computed_signature
+            ));
+        }
+    }
 
-    // 备份并清空 proof_chain 的 signature
+    // 回退：重新从 Trace 计算规范 JSON（兼容旧数据）
+    let mut trace_clone = trace.clone();
     let original_chain = trace_clone.proofs.proof_chain.clone();
     for proof in &mut trace_clone.proofs.proof_chain {
         proof.signature = None;
         proof.signature_pq = None;
     }
-
-    // 剥离内部字段
     let mut sanitized = serde_json::to_value(&trace_clone).unwrap();
     strip_internal_fields(&mut sanitized);
-
-    // UTF-8 安全处理
     sanitize_utf8_json(&mut sanitized);
-
-    // JCS 规范化 + SHA-256
     let canonical = jcs_canonicalize(&sanitized);
     let computed_signature = compute_sha256_hex(canonical.as_bytes());
-
-    // 恢复
     trace_clone.proofs.proof_chain = original_chain;
 
-    // 比对签名
     if computed_signature == *expected_signature {
         Ok(())
     } else {

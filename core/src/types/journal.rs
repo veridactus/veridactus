@@ -148,6 +148,17 @@ impl ExecutionJournal {
         }
     }
 
+    /// 创建空 journal 副本（仅保留 trace_id，用于并行执行中每个插件的独立 journal）
+    pub fn clone_empty(&self, trace_id: Uuid) -> Self {
+        Self {
+            trace_id,
+            tenant_id: self.tenant_id.clone(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            events: Vec::with_capacity(64),
+            head_hash: "0".repeat(64),
+        }
+    }
+
     /// 追加一个新事件到 Journal
     ///
     /// # 参数

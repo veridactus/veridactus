@@ -1,0 +1,14 @@
+# VERIDACTUS Proto Definitions
+# gRPC 服务定义：Go 控制面 ↔ Rust 数据面
+
+version: v1
+name: buf.build/veridactus/proto
+deps: []
+breaking:
+  use:
+    - FILE
+lint:
+  use:
+    - DEFAULT
+  except:
+    - PACKAGE_VERSION_SUFFIX

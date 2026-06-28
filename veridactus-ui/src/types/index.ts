@@ -5,6 +5,11 @@ export interface TraceSummary {
   execution_state: string;
   proof_levels: string[];
   signature?: string;
+  session_id?: string;
+  /** Vault page fields */
+  cost_estimated_usd?: number;
+  tokens_count?: number;
+  safety?: 'safe' | 'flagged' | 'blocked';
 }
 
 export interface TraceDetail {
@@ -20,6 +25,10 @@ export interface TraceDetail {
   observations?: Observations;
   supply_chain?: any;
   engine_determinism?: any;
+  /** Vault detail fields */
+  cost_estimated_usd?: number;
+  tokens_count?: number;
+  signature?: string;
 }
 
 export interface Observations {
@@ -51,8 +60,10 @@ export interface Proof {
 
 export interface Pipeline {
   plan_id: string;
+  name?: string;
   tenant: string;
   stages: StageConfig[];
+  status?: string;
   created_at: string;
 }
 
@@ -167,4 +178,11 @@ export interface RealTimeMetrics {
   asi_risks_flagged_total: number;
   average_latency_ms: number;
   timestamp: string;
+}
+
+// 会话分组类型（审计中心按会话分组查看 Trace）
+export interface SessionGroup {
+  session_id: string;
+  trace_count: number;
+  traces: TraceSummary[];
 }

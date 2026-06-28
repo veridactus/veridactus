@@ -46,6 +46,9 @@ pub struct ConfigChangePayload {
     pub change_type: String,
     pub data: serde_json::Value,
     pub version: ConfigVersions,
+    /// 附带的最新模型列表（pipeline 变更时一起推送，避免额外 poll）
+    #[serde(default)]
+    pub models: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,7 +90,7 @@ pub struct ModelConfig {
     #[serde(rename = "is_default")]
     pub is_default: bool,
     #[serde(rename = "supported_versions")]
-    pub supported_versions: Vec<String>,
+    pub supported_versions: Option<Vec<String>>,
     pub status: String,
 }
 
@@ -184,6 +187,22 @@ impl ConfigPullClient {
                         }
                     }
                 }
+                // 同时处理附带的最新模型列表（避免额外 poll）
+                if let Some(models) = payload.models.as_ref().and_then(|m| m.as_array()) {
+                    let mut model_configs = Vec::new();
+                    for model_data in models {
+                        if let Ok(model_config) =
+                            serde_json::from_value::<ModelConfig>(model_data.clone())
+                        {
+                            model_configs.push(model_config);
+                        }
+                    }
+                    let model_count = model_configs.len();
+                    if let Some(updater) = &self.model_config_updater {
+                        updater(model_configs).await;
+                    }
+                    info!("附带模型更新: {} models", model_count);
+                }
             }
             "model" => {
                 if let Some(models) = payload.data.as_array() {
@@ -203,7 +222,10 @@ impl ConfigPullClient {
                 }
             }
             "plugin" | "storage" => {
-                info!("收到 {} 配置更新", payload.change_type);
+                info!("收到 {} 配置更新 (data={})", payload.change_type,
+                    serde_json::to_string(&payload.data).unwrap_or_default().chars().take(100).collect::<String>());
+                // 🔧 Phase 2.5: plugin/storage config 更新记录
+                // 后续 Phase 3 实现动态 Sidecar/Wasm 插件热加载
             }
             _ => {
                 warn!("未知配置变更类型: {}", payload.change_type);
@@ -239,13 +261,14 @@ impl ConfigPullClient {
                             r#type: match p.ptype.as_str() {
                                 "native" => PluginType::Native,
                                 "wasm" => PluginType::Wasm,
+                                "sidecar" => PluginType::Sidecar,
                                 "grpc" => PluginType::Grpc,
                                 _ => PluginType::Native,
                             },
                             config: serde_json::from_str(&p.config).unwrap_or_default(),
-                            depends_on: vec![],
-                            endpoint: None,
-                            required_capabilities: vec![],
+                            depends_on: p.depends_on.clone(),
+                            endpoint: p.endpoint.clone(),
+                            required_capabilities: p.capabilities.clone(),
                         })
                         .collect(),
                     on_version_mismatch: crate::pipeline::config::VersionMismatchPolicy::Skip,
@@ -308,7 +331,14 @@ struct StageData {
 struct PluginData {
     pub name: String,
     #[serde(rename = "type")]
-    pub ptype: String,
+    pub ptype: String,       // "native" | "sidecar" | "wasm" | "grpc"
     pub config: String,
+    #[serde(default)]
+    pub endpoint: Option<String>,  // 🔧 Sidecar/Wasm 端点 URL
+    #[serde(default)]
+    pub depends_on: Vec<String>,   // 🔧 依赖的插件名
+    #[serde(default)]
+    pub capabilities: Vec<String>,  // 所需能力
+    #[serde(default)]
     pub enabled: Option<bool>,
 }

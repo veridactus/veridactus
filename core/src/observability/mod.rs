@@ -6,6 +6,7 @@
 
 pub mod metrics;
 pub mod otel;
+pub mod prometheus;
 
 pub use metrics::LabeledMetrics;
 pub use otel::OtelTracer;
