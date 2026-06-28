@@ -68,24 +68,43 @@ impl WasmPlugin {
         if !self.has_runtime {
             return Err("WASM runtime not available".into());
         }
-        #[cfg(feature = "wasm-runtime")] {
+        #[cfg(feature = "wasm-runtime")]
+        {
             let engine = wasmtime::Engine::default();
             let module = wasmtime::Module::from_file(&engine, Path::new(&self.module_path))
                 .map_err(|e| format!("Module load error: {}", e))?;
             let mut store = wasmtime::Store::new(&engine, ());
-            store.set_fuel(self.fuel).map_err(|e| format!("Fuel: {}", e))?;
+            store
+                .set_fuel(self.fuel)
+                .map_err(|e| format!("Fuel: {}", e))?;
             let memory_ty = wasmtime::MemoryType::new(1, Some(self.memory_pages));
-            let memory = wasmtime::Memory::new(&mut store, memory_ty).map_err(|e| format!("Mem: {}", e))?;
+            let memory =
+                wasmtime::Memory::new(&mut store, memory_ty).map_err(|e| format!("Mem: {}", e))?;
             let json_bytes = ctx_json.as_bytes();
-            memory.write(&mut store, 0, json_bytes).map_err(|e| format!("Write: {}", e))?;
+            memory
+                .write(&mut store, 0, json_bytes)
+                .map_err(|e| format!("Write: {}", e))?;
             let linker = wasmtime::Linker::new(&engine);
-            let instance = linker.instantiate(&mut store, &module).map_err(|e| format!("Inst: {}", e))?;
-            let func = instance.get_func(&mut store, _func_name)
+            let instance = linker
+                .instantiate(&mut store, &module)
+                .map_err(|e| format!("Inst: {}", e))?;
+            let func = instance
+                .get_func(&mut store, _func_name)
                 .ok_or_else(|| format!("Export '{}' not found", _func_name))?;
             let mut result = [wasmtime::Val::I32(0)];
-            func.call(&mut store, &[wasmtime::Val::I32(0), wasmtime::Val::I32(json_bytes.len() as i32)], &mut result)
-                .map_err(|e| format!("Call: {}", e))?;
-            match result[0] { wasmtime::Val::I32(c) => return Ok(c), _ => return Err("bad result".into()) }
+            func.call(
+                &mut store,
+                &[
+                    wasmtime::Val::I32(0),
+                    wasmtime::Val::I32(json_bytes.len() as i32),
+                ],
+                &mut result,
+            )
+            .map_err(|e| format!("Call: {}", e))?;
+            match result[0] {
+                wasmtime::Val::I32(c) => return Ok(c),
+                _ => return Err("bad result".into()),
+            }
         }
         #[cfg(not(feature = "wasm-runtime"))]
         Err("wasm-runtime feature not enabled".into())
