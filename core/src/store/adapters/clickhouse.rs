@@ -54,15 +54,23 @@ impl ClickHouseTraceStore {
             .with_option("wait_for_async_insert", "0");
 
         let enabled = match client.query("SELECT 1").fetch_one::<u8>().await {
-            Ok(_) => { tracing::info!("ClickHouse connected: {}", ch_url); true }
-            Err(e) => { tracing::warn!("ClickHouse unavailable ({}), CH writes disabled", e); false }
+            Ok(_) => {
+                tracing::info!("ClickHouse connected: {}", ch_url);
+                true
+            }
+            Err(e) => {
+                tracing::warn!("ClickHouse unavailable ({}), CH writes disabled", e);
+                false
+            }
         };
         Self { client, enabled }
     }
 
     /// 写入审计事件
     pub async fn write_audit_event(&self, trace: &Trace) {
-        if !self.enabled { return; }
+        if !self.enabled {
+            return;
+        }
         let obs = trace.observations.as_ref();
         let event = CHAuditEvent {
             event_id: uuid::Uuid::new_v4().to_string(),
@@ -73,9 +81,15 @@ impl ClickHouseTraceStore {
             trace_id: trace.trace_id.to_string(),
             user_id: String::new(),
             model: trace.model.clone(),
-            cost_usd_micro: obs.and_then(|o| o.cost_estimated_usd.map(|c| (c * 1_000_000.0) as i64)).unwrap_or(0),
-            tokens_count: obs.and_then(|o| o.tokens_count.map(|t| t as i64)).unwrap_or(0),
-            latency_ms: obs.and_then(|o| o.latency_ms.map(|l| l as i64)).unwrap_or(0),
+            cost_usd_micro: obs
+                .and_then(|o| o.cost_estimated_usd.map(|c| (c * 1_000_000.0) as i64))
+                .unwrap_or(0),
+            tokens_count: obs
+                .and_then(|o| o.tokens_count.map(|t| t as i64))
+                .unwrap_or(0),
+            latency_ms: obs
+                .and_then(|o| o.latency_ms.map(|l| l as i64))
+                .unwrap_or(0),
             asi_risk_id: String::new(),
             metadata: serde_json::to_string(&trace.proofs.proof_chain).unwrap_or_default(),
             created_at: Utc::now().to_rfc3339(),
@@ -87,12 +101,28 @@ impl ClickHouseTraceStore {
 
     /// 写入聚合 Trace
     pub async fn write_trace_agg(&self, trace: &Trace) {
-        if !self.enabled { return; }
+        if !self.enabled {
+            return;
+        }
         let obs = trace.observations.as_ref();
         let proof_levels: Vec<&str> = {
             let mut lv = vec!["L0"];
-            if trace.proofs.proof_chain.iter().any(|e| matches!(e.level, ProofLevel::L2A)) { lv.push("L2A"); }
-            if trace.proofs.proof_chain.iter().any(|e| matches!(e.level, ProofLevel::L2B)) { lv.push("L2B"); }
+            if trace
+                .proofs
+                .proof_chain
+                .iter()
+                .any(|e| matches!(e.level, ProofLevel::L2A))
+            {
+                lv.push("L2A");
+            }
+            if trace
+                .proofs
+                .proof_chain
+                .iter()
+                .any(|e| matches!(e.level, ProofLevel::L2B))
+            {
+                lv.push("L2B");
+            }
             lv
         };
         let agg = CHTraceAgg {
