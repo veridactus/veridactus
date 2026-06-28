@@ -579,15 +579,19 @@ mod tests {
         let mut registry = PluginRegistry::new();
         registry.register(Box::new(AllowPlugin));
         let plan = ExecutionPlan {
-            plan_id: "test-async".into(), tenant: None,
+            plan_id: "test-async".into(),
+            tenant: None,
             stages: vec![crate::pipeline::config::StageConfig {
-                placement: Placement::AsyncFinalize, parallel: false,
-                plugins: vec![
-                    PluginConfig {
-                        name: "allow-plugin".to_string(), r#type: PluginType::Native,
-                        config: serde_json::json!({"async_task": "semantic_analysis"}), depends_on: vec![], endpoint: None, required_capabilities: vec![],
-                    },
-                ],
+                placement: Placement::AsyncFinalize,
+                parallel: false,
+                plugins: vec![PluginConfig {
+                    name: "allow-plugin".to_string(),
+                    r#type: PluginType::Native,
+                    config: serde_json::json!({"async_task": "semantic_analysis"}),
+                    depends_on: vec![],
+                    endpoint: None,
+                    required_capabilities: vec![],
+                }],
                 on_version_mismatch: crate::pipeline::config::VersionMismatchPolicy::Skip,
             }],
         };
