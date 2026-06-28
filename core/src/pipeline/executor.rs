@@ -242,12 +242,15 @@ impl PipelineExecutor {
             }
         }
 
-        (PipelineResult {
-            action: Action::Continue,
-            block_reason: None,
-            checks_passed,
-            checks_failed,
-        }, cold_tasks)
+        (
+            PipelineResult {
+                action: Action::Continue,
+                block_reason: None,
+                checks_passed,
+                checks_failed,
+            },
+            cold_tasks,
+        )
     }
 
     // ============================
@@ -272,13 +275,16 @@ impl PipelineExecutor {
             return Vec::new();
         };
 
-        stage.plugins.iter().filter_map(|plugin_cfg| {
-            // 从配置中提取 async task 类型
-            let task_type = plugin_cfg
-                .config
-                .get("async_task")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&plugin_cfg.name);
+        stage
+            .plugins
+            .iter()
+            .filter_map(|plugin_cfg| {
+                // 从配置中提取 async task 类型
+                let task_type = plugin_cfg
+                    .config
+                    .get("async_task")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&plugin_cfg.name);
 
             let params = serde_json::json!({
                 "trace_id": trace_id.to_string(),
@@ -286,8 +292,9 @@ impl PipelineExecutor {
                 "plugin_config": plugin_cfg.config,
             });
 
-            Some((task_type.to_string(), params))
-        }).collect()
+                Some((task_type.to_string(), params))
+            })
+            .collect()
     }
 
     // ============================
