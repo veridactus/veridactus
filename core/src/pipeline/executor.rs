@@ -497,10 +497,14 @@ mod tests {
     async fn test_pipeline_allow() {
         let mut registry = PluginRegistry::new();
         registry.register(Box::new(AllowPlugin));
-        let executor = PipelineExecutor::new(Arc::new(registry), make_plan("test", vec!["allow-plugin"]));
+        let executor =
+            PipelineExecutor::new(Arc::new(registry), make_plan("test", vec!["allow-plugin"]));
         let mut ctx = RequestContext {
-            headers: std::collections::HashMap::new(), body: None, trace_id: Uuid::new_v4(),
-            tenant_id: "test".into(), plugin_config: None,
+            headers: std::collections::HashMap::new(),
+            body: None,
+            trace_id: Uuid::new_v4(),
+            tenant_id: "test".into(),
+            plugin_config: None,
         };
         let mut journal = ExecutionJournal::new(Uuid::new_v4(), "test");
         let result = executor.execute_pre_request(&mut ctx, &mut journal).await;
@@ -511,10 +515,14 @@ mod tests {
     async fn test_pipeline_block() {
         let mut registry = PluginRegistry::new();
         registry.register(Box::new(BlockPlugin));
-        let executor = PipelineExecutor::new(Arc::new(registry), make_plan("test", vec!["block-plugin"]));
+        let executor =
+            PipelineExecutor::new(Arc::new(registry), make_plan("test", vec!["block-plugin"]));
         let mut ctx = RequestContext {
-            headers: std::collections::HashMap::new(), body: None, trace_id: Uuid::new_v4(),
-            tenant_id: "test".into(), plugin_config: None,
+            headers: std::collections::HashMap::new(),
+            body: None,
+            trace_id: Uuid::new_v4(),
+            tenant_id: "test".into(),
+            plugin_config: None,
         };
         let mut journal = ExecutionJournal::new(Uuid::new_v4(), "test");
         let result = executor.execute_pre_request(&mut ctx, &mut journal).await;
@@ -526,20 +534,31 @@ mod tests {
         let mut registry = PluginRegistry::new();
         registry.register(Box::new(AllowPlugin));
         let plan = ExecutionPlan {
-            plan_id: "test-parallel".into(), tenant: Some("test".into()),
+            plan_id: "test-parallel".into(),
+            tenant: Some("test".into()),
             stages: vec![crate::pipeline::config::StageConfig {
-                placement: Placement::PreRequest, parallel: true,
-                plugins: (0..3).map(|i| PluginConfig {
-                    name: "allow-plugin".to_string(), r#type: PluginType::Native,
-                    config: serde_json::json!({}), depends_on: vec![], endpoint: None, required_capabilities: vec![],
-                }).collect(),
+                placement: Placement::PreRequest,
+                parallel: true,
+                plugins: (0..3)
+                    .map(|i| PluginConfig {
+                        name: "allow-plugin".to_string(),
+                        r#type: PluginType::Native,
+                        config: serde_json::json!({}),
+                        depends_on: vec![],
+                        endpoint: None,
+                        required_capabilities: vec![],
+                    })
+                    .collect(),
                 on_version_mismatch: crate::pipeline::config::VersionMismatchPolicy::Skip,
             }],
         };
         let executor = PipelineExecutor::new(Arc::new(registry), plan);
         let mut ctx = RequestContext {
-            headers: std::collections::HashMap::new(), body: None, trace_id: Uuid::new_v4(),
-            tenant_id: "test".into(), plugin_config: None,
+            headers: std::collections::HashMap::new(),
+            body: None,
+            trace_id: Uuid::new_v4(),
+            tenant_id: "test".into(),
+            plugin_config: None,
         };
         let mut journal = ExecutionJournal::new(Uuid::new_v4(), "test");
         let result = executor.execute_pre_request(&mut ctx, &mut journal).await;
